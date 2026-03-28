@@ -1,0 +1,28 @@
+services:
+  backend:
+    image: node:18-alpine
+    container_name: poly-backend
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
+    working_dir: /usr/src/app
+    volumes:
+      - ./backend:/usr/src/app
+    ports:
+      - "3000:3000"
+    command: sh -c "npm install && node index.js"
+    env_file:
+      - ./backend/.env
+
+  frontend:
+    image: node:20-alpine # <--- Subimos a Node 20 para evitar el error de styleText
+    container_name: poly-frontend
+    working_dir: /usr/src/app
+    volumes:
+      - ./frontend:/usr/src/app
+    ports:
+      - "5180:5173"
+    # Añadimos un pequeño delay para que el backend esté listo
+    command: sh -c "npm install && npm run dev -- --host"
+    depends_on:
+      - backend

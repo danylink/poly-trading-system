@@ -1,0 +1,18 @@
+{
+  "name": "poly-claude-bot",
+  "version": "1.0.0",
+  "type": "module",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.18.0",
+    "@google/generative-ai": "^0.24.1",
+    "@polymarket/clob-client": "^5.8.1",
+    "@polymarket/order-utils": "^3.0.1",
+    "cors": "^2.8.6",
+    "dotenv": "^16.6.1",
+    "ethers": "^5.7.2",
+    "express": "^5.2.1",
+    "node-telegram-bot-api": "^0.64.0",
+    "rss-parser": "^3.13.0",
+    "tslib": "^2.6.2"
+  }
+}

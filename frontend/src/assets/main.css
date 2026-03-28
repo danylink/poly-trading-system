@@ -1,0 +1,7 @@
+@import "tailwindcss";
+
+/* Tu toque personal para el fondo */
+body {
+  background-color: #09090b;
+  color: #d4d4d8;
+}
