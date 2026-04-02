@@ -409,6 +409,7 @@ async function refreshWatchlist() {
         for (const market of finalPool) {
             const hrs = hoursUntilClose(market.endDate);
             const hrsLabel = hrs < 1 ? `${Math.round(hrs * 60)}m` : hrs < 24 ? `${hrs.toFixed(1)}h` : `${Math.ceil(hrs / 24)}d`;
+            const tickSize = market.minimum_tick_size || "0.01";
             
             let currentPrice = null;
             try { currentPrice = parseFloat(JSON.parse(market.outcomePrices)[0]); } catch(e){}
@@ -426,6 +427,7 @@ async function refreshWatchlist() {
                 endDate: market.endDate,
                 endsIn: hrsLabel,
                 marketPrice: currentPrice,
+                tickSize: tickSize,
                 volume: parseFloat(market.volume).toLocaleString()
             });
             console.log(`📡 [${market.category}] $${currentPrice || '?' } | Vol: $${parseFloat(market.volume).toFixed(0)} | Q: "${market.question.substring(0, 35)}..."`);
@@ -438,7 +440,8 @@ async function refreshWatchlist() {
 // ==========================================
 // 8. EJECUCIÓN DE COMPRA (CORREGIDA)
 // ==========================================
-async function executeTradeOnChain(conditionId, tokenId, amountUsdc, currentPrice) {
+// Agregamos marketTickSize como parámetro (con "0.01" por defecto por seguridad)
+async function executeTradeOnChain(conditionId, tokenId, amountUsdc, currentPrice, marketTickSize = "0.01") {
     try {
         console.log(`\n--- ⚖️ EJECUCIÓN ON-CHAIN EN POLYMARKET ---`);
 
@@ -446,18 +449,20 @@ async function executeTradeOnChain(conditionId, tokenId, amountUsdc, currentPric
             throw new Error("clobClient no está inicializado. Llama primero a conectarClob()");
         }
 
-        const finalPrice = Number(parseFloat(currentPrice).toFixed(4));
+        // 1. Ajuste de decimales según el Tick Size del mercado
+        const decimales = marketTickSize === "0.001" ? 3 : 2;
+        const finalPrice = Number(parseFloat(currentPrice).toFixed(decimales));
         
-        // 1. Cálculo preciso para evitar el error de "min size $1"
+        // 2. Cálculo preciso para evitar el error de "min size $1"
         let numShares = Number((parseFloat(amountUsdc) / finalPrice).toFixed(2));
         if (numShares * finalPrice < 1) {
             console.log("⚠️ Ajustando orden para superar el mínimo de $1 USDC");
             numShares = Math.ceil(1.05 / finalPrice); 
         }
 
-        console.log(`📡 Creando orden BUY: ${numShares} shares @ $${finalPrice}`);
+        console.log(`📡 Creando orden BUY: ${numShares} shares @ $${finalPrice} (Tick: ${marketTickSize})`);
 
-        // 2. Usar el método maestro que funcionó en tus pruebas
+        // 3. Usamos la variable dinámica en lugar del texto fijo
         const response = await clobClient.createAndPostOrder(
             {
                 tokenID: tokenId,
@@ -466,7 +471,7 @@ async function executeTradeOnChain(conditionId, tokenId, amountUsdc, currentPric
                 size: numShares,
             },
             { 
-                tickSize: "0.001", 
+                tickSize: marketTickSize, // <--- AHORA ES DINÁMICO
                 negRisk: false      
             }, 
             OrderType.GTC
@@ -474,8 +479,6 @@ async function executeTradeOnChain(conditionId, tokenId, amountUsdc, currentPric
 
         if (response && response.success) {
             console.log(`🎉 ¡ORDEN ACEPTADA! Order ID: ${response.orderID}`);
-            
-            // 🚨 Importante: Devolvemos 'hash' porque tu endpoint manual espera result.hash
             return { success: true, hash: response.orderID }; 
         } else {
             throw new Error(`Orden rechazada: ${JSON.stringify(response)}`);
@@ -544,6 +547,7 @@ async function fetchRealTrades() {
 
                 return {
                     id: hash.toString().substring(0, 10),
+                    tokenId: tokenId,
                     time: trade.timestamp ? new Date(trade.timestamp).toLocaleTimeString() : new Date().toLocaleTimeString(),
                     market: title.length > 40 ? title.substring(0, 40) + "..." : title, // <--- EL NOMBRE REAL
                     
@@ -647,7 +651,8 @@ async function runBot() {
                             marketItem.conditionId, 
                             marketItem.tokenId, 
                             botStatus.microBetAmount, 
-                            livePrice
+                            livePrice,
+                            marketItem.tickSize || "0.01"
                         );
                         
                         if (result && result.success) {
@@ -683,7 +688,8 @@ async function runBot() {
                         marketPrice: livePrice,
                         suggestedInversion: botStatus.microBetAmount || 1.00,
                         edge: edge,
-                        endsIn: marketItem.endsIn
+                        endsIn: marketItem.endsIn,
+                        tickSize: marketItem.tickSize || "0.01"
                     };
 
                     botStatus.pendingSignals.unshift(signalObj);
@@ -701,6 +707,7 @@ async function runBot() {
                 botStatus.pendingSignals[signalIndex].probability = prob;
                 botStatus.pendingSignals[signalIndex].marketPrice = livePrice;
                 botStatus.pendingSignals[signalIndex].edge = edge;
+                botStatus.pendingSignals[signalIndex].tickSize = marketItem.tickSize || "0.01";
                 console.log(`ℹ️ Actualizando datos de señal existente: ${marketTitle.substring(0, 25)}...`);
             }
         }
@@ -844,6 +851,47 @@ app.get('/api/test-ukraine', async (req, res) => {
     } catch (e) {
         console.error("❌ Fallo en el Test:", e.message);
         res.status(500).send(`<h1>❌ Error de Firma</h1><p>${e.message}</p>`);
+    }
+});
+
+// 🚀 ENDPOINT DE VENTA MANUAL
+app.post('/api/sell', async (req, res) => {
+    const { tokenId, shares } = req.body;
+
+    if (!clobClient) {
+        return res.status(500).json({ error: "Cliente CLOB no inicializado" });
+    }
+
+    try {
+        console.log(`\n🔴 [VENTA MANUAL] Solicitud recibida para Token: ${tokenId.substring(0, 8)}...`);
+        console.log(`   Acciones a vender: ${shares}`);
+
+        // 1. Buscar a quién venderle (Mejor Bid en el libro de órdenes)
+        const bookResp = await axios.get(`https://clob.polymarket.com/book?token_id=${tokenId}`, { httpsAgent: agent });
+        
+        if (!bookResp.data || !bookResp.data.bids || bookResp.data.bids.length === 0) {
+            console.log("❌ No hay compradores en el mercado ahora mismo.");
+            return res.status(400).json({ error: "Mercado sin liquidez de compra." });
+        }
+
+        // Tomamos el precio más alto que alguien está dispuesto a pagar
+        const bestBidPrice = parseFloat(bookResp.data.bids[0].price);
+        console.log(`   Mejor precio de venta encontrado: $${bestBidPrice}`);
+
+        // 2. Ejecutar la Orden de Venta en la Blockchain
+        const sellOrder = await clobClient.createAndPostOrder({
+            tokenID: tokenId,
+            price: bestBidPrice,
+            side: Side.SELL,
+            size: parseFloat(shares)
+        });
+
+        console.log("✅ Venta ejecutada con éxito:", sellOrder);
+        res.json({ success: true, message: "Posición cerrada", data: sellOrder });
+
+    } catch (error) {
+        console.error("❌ Error en la venta:", error.message);
+        res.status(500).json({ error: error.message });
     }
 });
 

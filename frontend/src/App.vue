@@ -5,7 +5,9 @@ import {
   Activity, ShieldCheck, Target, Cpu, Bot, Clock3, Power, ArrowUpRight
 } from 'lucide-vue-next'
 
-const API_URL = 'http://localhost:3001/api';
+// Antes: const API_URL = 'http://localhost:3001/api';
+// Ahora: Dinámico según el entorno
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 
 // --- ESTADO REACTIVO UNIFICADO ---
 const status = ref({
@@ -25,6 +27,7 @@ const status = ref({
 const isAutoTradeUpdating = ref(false);
 const isThresholdUpdating = ref(false);
 let pollingInterval = null;
+const isSelling = ref({});
 
 // --- FUNCIONES DE COMUNICACIÓN CON EL BACKEND ---
 
@@ -99,6 +102,21 @@ const setThreshold = (val) => {
   status.value.predictionThreshold = val;
   updateThreshold();
 };
+
+const sellPosition = async (tokenId, shares) => {
+  if (!confirm(`¿Estás seguro de vender ${shares} acciones de este mercado?`)) return;
+  
+  isSelling.value[tokenId] = true;
+  try {
+    const response = await axios.post(`${API_URL}/sell`, { tokenId, shares });
+    alert("✅ Venta ejecutada correctamente");
+    fetchStatus(); // Recargamos el dashboard para ver el balance actualizado
+  } catch (error) {
+    alert("❌ Error al vender: " + (error.response?.data?.error || error.message));
+  } finally {
+    isSelling.value[tokenId] = false;
+  }
+}
 
 // --- COMPUTED PROPERTIES ---
 
@@ -232,7 +250,23 @@ onUnmounted(() => {
                     </div>
                   </td>
 
-                  <td class="p-4 font-mono font-bold text-emerald-500 text-[10px]">{{ exec.status }}</td>
+                  <td class="p-4 font-mono text-[10px]">
+                    <div class="flex items-center gap-3">
+                      <span :class="exec.status.includes('ACTIVO') ? 'text-emerald-500' : 'text-zinc-500 font-bold'">
+                        {{ exec.status }}
+                      </span>
+                      
+                      <button 
+                        v-if="exec.status.includes('ACTIVO')"
+                        @click="sellPosition(exec.tokenId, exec.pagoPotencial)"
+                        :disabled="isSelling[exec.tokenId]"
+                        class="px-3 py-1 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 rounded transition-all flex items-center gap-1 disabled:opacity-50"
+                      >
+                        <span v-if="isSelling[exec.tokenId]" class="w-2 h-2 rounded-full bg-rose-400 animate-ping"></span>
+                        {{ isSelling[exec.tokenId] ? 'VENDIENDO...' : 'VENDER' }}
+                      </button>
+                    </div>
+                  </td>
                 </tr>
                 <tr v-if="!status.executions || status.executions.length === 0">
                   <td colspan="5" class="p-12 text-center text-zinc-600 italic">No hay disparos registrados aún.</td>
@@ -264,16 +298,26 @@ onUnmounted(() => {
               </div>
               
               <div class="flex justify-between items-center bg-[#241c18] border border-[#D4AF37]/10 rounded-xl p-3 mb-4">
+                
                 <div class="flex flex-col">
-                  <span class="text-[8px] font-black text-zinc-500 uppercase">Edge vs Mercado</span>
+                  <span class="text-[8px] font-black text-zinc-500 uppercase">Edge</span>
                   <span class="text-sm font-mono font-bold" :class="Number(signal.edge) >= 0.10 ? 'text-emerald-400' : 'text-zinc-400'">
                     {{ Number(signal.edge) >= 0 ? '+' : '' }}{{ (Number(signal.edge || 0) * 100).toFixed(0) }}%
                   </span>
                 </div>
+
+                <div class="flex flex-col items-center">
+                  <span class="text-[8px] font-black text-zinc-500 uppercase">Tick Size</span>
+                  <span class="text-sm font-mono font-bold text-[#D4AF37]">
+                    {{ signal.tickSize || '0.01' }}
+                  </span>
+                </div>
+
                 <div class="flex flex-col items-end">
                   <span class="text-[8px] font-black text-zinc-500 uppercase">Sugerido</span>
                   <span class="text-sm font-mono font-bold text-white">{{ Number(signal.suggestedInversion || 0).toFixed(2) }} USDC</span>
                 </div>
+
               </div>
 
               <button 
@@ -296,7 +340,7 @@ onUnmounted(() => {
                 
                 <template v-else>
                   <span class="tracking-[0.3em]">EJECUTAR DISPARO</span>
-                  <span class="text-[8px] opacity-70 font-mono">MKT: ${{ signal.marketPrice }} | IA: {{ (signal.probability * 100).toFixed(0) }}%</span>
+                  <span class="text-[8px] opacity-70 font-mono">MKT: ${{ signal.marketPrice }}</span>
                 </template>
               </button>
             </div>
