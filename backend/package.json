@@ -13,6 +13,7 @@
     "express": "^5.2.1",
     "node-telegram-bot-api": "^0.64.0",
     "rss-parser": "^3.13.0",
-    "tslib": "^2.6.2"
+    "tslib": "^2.6.2",
+    "viem": "^2.47.6"
   }
 }

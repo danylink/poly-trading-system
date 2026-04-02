@@ -169,6 +169,7 @@ async function testTrade() {
     }
 
     // 🔍 --- ESCÁNER DE FUNCIONES (Solo para diagnóstico) ---
+    /*
     console.log("\n🧪 EXAMINANDO MÉTODOS DISPONIBLES EN TU SDK v5.8.1...");
     const clientParaEscaneo = createTypedClient(0);
     
@@ -184,6 +185,7 @@ async function testTrade() {
             console.log(`- ${key}`);
         }
     }
+    */
 }
 
 testTrade().catch(e => {
