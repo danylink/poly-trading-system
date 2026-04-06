@@ -4,6 +4,7 @@ import axios from 'axios'
 import { 
   Activity, ShieldCheck, Target, Cpu, Bot, Clock3, Power, ArrowUpRight
 } from 'lucide-vue-next'
+import Swal from 'sweetalert2';
 
 // Antes: const API_URL = 'http://localhost:3001/api';
 // Ahora: Dinámico según el entorno
@@ -103,20 +104,92 @@ const setThreshold = (val) => {
   updateThreshold();
 };
 
-const sellPosition = async (tokenId, shares) => {
-  if (!confirm(`¿Estás seguro de vender ${shares} acciones de este mercado?`)) return;
-  
+const sellPosition = async (tokenId, exactSize) => {
+  // 1. Alerta de Confirmación
+  const result = await Swal.fire({
+    title: '¿Confirmar Disparo?',
+    text: `Estás a punto de vender ${exactSize} acciones. Esta acción no se puede deshacer.`,
+    icon: 'warning',
+    background: '#1C1612', // Fondo café oscuro
+    color: '#e4e4e7', // Texto claro (zinc-200)
+    iconColor: '#D4AF37', // Ícono dorado
+    showCancelButton: true,
+    confirmButtonColor: '#D4AF37', // Botón dorado
+    cancelButtonColor: '#3f3f46', // Botón cancelar gris
+    confirmButtonText: '<span style="color: #3C2A21; font-weight: 900;">VENDER AHORA</span>',
+    cancelButtonText: 'CANCELAR',
+    customClass: {
+      popup: 'border border-[#D4AF37]/30 rounded-2xl'
+    }
+  });
+
+  // Si el usuario cancela, salimos de la función
+  if (!result.isConfirmed) return;
+
+  // Empezamos a cargar
   isSelling.value[tokenId] = true;
+
   try {
-    const response = await axios.post(`${API_URL}/sell`, { tokenId, shares });
-    alert("✅ Venta ejecutada correctamente");
-    fetchStatus(); // Recargamos el dashboard para ver el balance actualizado
+    const response = await fetch(`${API_URL}/sell`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tokenId, shares: exactSize })
+    });
+
+    const data = await response.json();
+
+    if (data.success) {
+      // 2. Alerta de Éxito
+      Swal.fire({
+        title: '¡Venta Ejecutada!',
+        text: 'La posición ha sido cerrada con éxito en la blockchain.',
+        icon: 'success',
+        background: '#1C1612',
+        color: '#e4e4e7',
+        iconColor: '#10b981', // Verde esmeralda de tu diseño
+        confirmButtonColor: '#10b981',
+        confirmButtonText: 'EXCELENTE',
+        customClass: {
+          popup: 'border border-[#10b981]/30 rounded-2xl'
+        }
+      });
+      // Aquí puedes llamar a tu función para recargar el dashboard
+      // updateDashboardData(); 
+    } else {
+      // 3. Alerta de Error (controlado por la API)
+      Swal.fire({
+        title: 'Disparo Fallido',
+        text: data.error || 'No se pudo completar la venta.',
+        icon: 'error',
+        background: '#1C1612',
+        color: '#e4e4e7',
+        iconColor: '#f43f5e', // Rojo rosa de tu diseño
+        confirmButtonColor: '#f43f5e',
+        confirmButtonText: 'ENTENDIDO',
+        customClass: {
+          popup: 'border border-[#f43f5e]/30 rounded-2xl'
+        }
+      });
+    }
   } catch (error) {
-    alert("❌ Error al vender: " + (error.response?.data?.error || error.message));
+    // Alerta de Error (Caída de red o servidor)
+    Swal.fire({
+      title: 'Error de Conexión',
+      text: 'El servidor no responde. Revisa los logs en Toronto.',
+      icon: 'error',
+      background: '#1C1612',
+      color: '#e4e4e7',
+      iconColor: '#f43f5e',
+      confirmButtonColor: '#f43f5e',
+      confirmButtonText: 'CERRAR',
+      customClass: {
+        popup: 'border border-[#f43f5e]/30 rounded-2xl'
+      }
+    });
   } finally {
     isSelling.value[tokenId] = false;
   }
-}
+};
 
 // --- COMPUTED PROPERTIES ---
 
@@ -206,13 +279,77 @@ onUnmounted(() => {
 
         </div>
 
-        <div class="mt-8 bg-[#1C1612] border border-[#3C2A21] rounded-2xl overflow-hidden shadow-lg">
+        <div class="mt-8 mb-6">
+          <h2 class="text-[#D4AF37] font-black tracking-widest text-xs mb-4 flex items-center gap-2">
+            <span class="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
+            POSICIONES EN VIVO
+          </h2>
+          
+          <div class="grid grid-cols-1 gap-4">
+            <div v-for="pos in status.activePositions" :key="pos.tokenId" 
+                 class="bg-[#1c1917] border border-[#D4AF37]/40 rounded-2xl p-5 flex flex-col md:flex-row justify-between items-start md:items-center shadow-[0_0_15px_rgba(212,175,55,0.1)] hover:border-[#D4AF37]/80 transition-all">
+              
+              <div class="flex flex-col mb-4 md:mb-0 w-full md:w-1/2">
+                <span class="text-[10px] text-zinc-500 font-bold uppercase tracking-tighter mb-1">Mercado</span>
+                <span class="text-zinc-200 font-bold text-sm line-clamp-1" :title="pos.marketName">{{ pos.marketName }}</span>
+                <span class="text-[#D4AF37] font-mono text-[10px] mt-1">{{ pos.size }} Acciones</span>
+              </div>
+
+              <div class="flex items-center gap-6 w-full md:w-auto justify-between md:justify-end">
+                <div class="text-left md:text-right hidden sm:block">
+                  <span class="text-[10px] text-zinc-500 block uppercase font-bold mb-0.5">Estado</span>
+                  <span class="font-mono font-bold text-[10px]" :class="pos.status.includes('CANJEAR') ? 'text-zinc-500' : 'text-emerald-400'">
+                    {{ pos.status }}
+                  </span>
+                </div>
+
+                <div class="text-left md:text-right flex flex-col justify-center">
+                  <span class="text-[10px] text-zinc-500 block uppercase font-bold mb-0.5">Valor</span>
+                  <span class="text-white font-mono font-bold text-sm">
+                    ${{ pos.currentValue }}
+                  </span>
+                  <span v-if="!pos.status.includes('CANJEAR')" 
+                        class="text-[10px] font-bold font-mono mt-0.5 tracking-tighter"
+                        :class="(pos.cashPnl || 0) >= 0 ? 'text-emerald-500' : 'text-rose-500'">
+                    {{ (pos.cashPnl || 0) >= 0 ? '+' : '' }}${{ pos.cashPnl !== undefined ? pos.cashPnl.toFixed(2) : '0.00' }} ({{ pos.percentPnl !== undefined ? pos.percentPnl.toFixed(2) : '0.00' }}%)
+                  </span>
+                  <span v-else class="text-[10px] font-bold font-mono mt-0.5 tracking-tighter text-rose-500">
+                    -$0.00 (100%)
+                  </span>
+                </div>
+                
+                <button @click="sellPosition(pos.tokenId, pos.exactSize)" 
+                        :disabled="isSelling[pos.tokenId]"
+                        translate="no"
+                        class="px-5 py-2.5 rounded-xl text-[10px] font-black transition-all flex items-center gap-2 disabled:opacity-50 border"
+                        :class="pos.status.includes('CANJEAR') 
+                          ? 'bg-zinc-800 text-zinc-400 border-zinc-700 hover:bg-zinc-700 hover:text-white' 
+                          : ((pos.cashPnl || 0) >= 0 
+                              ? 'bg-emerald-500/10 hover:bg-emerald-500 text-emerald-500 hover:text-white border-emerald-500/30' 
+                              : 'bg-rose-500/10 hover:bg-rose-500 text-rose-500 hover:text-white border-rose-500/30')">
+                  
+                  <span v-if="isSelling[pos.tokenId]" class="w-2 h-2 rounded-full animate-ping" 
+                        :class="pos.status.includes('CANJEAR') ? 'bg-zinc-400' : ((pos.cashPnl || 0) >= 0 ? 'bg-emerald-400' : 'bg-rose-400')"></span>
+                  
+                  {{ isSelling[pos.tokenId] ? 'PROCESANDO...' : (pos.status.includes('CANJEAR') ? 'CANJEAR' : 'VENDER TODO') }}
+                </button>
+              </div>
+            </div>
+
+            <div v-if="!status.activePositions || status.activePositions.length === 0" 
+                 class="bg-[#1c1917]/50 border border-zinc-800 border-dashed rounded-2xl p-8 text-center flex flex-col items-center justify-center">
+                 <Target :size="24" class="text-zinc-600 mb-2" />
+                 <p class="text-zinc-500 text-xs font-medium italic">No hay posiciones activas en este momento.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-[#1C1612] border border-[#3C2A21] rounded-2xl overflow-hidden shadow-lg">
           <div class="p-6 border-b border-[#3C2A21] flex justify-between items-center bg-[#251B15]">
-            <h3 class="text-[#D4AF37] font-black text-xs tracking-widest uppercase flex items-center gap-2">
-              <div class="w-2 h-2 rounded-full bg-[#D4AF37] animate-pulse"></div>
-              Historial de Ejecuciones (Polymarket)
+            <h3 class="text-zinc-400 font-black text-xs tracking-widest uppercase flex items-center gap-2">
+              <Activity :size="14" class="text-zinc-500" />
+              Historial de Ejecuciones (Cerradas)
             </h3>
-            <span class="text-[10px] text-zinc-500 font-mono">LIVE TRACKING</span>
           </div>
 
           <div class="overflow-x-auto">
@@ -220,56 +357,37 @@ onUnmounted(() => {
               <thead>
                 <tr class="text-[10px] text-zinc-500 uppercase tracking-tighter border-b border-[#3C2A21]">
                   <th class="p-4 font-medium">Mercado</th>
-                  <th class="p-4 font-medium">Inversión Real</th>
-                  <th class="p-4 font-medium">Cuota</th>
-                  <th class="p-4 font-medium">Pago Potencial</th>
+                  <th class="p-4 font-medium">Inversión</th>
+                  <th class="p-4 font-medium">PnL</th>
                   <th class="p-4 font-medium">Estado</th>
                 </tr>
               </thead>
               <tbody class="text-xs">
-                <tr v-for="exec in status.executions" :key="exec.id" class="border-b border-[#3C2A21]/50 hover:bg-[#2A1D15] transition-colors">
+                <tr v-for="exec in status.executions.filter(e => !e.status.includes('ACTIVO'))" :key="exec.id" class="border-b border-[#3C2A21]/50 hover:bg-[#2A1D15] transition-colors">
                   <td class="p-4">
-                    <div class="font-bold text-zinc-200 line-clamp-1">{{ exec.market }}</div>
+                    <div class="font-bold text-zinc-400 line-clamp-1">{{ exec.market }}</div>
                     <span class="text-[9px] text-[#D4AF37] font-mono uppercase tracking-tighter">{{ exec.time }} | ID: {{ exec.id }}</span>
                   </td>
                   
-                  <td class="p-4 text-zinc-300 font-mono font-bold">
+                  <td class="p-4 text-zinc-500 font-mono font-bold">
                     ${{ exec.inversion?.toFixed(2) || '0.00' }}
                   </td>
 
-                  <td class="p-4 text-[#D4AF37] font-mono">
-                    ${{ exec.price?.toFixed(3) || '0.000' }}
-                  </td>
-
                   <td class="p-4 font-mono">
-                    <div class="font-bold" :class="(exec.pnlUsdc || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'">
+                    <div class="font-bold" :class="(exec.pnlUsdc || 0) >= 0 ? 'text-emerald-500/70' : 'text-rose-500/70'">
                       ${{ exec.valorActual?.toFixed(2) || '0.00' }}
                     </div>
-                    <div v-if="exec.pnlUsdc !== undefined" class="text-[9px] font-bold opacity-80" :class="exec.pnlUsdc >= 0 ? 'text-emerald-500' : 'text-rose-500'">
+                    <div v-if="exec.pnlUsdc !== undefined" class="text-[9px] font-bold opacity-60" :class="exec.pnlUsdc >= 0 ? 'text-emerald-500' : 'text-rose-500'">
                       {{ exec.pnlUsdc >= 0 ? '+' : '' }}${{ exec.pnlUsdc?.toFixed(2) }} ({{ exec.pnlPct?.toFixed(1) }}%)
                     </div>
                   </td>
 
                   <td class="p-4 font-mono text-[10px]">
-                    <div class="flex items-center gap-3">
-                      <span :class="exec.status.includes('ACTIVO') ? 'text-emerald-500' : 'text-zinc-500 font-bold'">
-                        {{ exec.status }}
-                      </span>
-                      
-                      <button 
-                        v-if="exec.status.includes('ACTIVO')"
-                        @click="sellPosition(exec.tokenId, exec.pagoPotencial)"
-                        :disabled="isSelling[exec.tokenId]"
-                        class="px-3 py-1 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 rounded transition-all flex items-center gap-1 disabled:opacity-50"
-                      >
-                        <span v-if="isSelling[exec.tokenId]" class="w-2 h-2 rounded-full bg-rose-400 animate-ping"></span>
-                        {{ isSelling[exec.tokenId] ? 'VENDIENDO...' : 'VENDER' }}
-                      </button>
-                    </div>
+                    <span class="text-zinc-600 font-bold">FINALIZADO</span>
                   </td>
                 </tr>
-                <tr v-if="!status.executions || status.executions.length === 0">
-                  <td colspan="5" class="p-12 text-center text-zinc-600 italic">No hay disparos registrados aún.</td>
+                <tr v-if="!status.executions || status.executions.filter(e => !e.status.includes('ACTIVO')).length === 0">
+                  <td colspan="4" class="p-12 text-center text-zinc-600 italic border-t border-[#3C2A21]/50">No hay operaciones cerradas aún.</td>
                 </tr>
               </tbody>
             </table>
@@ -289,7 +407,9 @@ onUnmounted(() => {
               <div>
                 <div class="flex justify-between items-center mb-4">
                   <span class="text-2xl font-black text-[#D4AF37] font-mono">{{ (signal.probability * 100).toFixed(0) }}%</span>
-                  <span v-if="signal.endsIn" class="text-[9px] text-red-400 font-bold font-mono">⏰ {{ signal.endsIn }}</span>
+                  <span class="text-[8px] bg-emerald-500/10 text-emerald-500 px-2 py-0.5 rounded-full border border-emerald-500/20">
+                    IA OPTIMIZADA
+                  </span>
                 </div>
                 <p class="text-white font-bold text-sm leading-tight mb-4 line-clamp-3" :title="signal.marketName">{{ signal.marketName }}</p>
                 <div class="bg-black/40 rounded-xl p-4 border border-zinc-800/50 h-20 overflow-y-auto custom-scroll mb-4">

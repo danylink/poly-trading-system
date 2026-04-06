@@ -26,6 +26,8 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 const PORT = process.env.PORT || 3001;
+// Memoria de corto plazo para ahorrar créditos
+const analysisCache = new Map();
 
 // --- ESTADO GLOBAL DEL SNIPER ---
 let botStatus = {
@@ -39,6 +41,7 @@ let botStatus = {
     walletOnlyUSDC: "0.00",   // <--- NUEVO: Solo lo que hay en MetaMask
     clobOnlyUSDC: "0.00",     // <--- NUEVO: Solo lo que hay en Polymarket
     balancePOL: "0.00",
+    activePositions: [],
     executions: [], 
     pendingSignals: [], 
     isPanicStopped: false,
@@ -116,36 +119,80 @@ conectarClob();
 // ==========================================
 async function updateRealBalances() {
     try {
-        // 1. Balance de Gas (POL) - Siempre necesario para las transacciones
+        // 1. Balance de Gas (POL)
         const polBal = await provider.getBalance(wallet.address);
         botStatus.balancePOL = Number(ethers.utils.formatEther(polBal)).toFixed(3);
 
         // 2. Balance USDC en MetaMask (Billetera Personal)
-        // Usamos el contrato USDC directamente en Polygon
         const usdcAbi = ["function balanceOf(address) view returns (uint256)"];
         const usdcContract = new ethers.Contract(USDC_ADDRESS, usdcAbi, provider);
         const walletBalRaw = await usdcContract.balanceOf(wallet.address);
         botStatus.walletOnlyUSDC = (parseFloat(ethers.utils.formatUnits(walletBalRaw, 6))).toFixed(2);
 
-        // 3. Balance USDC en Polymarket (Proxy/Builder)
+        // 3. Balance USDC en Polymarket (CLOB)
         if (clobClient) {
             await clobClient.updateBalanceAllowance({ asset_type: "COLLATERAL" });
             const balanceData = await clobClient.getBalanceAllowance({ asset_type: "COLLATERAL" });
             const clobMonto = parseFloat(balanceData.balance || 0) / 1000000;
-            // Dentro de updateRealBalances, después de obtener clobMonto:
+            
             if (clobMonto === 0) {
-                console.log("⚠️ Balance Polymarket en 0, intentando refrescar...");
                 await clobClient.updateBalanceAllowance({ asset_type: "COLLATERAL" });
             }
             botStatus.clobOnlyUSDC = clobMonto.toFixed(2);
-            
-            // Sincronizamos el balance general con el de Polymarket para que el bot sepa qué tiene para gastar
             botStatus.balanceUSDC = botStatus.clobOnlyUSDC;
             
             console.log(`📊 Balances: Wallet: $${botStatus.walletOnlyUSDC} | Polymarket: $${botStatus.clobOnlyUSDC} | Gas: ${botStatus.balancePOL} POL`);
         }
+        // --- 4. OBTENER POSICIONES ACTIVAS (VÍA DATA API Y PROXY WALLET) ---
+        try {
+            const userAddress = process.env.POLY_PROXY_ADDRESS; 
+            
+            if (!userAddress) {
+                console.log("⚠️ Advertencia: POLY_PROXY_ADDRESS no está definido en el archivo .env");
+                return;
+            }
+
+            const response = await fetch(`https://data-api.polymarket.com/positions?user=${userAddress}&limit=50`);
+            const positions = await response.json();
+            
+            botStatus.activePositions = []; 
+            
+            if (Array.isArray(positions) && positions.length > 0) {
+                for (const pos of positions) {
+
+                // Variables extraídas de la API (soportando el JSON traducido o en inglés)
+                const size = parseFloat(pos.size || pos['tamaño'] || 0);
+                const cashPnl = parseFloat(pos.cashPnl || pos['ganancias en efectivo'] || 0);
+                const percentPnl = parseFloat(pos.percentPnl || pos['porcentaje de ganancias'] || 0);
+                const valorActual = parseFloat(pos.currentValue || pos.current_value || pos.value || pos['valor actual'] || 0);
+
+                if (size > 0) {
+                    const nombreMercado = pos.title || pos.market || pos['título'] || "Mercado Desconocido";
+                    const tokenId = pos.asset || pos.token_id || pos.asset_id;
+                    const conditionId = pos.conditionId || pos.condition_id;
+                    const isRedeemable = pos.redeemable === true || pos['canjeable'] === true;
+
+                    botStatus.activePositions.push({
+                        tokenId: tokenId,
+                        conditionId: conditionId,
+                        size: size.toFixed(2),
+                        exactSize: size,
+                        marketName: nombreMercado,
+                        status: isRedeemable ? "FINALIZADO (CANJEAR) ♻️" : "ACTIVO 🟢",
+                        currentValue: valorActual.toFixed(2),
+                        cashPnl: cashPnl,        // 🟢 NUEVO: Ganancia en USD
+                        percentPnl: percentPnl   // 🟢 NUEVO: Porcentaje de ganancia
+                    });
+                }
+                }
+            }
+            
+        } catch (apiError) {
+             console.log("⚠️ No se pudieron obtener las posiciones de la Data API:", apiError.message);
+        }
+
     } catch (e) { 
-        console.error("❌ Error leyendo balances combinados:", e.message); 
+        console.error("❌ Error general actualizando balances:", e.message); 
     }
 }
 
@@ -575,146 +622,133 @@ async function fetchRealTrades() {
 let watchlistIndex = 0;
 
 async function runBot() {
-    if (botStatus.isPanicStopped) {
-        console.log("🛑 BOT DETENIDO MANUALMENTE. Ignorando ciclo.");
-        return;
-    }
+    if (botStatus.isPanicStopped) return;
 
-    console.log(`\n--- ⚙️ INICIANDO CICLO DE ESCANEO: ${new Date().toLocaleTimeString()} ---`);
     botStatus.lastCheck = new Date().toLocaleTimeString();
-
     try {
-
+        // CAPA 1: Actualizar lo que ya tenemos (Gratis - Sin IA)
         await fetchRealTrades();
+        await updateRealBalances();
 
+        // Gestionar Ventas Automáticas (Si hay ganancias > 15% o pérdidas > 10%)
+        if (botStatus.autoTradeEnabled) {
+            await autoSellManager();
+        }
+
+        // CAPA 2: Rotación de Watchlist
         if (botStatus.watchlist.length === 0 || watchlistIndex >= botStatus.watchlist.length) {
             await refreshWatchlist();
             watchlistIndex = 0;
         }
 
-        if (botStatus.watchlist.length === 0) {
-            console.log('⚠️ Watchlist vacía tras refresh.');
-            return;
-        }
-
-        // 1. ELEGIR MERCADO ACTUAL
         const marketItem = botStatus.watchlist[watchlistIndex];
         const marketTitle = marketItem.title;
-        
-        botStatus.currentMarket = { 
-            title: marketTitle, 
-            title_es: marketTitle, // Usamos el original al no haber traducción
-            category: marketItem.category 
-        };
-        botStatus.currentTopic = marketTitle;
 
-        console.log(`🔍 ANALIZANDO [${watchlistIndex + 1}/${botStatus.watchlist.length}]: ${marketTitle}`);
+        // CAPA 3: ¿Realmente necesitamos a Claude? (Ahorro de tokens)
+        const newsString = await getLatestNews(marketTitle, marketItem.category);
+        const cacheKey = `${marketItem.tokenId}-${newsString.substring(0, 50)}`;
 
-        await updateRealBalances();
+        let prob;
+        if (analysisCache.has(cacheKey)) {
+            console.log(`♻️ Usando análisis en caché para: ${marketTitle.substring(0, 30)}`);
+            prob = analysisCache.get(cacheKey);
+        } else {
+            // Solo gastamos créditos si las noticias cambiaron
+            const analysis = await analyzeMarketWithClaude(marketTitle, newsString);
+            prob = analysis.prob;
+            analysisCache.set(cacheKey, prob);
+            // Limpiar cache viejo si crece mucho
+            if (analysisCache.size > 50) analysisCache.delete(analysisCache.keys().next().value);
+        }
 
-        // 2. ANÁLISIS DE NOTICIAS Y CLAUDE
-        const realNews = await getLatestNews(marketTitle, marketItem.category);
-        const analysis = await analyzeMarketWithClaude(marketTitle, realNews);
-        const prob = analysis.prob;
         botStatus.lastProbability = prob;
+        const livePrice = marketItem.marketPrice || 0;
+        const edge = prob - livePrice;
 
-        if (botStatus.watchlist[watchlistIndex]) {
-            botStatus.watchlist[watchlistIndex].probability = prob;
-        }
-
-        console.log(`📊 Probabilidad (Claude): ${(prob * 100).toFixed(0)}% | Razón: ${analysis.reason.substring(0, 60)}...`);
-
-        // 3. CÁLCULO DE EDGE Y SNIPER
-        const livePrice = marketItem.marketPrice !== undefined ? marketItem.marketPrice : 0;
-        const endsInHours = marketItem.endDate ? hoursUntilClose(marketItem.endDate) : 999;
-        const edge = livePrice > 0 ? prob - livePrice : null;
-
-        if (livePrice > 0) {
-            const sniperQualified = edge >= 0.10 && endsInHours <= 24 && prob >= botStatus.predictionThreshold;
-            console.log(`⏰ Cierra en: ${endsInHours.toFixed(1)}h | MKT: $${livePrice.toFixed(2)} | Edge: ${(edge * 100).toFixed(0)}% ${sniperQualified ? '🎯 SNIPER!' : ''}`);
-        }
-
-        // 4. LÓGICA DE DISPARO / SEÑAL (Evitando Duplicados por tokenId)
-        if (prob >= botStatus.predictionThreshold) {
-            console.log(`🔥 OPORTUNIDAD DETECTADA: ${(prob * 100).toFixed(0)}%`);
-
-            const signalIndex = botStatus.pendingSignals.findIndex(s => s.tokenId === marketItem.tokenId);
-
-            if (signalIndex === -1) {
-                let autoExecuted = false;
-
-                // --- ⚡ AUTO-TRADE (Configuración Type 2 / Funder 0x876E...) ---
-                if (botStatus.autoTradeEnabled && marketItem.conditionId && livePrice > 0 && livePrice < prob) {
-                    console.log(`🚀 EJECUTANDO AUTO-TRADE: $${botStatus.microBetAmount} USDC...`);
-                    try {
-                        const result = await executeTradeOnChain(
-                            marketItem.conditionId, 
-                            marketItem.tokenId, 
-                            botStatus.microBetAmount, 
-                            livePrice,
-                            marketItem.tickSize || "0.01"
-                        );
-                        
-                        if (result && result.success) {
-                            const execution = {
-                                id: result.orderID.substring(0, 10),
-                                time: new Date().toLocaleTimeString(),
-                                market: marketTitle,
-                                price: livePrice,
-                                amount: botStatus.microBetAmount,
-                                status: "COMPLETADA ✅"
-                            };
-                            botStatus.executions.unshift(execution);
-                            if(botStatus.executions.length > 10) botStatus.executions.pop();
-                            
-                            await sendAlert(`🚀 *COMPRA AUTOMÁTICA EXITOSA*\nMercado: ${marketTitle}\nPrecio: $${livePrice}\nID: ${execution.id}`);
-                            autoExecuted = true;
-                        }
-                    } catch (e) {
-                        console.error('❌ Error en Auto-Trade:', e.message);
-                    }
-                }
-
-                // --- 💎 INYECCIÓN DE SEÑAL EN DASHBOARD ---
-                if (!autoExecuted) {
-                    const signalObj = {
-                        id: Date.now(),
-                        marketName: marketTitle,
-                        marketName_es: marketTitle, // Espejo del original
-                        tokenId: marketItem.tokenId, 
-                        conditionId: marketItem.conditionId,
-                        probability: prob,
-                        reasoning: analysis.reason,
-                        marketPrice: livePrice,
-                        suggestedInversion: botStatus.microBetAmount || 1.00,
-                        edge: edge,
-                        endsIn: marketItem.endsIn,
-                        tickSize: marketItem.tickSize || "0.01"
-                    };
-
-                    botStatus.pendingSignals.unshift(signalObj);
-                    if (botStatus.pendingSignals.length > 10) botStatus.pendingSignals.pop();
-
-                    // Alertas Telegram
-                    if (edge >= 0.10 && endsInHours <= 24) {
-                        await sendSniperAlert(signalObj);
-                    } else {
-                        await sendAlert(`🟢 *SEÑAL DISPONIBLE*\n${marketTitle}\nProb: ${(prob*100).toFixed(0)}%`);
-                    }
-                }
-            } else {
-                // Actualización de datos para la señal que ya existe
-                botStatus.pendingSignals[signalIndex].probability = prob;
-                botStatus.pendingSignals[signalIndex].marketPrice = livePrice;
-                botStatus.pendingSignals[signalIndex].edge = edge;
-                botStatus.pendingSignals[signalIndex].tickSize = marketItem.tickSize || "0.01";
-                console.log(`ℹ️ Actualizando datos de señal existente: ${marketTitle.substring(0, 25)}...`);
-            }
+        // LÓGICA DE DISPARO AUTOMÁTICO
+        if (botStatus.autoTradeEnabled && edge >= 0.12 && prob >= botStatus.predictionThreshold) {
+            console.log(`🎯 SNIPER: Edge detectado del ${(edge*100).toFixed(0)}%. Disparando...`);
+            await executeTradeOnChain(
+                marketItem.conditionId, 
+                marketItem.tokenId, 
+                botStatus.microBetAmount, 
+                livePrice,
+                marketItem.tickSize
+            );
         }
 
         watchlistIndex++;
     } catch (error) {
-        console.error('❌ Error crítico en runBot:', error.message);
+        console.error('❌ Error en ciclo Sniper:', error.message);
+    }
+}
+
+async function autoSellManager() {
+    for (const pos of botStatus.activePositions) {
+        const profit = pos.percentPnl || 0;
+        
+        // ESTRATEGIA: Vender si ganamos 20% o si perdemos 15% (Stop Loss)
+        if (profit >= 20 || profit <= -15) {
+            console.log(`💰 AUTO-SELL: Cerrando ${pos.marketName} con ${profit}% PnL`);
+            try {
+                // Reutilizamos tu lógica de venta del endpoint /sell
+                const bookResp = await axios.get(`https://clob.polymarket.com/book?token_id=${pos.tokenId}`, { httpsAgent: agent });
+                if (bookResp.data?.bids?.length > 0) {
+                    const bestBid = parseFloat(bookResp.data.bids[0].price);
+                    await clobClient.createAndPostOrder({
+                        tokenID: pos.tokenId,
+                        price: bestBid,
+                        side: Side.SELL,
+                        size: pos.exactSize
+                    });
+                    await sendAlert(`📉 *VENTA AUTOMÁTICA*\nMercado: ${pos.marketName}\nResultado: ${profit.toFixed(2)}%`);
+                }
+            } catch (e) {
+                console.error("Error en auto-venta:", e.message);
+            }
+        }
+    }
+}
+
+// ==========================================
+// 🚨 VIGILANTE DE PORTAFOLIO (PNL MONITOR)
+// ==========================================
+async function monitorPortfolio() {
+    try {
+        console.log("🕵️‍♂️ Revisando PnL del portafolio...");
+        
+        // Primero nos aseguramos de tener los saldos más frescos
+        await updateRealBalances();
+
+        if (!botStatus.activePositions || botStatus.activePositions.length === 0) return;
+
+        let posicionesGanadoras = [];
+        let totalPnl = 0;
+
+        for (const pos of botStatus.activePositions) {
+            // Solo evaluamos los que están vivos
+            if (pos.status.includes('ACTIVO')) {
+                totalPnl += (pos.cashPnl || 0);
+                
+                // 🔥 LA REGLA DE ORO: Si la ganancia supera el 5%, ¡avisa!
+                if (pos.percentPnl && pos.percentPnl >= 5.0) {
+                    posicionesGanadoras.push(
+                        `📈 *${pos.marketName.substring(0,35)}...*\n` +
+                        `Valor Actual: *$${pos.currentValue} USDC*\n` +
+                        `Ganancia: *+$${pos.cashPnl.toFixed(2)} (+${pos.percentPnl.toFixed(1)}%)*`
+                    );
+                }
+            }
+        }
+
+        // Si encontró posiciones jugosas, dispara el mensaje a Telegram
+        if (posicionesGanadoras.length > 0) {
+            const alerta = `🚨 *ALERTA DE TOMA DE GANANCIAS* 🚨\nTienes posiciones en verde listas para operar:\n\n${posicionesGanadoras.join('\n\n')}\n\n💵 *PnL Global Flotante: $${totalPnl.toFixed(2)}*`;
+            await sendAlert(alerta);
+        }
+
+    } catch (error) {
+        console.error("❌ Error en monitorPortfolio:", error.message);
     }
 }
 
@@ -887,6 +921,12 @@ app.post('/api/sell', async (req, res) => {
         });
 
         console.log("✅ Venta ejecutada con éxito:", sellOrder);
+
+        // 🟢 NUEVO: Alerta de Telegram calculando cuánto dinero rescataste
+        const gananciaEstimada = (parseFloat(shares) * bestBidPrice).toFixed(2);
+        await sendAlert(`💰 *POSICIÓN VENDIDA (MANUAL)*\nToken ID: \`${tokenId.substring(0,8)}...\`\nAcciones: ${shares}\nPrecio de Venta: $${bestBidPrice}\nTotal Rescatado: ~$${gananciaEstimada} USDC`);
+
+        await updateRealBalances();
         res.json({ success: true, message: "Posición cerrada", data: sellOrder });
 
     } catch (error) {
@@ -896,7 +936,7 @@ app.post('/api/sell', async (req, res) => {
 });
 
 setInterval(runBot, 60000); // 1 minuto — Sniper Mode
-//setInterval(monitorPortfolio, 180000); // Revisar PnL cada 3 minutos
+setInterval(monitorPortfolio, 180000); // Revisar PnL cada 3 minutos
 
 updateRealBalances(); 
 runBot();
