@@ -668,13 +668,20 @@ async function runBot() {
         // LÓGICA DE DISPARO AUTOMÁTICO
         if (botStatus.autoTradeEnabled && edge >= 0.12 && prob >= botStatus.predictionThreshold) {
             console.log(`🎯 SNIPER: Edge detectado del ${(edge*100).toFixed(0)}%. Disparando...`);
-            await executeTradeOnChain(
+            
+            const result = await executeTradeOnChain(
                 marketItem.conditionId, 
                 marketItem.tokenId, 
                 botStatus.microBetAmount, 
                 livePrice,
                 marketItem.tickSize
             );
+
+            // 🟢 NUEVO: ALERTA DE TELEGRAM PARA COMPRAS AUTOMÁTICAS
+            if (result && result.success) {
+                await sendAlert(`🤖 *COMPRA AUTOMÁTICA (SNIPER)*\nMercado: ${marketItem.title}\nInversión: $${botStatus.microBetAmount} USDC\nPrecio MKT: $${livePrice}\nIA Confianza: ${(prob*100).toFixed(0)}%`);
+                await updateRealBalances(); // Refrescamos el frontend
+            }
         }
 
         watchlistIndex++;
@@ -685,13 +692,15 @@ async function runBot() {
 
 async function autoSellManager() {
     for (const pos of botStatus.activePositions) {
+        // 🛑 FIX 404: Si el mercado ya cerró, lo ignoramos para no romper la API
+        if (pos.status.includes('CANJEAR')) continue;
+
         const profit = pos.percentPnl || 0;
         
         // ESTRATEGIA: Vender si ganamos 20% o si perdemos 15% (Stop Loss)
         if (profit >= 20 || profit <= -15) {
             console.log(`💰 AUTO-SELL: Cerrando ${pos.marketName} con ${profit}% PnL`);
             try {
-                // Reutilizamos tu lógica de venta del endpoint /sell
                 const bookResp = await axios.get(`https://clob.polymarket.com/book?token_id=${pos.tokenId}`, { httpsAgent: agent });
                 if (bookResp.data?.bids?.length > 0) {
                     const bestBid = parseFloat(bookResp.data.bids[0].price);
@@ -702,6 +711,7 @@ async function autoSellManager() {
                         size: pos.exactSize
                     });
                     await sendAlert(`📉 *VENTA AUTOMÁTICA*\nMercado: ${pos.marketName}\nResultado: ${profit.toFixed(2)}%`);
+                    await updateRealBalances(); // <-- Refrescamos saldos
                 }
             } catch (e) {
                 console.error("Error en auto-venta:", e.message);
@@ -842,21 +852,6 @@ app.post('/api/execute-trade', async (req, res) => {
     }
 });
 
-// ==========================================
-// 11. INICIO DEL MOTOR DEL SNIPER
-// ==========================================
-app.listen(PORT, () => {
-    console.log(`\n======================================================`);
-    console.log(`🎯 POLY-SNIPER V2: SERVIDOR ACTIVO EN PUERTO ${PORT}`);
-    console.log(`======================================================\n`);
-    
-    // Iniciar el ciclo principal de escaneo cada 30 segundos
-    setInterval(runBot, 30000); 
-    
-    // Ejecutar el primer ciclo inmediatamente al encender
-    runBot(); 
-});
-
 // ENDPOINT DE PRUEBA RÁPIDA: http://localhost:3001/api/test-ukraine
 app.get('/api/test-ukraine', async (req, res) => {
     const testData = {
@@ -935,8 +930,20 @@ app.post('/api/sell', async (req, res) => {
     }
 });
 
-setInterval(runBot, 60000); // 1 minuto — Sniper Mode
-setInterval(monitorPortfolio, 180000); // Revisar PnL cada 3 minutos
-
-updateRealBalances(); 
-runBot();
+// ==========================================
+// 11. INICIO DEL MOTOR DEL SNIPER
+// ==========================================
+app.listen(PORT, () => {
+    console.log(`\n======================================================`);
+    console.log(`🎯 POLY-SNIPER V2: SERVIDOR ACTIVO EN PUERTO ${PORT}`);
+    console.log(`======================================================\n`);
+    
+    // 🟢 UN SOLO RELOJ MAESTRO
+    setInterval(runBot, 60000);            // Escanear y disparar cada 1 minuto
+    setInterval(monitorPortfolio, 180000); // Vigilar ganancias cada 3 minutos
+    
+    // Arranque inicial controlado
+    updateRealBalances().then(() => {
+        runBot();
+    });
+});
