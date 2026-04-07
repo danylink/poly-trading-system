@@ -58,6 +58,8 @@ const PORT = process.env.PORT || 3001;
 const analysisCache = new Map();
 const redeemedCache = new Set();
 const profitAlertCache = new Set(); // Memoria para no repetir alertas de toma de ganancias (Spam)
+// 🛡️ NUEVA MEMORIA: Lista negra de mercados ya operados y cerrados hoy
+const closedPositionsCache = new Set();
 
 // --- ESTADO GLOBAL DEL SNIPER ---
 let botStatus = {
@@ -675,12 +677,21 @@ async function refreshWatchlist() {
 
         const rawTrends = finalPool.map(market => {
             const hrs = hoursUntilClose(market.endDate);
+            const tokens = JSON.parse(market.clobTokenIds || "[]");
+            const prices = JSON.parse(market.outcomePrices || "[]");
+            
             return {
                 title: market.question,
                 category: market.category,
                 conditionId: market.conditionId,
-                tokenId: JSON.parse(market.clobTokenIds || "[]")[0],
-                marketPrice: parseFloat(JSON.parse(market.outcomePrices || "[]")[0] || 0),
+                // Guardamos AMBOS tokens y AMBOS precios
+                tokenYes: tokens[0] || null,
+                tokenNo: tokens[1] || null,
+                priceYes: parseFloat(prices[0] || 0),
+                priceNo: parseFloat(prices[1] || 0),
+                // Fallbacks para mantener compatibilidad con tu frontend
+                tokenId: tokens[0] || null, 
+                marketPrice: parseFloat(prices[0] || 0),
                 endsIn: hrs < 1 ? `${Math.round(hrs*60)}m` : `${hrs.toFixed(1)}h`,
                 tickSize: market.minimum_tick_size || "0.01",
                 volume: parseFloat(market.volume || 0)
@@ -1138,38 +1149,80 @@ async function runBot() {
         // 👇 ¡EL FIX! Le pasamos el dato de Claude a tu panel frontal
         botStatus.lastProbability = analysis.prob || 0;
         
-        const livePrice = marketItem.marketPrice || 0;
-        const edge = livePrice > 0 ? (analysis.prob || 0) - livePrice : 0;
+        // ==========================================
+        // 🧠 LÓGICA BIDIRECCIONAL (EL MOTOR QUANT)
+        // ==========================================
+        const probYes = analysis.prob || 0;
+        const probNo = 1 - probYes; // Matemática inversa perfecta
+        
+        const priceYes = marketItem.priceYes || 0;
+        const priceNo = marketItem.priceNo || 0;
+        
+        const edgeYes = priceYes > 0 ? probYes - priceYes : 0;
+        const edgeNo = priceNo > 0 ? probNo - priceNo : 0;
 
+        // ⚖️ TOMA DE DECISIÓN: ¿Cuál es nuestra mejor jugada?
+        let bestEdge = 0;
+        let targetTokenId = marketItem.tokenYes;
+        let targetPrice = priceYes;
+        let targetProb = probYes;
+        let targetSideLabel = "SÍ";
+
+        // Si el "NO" tiene un Edge superior al "SÍ" y es positivo, cambiamos de arma
+        if (edgeNo > edgeYes && edgeNo > 0.02) {
+            bestEdge = edgeNo;
+            targetTokenId = marketItem.tokenNo;
+            targetPrice = priceNo;
+            targetProb = probNo;
+            targetSideLabel = "NO";
+        } else {
+            bestEdge = edgeYes;
+            targetTokenId = marketItem.tokenYes;
+            targetPrice = priceYes;
+            targetProb = probYes;
+            targetSideLabel = "SÍ";
+        }
+
+        const livePrice = targetPrice;
+        const edge = bestEdge;
         let autoExecuted = false;
 
-        // 🛡️ NUEVO BLINDAJE: ¿Ya tenemos dinero en este mercado?
-        const alreadyInvested = botStatus.activePositions.some(pos => pos.tokenId === marketItem.tokenId);
+        // ==========================================
+        // 🛡️ FILTRO QUANT: Escudo Anti-Lotería (Penny Stocks)
+        // ==========================================
+        // Evitamos comprar cosas extremadamente baratas (< $0.05) donde no hay liquidez 
+        // y cualquier movimiento a la baja nos liquida al -100%.
+        // Evitamos comprar cosas extremadamente caras (> $0.85) donde el ROI es pésimo.
+        if (livePrice < 0.05 || livePrice > 0.85) {
+            console.log(`⏭️ Ignorando mercado: Precio ($${livePrice}) fuera de la zona segura. Jugada al [${targetSideLabel}] abortada.`);
+            watchlistIndex = (watchlistIndex + 1) % botStatus.watchlist.length;
+            return; // Cortamos la ejecución aquí, saltando al siguiente mercado
+        }
 
-        // 🔥 LÓGICA DE DISPARO MEJORADA Y MÁS AGRESIVA
+        // 🛡️ NUEVO BLINDAJE 2.0: Evaluamos el token ESPECÍFICO (Sí o No)
+        const alreadyInvested = botStatus.activePositions.some(pos => pos.tokenId === targetTokenId);
+        const alreadyClosed = typeof closedPositionsCache !== 'undefined' ? closedPositionsCache.has(targetTokenId) : false;
+
+        // 🔥 LÓGICA DE DISPARO CORREGIDA (Usando el targetProb y targetSide)
         const isStrongSignal = 
-            (!alreadyInvested) && ( 
-                analysis.recommendation === "STRONG_BUY" ||
-                (analysis.recommendation === "BUY" && edge >= botStatus.edgeThreshold && analysis.prob >= botStatus.predictionThreshold) ||
+            (!alreadyInvested && !alreadyClosed) && ( 
+                (analysis.recommendation === "STRONG_BUY" && edge > 0.02) ||
+                (analysis.recommendation === "BUY" && edge >= botStatus.edgeThreshold && targetProb >= botStatus.predictionThreshold) ||
                 (analysis.urgency >= 8 && edge >= Math.max(0.04, botStatus.edgeThreshold * 0.65)) ||
-                (marketItem.category === "SHORT_TERM" && edge >= 0.045 && analysis.prob >= 0.57)
+                (marketItem.category === "SHORT_TERM" && edge >= 0.045 && targetProb >= 0.57)
             );
 
         // 🧠 CRITERIO DE KELLY (Gestión Dinámica de Capital)
-        // Lo calculamos aquí afuera para que el dashboard también lo muestre
         const saldoLibre = parseFloat(botStatus.clobOnlyUSDC || botStatus.balanceUSDC) || 0;
-        let dynamicBetAmount = botStatus.microBetAmount; // Por defecto usa el slider de tu panel ($1.00)
+        let dynamicBetAmount = botStatus.microBetAmount; 
 
         if (edge > 0 && livePrice > 0 && livePrice < 1) {
-            // Fórmula Kelly: f = edge / (1 - precio)
             const kellyFraction = edge / (1 - livePrice);
-            const kellyMultiplier = 0.25; // Quarter Kelly (Blindaje institucional para baja volatilidad)
-            
+            const kellyMultiplier = 0.25; 
             let calculatedBet = saldoLibre * kellyFraction * kellyMultiplier;
 
-            // ⚖️ Límites de Seguridad (Clamp)
-            const minBet = botStatus.microBetAmount; // Piso: Lo que diga tu slider (ej. $1.00)
-            const maxBet = saldoLibre * 0.15;        // Techo: NUNCA arriesgar más del 15% en un solo tiro
+            const minBet = botStatus.microBetAmount; 
+            const maxBet = saldoLibre * 0.15;        
 
             if (calculatedBet < minBet) calculatedBet = minBet;
             if (calculatedBet > maxBet) calculatedBet = maxBet;
@@ -1179,7 +1232,7 @@ async function runBot() {
 
         // ⚡ EJECUCIÓN DEL DISPARO
         if (botStatus.autoTradeEnabled && isStrongSignal) {
-            console.log(`🎯 SNIPER DISPARO DETECTADO → ${marketItem.category || 'NORMAL'} | Edge: ${(edge*100).toFixed(1)}% | Prob: ${(analysis.prob*100).toFixed(0)}% | Urgency: ${analysis.urgency}`);
+            console.log(`🎯 SNIPER DISPARO DETECTADO → Jugada al [${targetSideLabel}] | Edge: ${(edge*100).toFixed(1)}% | Prob: ${(targetProb*100).toFixed(0)}%`);
             
             if (saldoLibre < 1) {
                 console.log("⚠️ Autopilot: Saldo insuficiente para ejecutar disparo.");
@@ -1188,22 +1241,22 @@ async function runBot() {
 
                 const result = await executeTradeOnChain(
                     marketItem.conditionId,
-                    marketItem.tokenId,
-                    dynamicBetAmount, // <--- Usamos el monto de Kelly
+                    targetTokenId, // <--- USAMOS EL TOKEN DEL LADO GANADOR
+                    dynamicBetAmount, 
                     livePrice,
                     marketItem.tickSize || "0.01"
                 );
 
                 if (result?.success) {
-                    console.log(`✅ ¡COMPRA AUTOMÁTICA EJECUTADA!`);
+                    console.log(`✅ ¡COMPRA AUTOMÁTICA EJECUTADA (${targetSideLabel})!`);
 
                     await sendSniperAlert({
-                        marketName: marketTitle,
-                        probability: analysis.prob,
+                        marketName: `${marketTitle} (Apuesta al ${targetSideLabel})`, // Modificamos el título para Telegram
+                        probability: targetProb, // Mandamos la prob del lado que operamos
                         marketPrice: livePrice,
                         edge: edge,
-                        suggestedInversion: dynamicBetAmount, // <--- Enviamos el dato real a Telegram
-                        reasoning: analysis.reason || "Señal fuerte de Claude"
+                        suggestedInversion: dynamicBetAmount, 
+                        reasoning: analysis.reason
                     });
 
                     autoExecuted = true;
@@ -1212,21 +1265,22 @@ async function runBot() {
         }
 
         // === ACTUALIZACIÓN DE SEÑALES PARA EL DASHBOARD ===
-        const signalIndex = botStatus.pendingSignals.findIndex(s => s.tokenId === marketItem.tokenId);
+        const signalIndex = botStatus.pendingSignals.findIndex(s => s.tokenId === targetTokenId);
 
         const signalData = {
             id: Date.now(),
-            marketName: marketTitle,
-            tokenId: marketItem.tokenId,
+            marketName: marketTitle, // 🧹 LIMPIEZA: Quitamos el "[Jugada: X]" para que el dashboard se vea premium y limpio
+            tokenId: targetTokenId,
             conditionId: marketItem.conditionId,
-            probability: analysis.prob || 0,
+            probability: targetProb || 0,
             reasoning: analysis.reason || "Evaluado por Claude",
             marketPrice: livePrice,
-            suggestedInversion: dynamicBetAmount, // <--- Tu dashboard ahora mostrará el cálculo de Kelly
+            suggestedInversion: dynamicBetAmount,
             edge: edge,
             urgency: analysis.urgency || 5,
             recommendation: analysis.recommendation || "WAIT",
-            category: marketItem.category 
+            category: marketItem.category,
+            side: targetSideLabel // Opcional: Mandamos el lado como variable interna por si tu Frontend lo necesita luego
         };
 
         if (signalIndex === -1) {
@@ -1311,6 +1365,9 @@ async function autoSellManager() {
                         side: Side.SELL,
                         size: sharesToSell
                     });
+                    
+                    // 🛑 FIX: Añadimos a la lista negra para JAMÁS volver a comprar este token hoy
+                    closedPositionsCache.add(pos.tokenId);
 
                     // 🟢 Reporte a Telegram
                     const rescateEstimado = (sharesToSell * bestBidPrice).toFixed(2);
