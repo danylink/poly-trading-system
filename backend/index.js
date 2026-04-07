@@ -25,9 +25,39 @@ const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const app = express();
 app.use(cors());
 app.use(express.json());
+app.use(express.json());
+
+// 🛟 BOTÓN DE RESCATE (FUERA DE LA BÓVEDA)
+app.get('/rescate', async (req, res) => {
+    try {
+        if (!clobClient) return res.send("Cliente CLOB no está listo.");
+        await clobClient.cancelAll(); // Cancela todas las órdenes colgadas
+        res.send("✅ Todas las órdenes fantasma fueron canceladas. Tus $4.30 han sido liberados.");
+    } catch (e) {
+        res.send("Error: " + e.message);
+    }
+});
+
+// 🛡️ BARRERA DE SEGURIDAD: Autenticación Premium
+const DASHBOARD_PASSWORD = process.env.DASHBOARD_PASSWORD || 'Sniper2026';
+
+app.use('/api', (req, res, next) => {
+    if (req.method === 'OPTIONS') return next(); // Dejar pasar pre-vuelo de CORS
+    
+    const providedPassword = req.headers['authorization'];
+    
+    if (providedPassword === DASHBOARD_PASSWORD) {
+        next(); // Clave correcta, permitir paso a la API
+    } else {
+        res.status(401).json({ error: 'Acceso Denegado: Bóveda cerrada' });
+    }
+});
+
 const PORT = process.env.PORT || 3001;
 // Memoria de corto plazo para ahorrar créditos
 const analysisCache = new Map();
+const redeemedCache = new Set();
+const profitAlertCache = new Set(); // Memoria para no repetir alertas de toma de ganancias (Spam)
 
 // --- ESTADO GLOBAL DEL SNIPER ---
 let botStatus = {
@@ -45,8 +75,10 @@ let botStatus = {
     executions: [], 
     pendingSignals: [], 
     isPanicStopped: false,
-    predictionThreshold: 0.70,
-    autoTradeEnabled: false,
+    predictionThreshold: 0.60,
+    edgeThreshold: 0.06,
+    takeProfitThreshold: 15,
+    autoTradeEnabled: true,
     microBetAmount: 1.00,
     suggestedInversion: 0, 
     potentialROI: 0
@@ -160,30 +192,49 @@ async function updateRealBalances() {
             if (Array.isArray(positions) && positions.length > 0) {
                 for (const pos of positions) {
 
-                // Variables extraídas de la API (soportando el JSON traducido o en inglés)
-                const size = parseFloat(pos.size || pos['tamaño'] || 0);
-                const cashPnl = parseFloat(pos.cashPnl || pos['ganancias en efectivo'] || 0);
-                const percentPnl = parseFloat(pos.percentPnl || pos['porcentaje de ganancias'] || 0);
-                const valorActual = parseFloat(pos.currentValue || pos.current_value || pos.value || pos['valor actual'] || 0);
+                    const size = parseFloat(pos.size || pos['tamaño'] || 0);
+                    const cashPnl = parseFloat(pos.cashPnl || pos['ganancias en efectivo'] || 0);
+                    const percentPnl = parseFloat(pos.percentPnl || pos['porcentaje de ganancias'] || 0);
+                    const valorActual = parseFloat(pos.currentValue || pos.current_value || pos.value || pos['valor actual'] || 0);
 
-                if (size > 0) {
-                    const nombreMercado = pos.title || pos.market || pos['título'] || "Mercado Desconocido";
-                    const tokenId = pos.asset || pos.token_id || pos.asset_id;
-                    const conditionId = pos.conditionId || pos.condition_id;
-                    const isRedeemable = pos.redeemable === true || pos['canjeable'] === true;
+                    if (size > 0) {
+                        const nombreMercado = pos.title || pos.market || pos['título'] || "Mercado Desconocido";
+                        const tokenId = pos.asset || pos.token_id || pos.asset_id;
+                        const conditionId = pos.conditionId || pos.condition_id;
+                        const isRedeemable = pos.redeemable === true || pos['canjeable'] === true;
 
-                    botStatus.activePositions.push({
-                        tokenId: tokenId,
-                        conditionId: conditionId,
-                        size: size.toFixed(2),
-                        exactSize: size,
-                        marketName: nombreMercado,
-                        status: isRedeemable ? "FINALIZADO (CANJEAR) ♻️" : "ACTIVO 🟢",
-                        currentValue: valorActual.toFixed(2),
-                        cashPnl: cashPnl,        // 🟢 NUEVO: Ganancia en USD
-                        percentPnl: percentPnl   // 🟢 NUEVO: Porcentaje de ganancia
-                    });
-                }
+                        // 🧹 LÓGICA DE AUTO-CANJE Y LIMPIEZA VISUAL
+                        if (isRedeemable) {
+                            // Si es la primera vez que vemos que terminó, mandamos alerta de cierre
+                            if (!redeemedCache.has(tokenId)) {
+                                console.log(`♻️ AUTO-CANJE: Limpiando mercado finalizado -> ${nombreMercado}`);
+                                const resultado = cashPnl >= 0 ? `Ganancia: +$${cashPnl.toFixed(2)}` : `Pérdida: -$${Math.abs(cashPnl).toFixed(2)}`;
+                                
+                                // Mandamos el recibo a Telegram (sin await para no frenar el ciclo)
+                                // sendAlert(`🗑️ *POSICIÓN ARCHIVADA (AUTO-CANJE)*\nMercado: ${nombreMercado}\nResultado: ${resultado}\n\nLa posición ha sido removida de la tabla en vivo.`);
+                                
+                                // Lo guardamos en memoria para no volver a alertar
+                                redeemedCache.add(tokenId);
+                            }
+                            
+                            // 🚀 IMPORTANTE: Saltamos esta iteración. Al no hacer el push, 
+                            // la tarjeta simplemente desaparece de tu Dashboard.
+                            continue; 
+                        }
+
+                        // Si el mercado sigue vivo, lo mandamos al Dashboard
+                        botStatus.activePositions.push({
+                            tokenId: tokenId,
+                            conditionId: conditionId,
+                            size: size.toFixed(2),
+                            exactSize: size,
+                            marketName: nombreMercado,
+                            status: "ACTIVO 🟢", // Ya es seguro dejarlo siempre en ACTIVO
+                            currentValue: valorActual.toFixed(2),
+                            cashPnl: cashPnl,        
+                            percentPnl: percentPnl   
+                        });
+                    }
                 }
             }
             
@@ -199,47 +250,102 @@ async function updateRealBalances() {
 // ==========================================
 // 3. ANÁLISIS DE IA (CLAUDE)
 // ==========================================
+// async function analyzeMarketWithClaude(marketQuestion, currentNews) {
+//     console.log("🧠 Consultando a Claude (Análisis de Mercado)...");
+//     try {
+//         const response = await anthropic.messages.create({
+//             model: "claude-sonnet-4-6", // Versión actual recomendada por Anthropic
+//             max_tokens: 150,
+//             system: `Eres un Senior Quant Trader especializado en Polymarket. 
+//             Tu objetivo es encontrar ineficiencias entre las noticias y el precio del mercado.
+
+//             Responde ESTRICTAMENTE en JSON con esta estructura:
+//             {
+//             "prob": 0.XX,
+//             "strategy": "MOMENTUM" | "ARBITRAGE" | "TIME_EDGE" | "REVERSAL",
+//             "urgency": 1-10,
+//             "reason": "Frase corta de por qué hay ventaja aquí",
+//             "searchQuery": "3-4 palabras clave para el contrato"
+//             }
+
+//             GUÍAS DE ESTRATEGIA:
+//             - TIME_EDGE: El evento es casi inevitable y el mercado aún no llega a 0.95+.
+//             - ARBITRAGE: La noticia confirma el resultado pero el precio se mueve lento.
+//             - REVERSAL: El mercado entró en pánico por un rumor que el análisis de noticias desmiente.
+//             - MOMENTUM: La noticia es masiva y el precio va a subir rápido en los próximos minutos.`,
+//             messages: [{
+//                 role: "user",
+//                 content: `Noticia: ${marketQuestion}. \nContexto: ${currentNews}. \nAnaliza la probabilidad de este mercado.`
+//             }]
+//         });
+
+//         const jsonMatch = response.content[0].text.match(/\{.*\}/s); 
+//         if (!jsonMatch) throw new Error("Formato JSON inválido de Claude");
+
+//         const data = JSON.parse(jsonMatch[0]);
+//         return {
+//             prob: parseFloat(data.prob) || 0,
+//             reason: data.reason || "Sin descripción.",
+//             searchQuery: data.searchQuery || marketQuestion
+//         };
+//     } catch (error) {
+//         console.error("❌ Error en Claude:", error.message);
+//         return { prob: 0, reason: "Error de IA", searchQuery: marketQuestion };
+//     }
+// }
 async function analyzeMarketWithClaude(marketQuestion, currentNews) {
-    console.log("🧠 Consultando a Claude (Análisis de Mercado)...");
+    console.log("🧠 Claude Short-Term Analysis...");
+
     try {
         const response = await anthropic.messages.create({
-            model: "claude-sonnet-4-6", // Versión actual recomendada por Anthropic
-            max_tokens: 150,
-            system: `Eres un Senior Quant Trader especializado en Polymarket. 
-            Tu objetivo es encontrar ineficiencias entre las noticias y el precio del mercado.
+            model: "claude-sonnet-4-6",
+            max_tokens: 180,
+            system: `Eres un Senior Quant Trader especializado en Polymarket SHORT-TERM (24-48 horas máximo).
 
-            Responde ESTRICTAMENTE en JSON con esta estructura:
-            {
-            "prob": 0.XX,
-            "strategy": "MOMENTUM" | "ARBITRAGE" | "TIME_EDGE" | "REVERSAL",
-            "urgency": 1-10,
-            "reason": "Frase corta de por qué hay ventaja aquí",
-            "searchQuery": "3-4 palabras clave para el contrato"
-            }
+Tu objetivo es detectar ineficiencias rápidas.
 
-            GUÍAS DE ESTRATEGIA:
-            - TIME_EDGE: El evento es casi inevitable y el mercado aún no llega a 0.95+.
-            - ARBITRAGE: La noticia confirma el resultado pero el precio se mueve lento.
-            - REVERSAL: El mercado entró en pánico por un rumor que el análisis de noticias desmiente.
-            - MOMENTUM: La noticia es masiva y el precio va a subir rápido en los próximos minutos.`,
+Responde **ESTRICTAMENTE** en JSON:
+
+{
+  "prob": 0.XX,
+  "strategy": "TIME_EDGE" | "MOMENTUM" | "NEWS_ARBITRAGE" | "REVERSAL" | "WEATHER_EDGE",
+  "urgency": 1-10,
+  "reason": "Frase corta y clara",
+  "edge": 0.XX,
+  "recommendation": "STRONG_BUY" | "BUY" | "WAIT" | "SELL"
+}
+
+REGLAS:
+- Prioriza mercados que se resuelvan en < 48h.
+- TIME_EDGE: Resultado casi inevitable y mercado barato.
+- MOMENTUM: Noticia masiva que moverá precio en horas.
+- NEWS_ARBITRAGE: Noticia ya salió pero precio no reaccionó.
+- WEATHER_EDGE: Mercados de clima con datos oficiales.
+- Sé agresivo en short-term. Si no hay edge claro → "WAIT".`,
+
             messages: [{
                 role: "user",
-                content: `Noticia: ${marketQuestion}. \nContexto: ${currentNews}. \nAnaliza la probabilidad de este mercado.`
+                content: `Mercado: ${marketQuestion}\n\nNoticias recientes: ${currentNews}\n\nAnaliza si hay ventaja para operar en las próximas 24-48 horas.`
             }]
         });
 
-        const jsonMatch = response.content[0].text.match(/\{.*\}/s); 
-        if (!jsonMatch) throw new Error("Formato JSON inválido de Claude");
+        const jsonMatch = response.content[0].text.match(/\{.*\}/s);
+        if (!jsonMatch) throw new Error("JSON inválido");
 
         const data = JSON.parse(jsonMatch[0]);
+
         return {
             prob: parseFloat(data.prob) || 0,
-            reason: data.reason || "Sin descripción.",
-            searchQuery: data.searchQuery || marketQuestion
+            strategy: data.strategy || "WAIT",
+            urgency: data.urgency || 5,
+            reason: data.reason || "Sin ventaja clara",
+            edge: parseFloat(data.edge) || 0,
+            recommendation: data.recommendation || "WAIT"
         };
+
     } catch (error) {
-        console.error("❌ Error en Claude:", error.message);
-        return { prob: 0, reason: "Error de IA", searchQuery: marketQuestion };
+        console.error("❌ Error Claude:", error.message);
+        return { prob: 0, strategy: "WAIT", urgency: 0, reason: "Error IA", edge: 0, recommendation: "WAIT" };
     }
 }
 
@@ -274,10 +380,16 @@ async function sendAlert(message) {
     try { await telegram.sendMessage(chatId, `🤖 *PolySniper*:\n${message}`, { parse_mode: 'Markdown' }); } catch (e) {}
 }
 
+// 🟢 FUNCIÓN RECUPERADA Y MEJORADA PARA AUTO-TRADE
 async function sendSniperAlert(signal) {
-    const edgePct = signal.edge >= 0 ? `+${(signal.edge * 100).toFixed(0)}%` : `${(signal.edge * 100).toFixed(0)}%`;
-    const msg = `🎯 *SNIPER GATILLADO*\n\n📋 ${signal.marketName}\n🧠 Probabilidad IA: *${(signal.probability * 100).toFixed(0)}%*\n📊 Precio Mercado: *$${signal.marketPrice}*\n📈 Edge: *${edgePct}*\n💰 Sugerido: *${signal.suggestedInversion} USDC*\n📝 Razón: ${signal.reasoning}`;
-    try { await telegram.sendMessage(chatId, msg, { parse_mode: 'Markdown' }); } catch (e) { console.error('❌ Error Telegram:', e.message); }
+    const edgePct = signal.edge >= 0 ? `+${(signal.edge * 100).toFixed(1)}%` : `${(signal.edge * 100).toFixed(1)}%`;
+    const msg = `🎯 *SNIPER AUTOMÁTICO EJECUTADO*\n\n📋 *Mercado:* ${signal.marketName}\n🧠 *Confianza IA:* ${(signal.probability * 100).toFixed(0)}%\n📊 *Precio de Compra:* $${signal.marketPrice}\n📈 *Ventaja (Edge):* ${edgePct}\n💰 *Inversión:* $${signal.suggestedInversion} USDC\n📝 *Razón:* ${signal.reasoning}`;
+    
+    try { 
+        await telegram.sendMessage(chatId, msg, { parse_mode: 'Markdown' }); 
+    } catch (e) { 
+        console.error('❌ Error enviando alerta de Telegram:', e.message); 
+    }
 }
 
 // ==========================================
@@ -310,31 +422,76 @@ function getMarketCategory(title) {
     return null; 
 }
 
+function getMarketCategoryEnhanced(title) {
+    const lower = title.toLowerCase();
+
+    // Mercados de alta frecuencia (los que dan dinero rápido)
+    if (lower.includes("5m") || lower.includes("15m") || lower.includes("up or down") || 
+        lower.includes("bitcoin") || lower.includes("btc") || lower.includes("eth") || 
+        lower.includes("sol") || lower.includes("up/down")) {
+        return "SHORT_TERM";
+    }
+
+    if (lower.includes("weather") || lower.includes("temperatura") || lower.includes("temperature")) {
+        return "SHORT_TERM";
+    }
+
+    if (lower.includes("will") && (lower.includes("today") || lower.includes("tomorrow") || lower.includes("next 24h"))) {
+        return "SHORT_TERM";
+    }
+
+    // Categorías originales
+    if (lower.includes("bitcoin") || lower.includes("btc") || lower.includes("eth") || lower.includes("crypto")) return 'CRYPTO';
+    if (lower.includes("israel") || lower.includes("ukraine") || lower.includes("russia") || lower.includes("trump") || lower.includes("biden") || lower.includes("war")) return 'GEOPOLITICS';
+    if (lower.includes("elon") || lower.includes("musk") || lower.includes("tweet")) return 'SOCIAL';
+
+    return null;
+}
+
 // ==========================================
 // 7. ACTUALIZACIÓN DE WATCHLIST (GAMMA API)
 // ==========================================
+
 // async function refreshWatchlist() {
 //     try {
-//         botStatus.currentTopic = 'Escaneando Pilares de Alta Liquidez...';
-//         console.log(`\n⏰ [SNIPER] Buscando mercados de Cripto, Geopolítica y Redes Sociales...`);
+//         botStatus.currentTopic = 'Escaneando Mercados de Alta Probabilidad...';
+//         console.log(`\n⏰ [SNIPER] Escaneando 500 mercados en busca de ineficiencias...`);
 
 //         const agent = new https.Agent({ rejectUnauthorized: false });
+//         // Añadimos parámetros de ordenamiento por volumen directamente en la API
 //         const polyRes = await axios.get(
-//             'https://gamma-api.polymarket.com/markets?active=true&closed=false&limit=500',
+//             'https://gamma-api.polymarket.com/markets?active=true&closed=false&limit=500&order=volume&dir=desc',
 //             { httpsAgent: agent, headers: { 'User-Agent': 'Mozilla/5.0' } }
 //         );
 
 //         if (!polyRes.data || polyRes.data.length === 0) throw new Error('No mercados devueltos');
 
 //         const now = Date.now();
-//         const futureMarkets = polyRes.data.filter(m => m.conditionId && m.endDate && new Date(m.endDate).getTime() > now);
+        
+//         // 1. Filtro de Calidad: Debe tener conditionId, fecha futura y VOLUMEN MÍNIMO ($5k)
+//         const futureMarkets = polyRes.data.filter(m => {
+//             const hasData = m.conditionId && m.endDate && m.clobTokenIds;
+//             const isFuture = new Date(m.endDate).getTime() > now;
+//             const hasLiquidity = parseFloat(m.volume || 0) > 5000; 
+//             return hasData && isFuture && hasLiquidity;
+//         });
 
-//         const targetedMarkets = futureMarkets.map(m => ({ ...m, category: getMarketCategory(m.question) })).filter(m => m.category !== null);
+//         // 2. Clasificación por tus 3 Pilares
+//         const targetedMarkets = futureMarkets.map(m => ({ 
+//             ...m, 
+//             category: getMarketCategory(m.question) 
+//         })).filter(m => m.category !== null);
 
+//         // 3. El "Mix" del Sniper: Priorizar lo que cierra pronto
 //         targetedMarkets.sort((a, b) => {
-//             const isSoonA = hoursUntilClose(a.endDate) <= 48 ? 1 : 0;
-//             const isSoonB = hoursUntilClose(b.endDate) <= 48 ? 1 : 0;
-//             if (isSoonA !== isSoonB) return isSoonB - isSoonA;
+//             const hrsA = hoursUntilClose(a.endDate);
+//             const hrsB = hoursUntilClose(b.endDate);
+            
+//             // Prioridad máxima a lo que cierra en < 12h (Time-Edge)
+//             if (hrsA < 12 && hrsB >= 12) return -1;
+//             if (hrsB < 12 && hrsA >= 12) return 1;
+            
+//             // Si ambos son pronto o ambos son tarde, decidir por volumen
 //             return parseFloat(b.volume || 0) - parseFloat(a.volume || 0);
 //         });
 
@@ -342,6 +499,7 @@ function getMarketCategory(title) {
 //         const cats = ['CRYPTO', 'GEOPOLITICS', 'SOCIAL'];
 //         let idx = 0;
         
+//         // Aseguramos diversidad en el pool de 4 slots
 //         while (finalPool.length < 4 && targetedMarkets.length > 0) {
 //             const desiredCat = cats[idx % cats.length];
 //             const matchIdx = targetedMarkets.findIndex(m => m.category === desiredCat);
@@ -355,133 +513,186 @@ function getMarketCategory(title) {
 //             idx++;
 //         }
 
-//         console.log(`⏰ [SNIPER] Pool seleccionado: ${finalPool.length} mercados clave`);
+//         console.log(`🎯 Pool de Combate: ${finalPool.length} objetivos detectados.`);
 
 //         const rawTrends = [];
 //         for (const market of finalPool) {
 //             const hrs = hoursUntilClose(market.endDate);
-//             const hrsLabel = hrs < 1 ? `${Math.round(hrs * 60)}min` : hrs < 24 ? `${hrs.toFixed(1)}h` : `${Math.ceil(hrs / 24)}d`;
+//             const hrsLabel = hrs < 1 ? `${Math.round(hrs * 60)}m` : hrs < 24 ? `${hrs.toFixed(1)}h` : `${Math.ceil(hrs / 24)}d`;
+//             const tickSize = market.minimum_tick_size || "0.01";
             
 //             let currentPrice = null;
-//             if (market.outcomePrices) {
-//                 try { currentPrice = parseFloat(JSON.parse(market.outcomePrices)[0]); } catch(e){}
-//             }
+//             try { currentPrice = parseFloat(JSON.parse(market.outcomePrices)[0]); } catch(e){}
 
 //             let clobTokenId = null;
-//             if (market.clobTokenIds) {
-//                 try { clobTokenId = JSON.parse(market.clobTokenIds)[0]; } catch(e){}
-//             }
+//             try { clobTokenId = JSON.parse(market.clobTokenIds)[0]; } catch(e){}
 
 //             rawTrends.push({
 //                 title: market.question,
-//                 title_es: "Analizando...",
+//                 title_es: "Esperando análisis de Claude...",
 //                 category: market.category,
 //                 conditionId: market.conditionId,
 //                 tokenId: clobTokenId,
 //                 isTradeable: true,
 //                 endDate: market.endDate,
 //                 endsIn: hrsLabel,
-//                 marketPrice: currentPrice
+//                 marketPrice: currentPrice,
+//                 tickSize: tickSize,
+//                 volume: parseFloat(market.volume).toLocaleString()
 //             });
-//             console.log(`🎯 Slot (${market.category}): "${market.question.substring(0, 40)}..." | MKT: $${currentPrice || 0}`);
+//             console.log(`📡 [${market.category}] $${currentPrice || '?' } | Vol: $${parseFloat(market.volume).toFixed(0)} | Q: "${market.question.substring(0, 35)}..."`);
 //         }
 
 //         botStatus.watchlist = rawTrends;
-//     } catch (e) { console.error('❌ Error en refreshWatchlist:', e.message); }
+//     } catch (e) { console.error('❌ Error Sniper Watchlist:', e.message); }
+// }
+// async function refreshWatchlist() {
+//     try {
+//         botStatus.currentTopic = 'Buscando oportunidades 24-48h...';
+//         console.log(`\n⏰ [SNIPER] Escaneando mercados cortos...`);
+
+//         const res = await axios.get(
+//             'https://gamma-api.polymarket.com/markets?active=true&closed=false&limit=500&order=volume&dir=desc',
+//             { httpsAgent: agent }
+//         );
+
+//         const now = Date.now();
+
+//         const futureMarkets = res.data.filter(m => {
+//             const hoursLeft = hoursUntilClose(m.endDate);
+//             return m.conditionId && 
+//                    m.endDate && 
+//                    new Date(m.endDate).getTime() > now &&
+//                    (hoursLeft <= 48 || parseFloat(m.volume || 0) > 8000);
+//         });
+
+//         const targetedMarkets = futureMarkets.map(m => ({
+//             ...m,
+//             category: getMarketCategoryEnhanced(m.question)
+//         })).filter(m => m.category !== null);
+
+//         // Prioridad fuerte a mercados cortos
+//         targetedMarkets.sort((a, b) => {
+//             const hrsA = hoursUntilClose(a.endDate);
+//             const hrsB = hoursUntilClose(b.endDate);
+//             if (hrsA < 48 && hrsB >= 48) return -1;
+//             if (hrsB < 48 && hrsA >= 48) return 1;
+//             return parseFloat(b.volume || 0) - parseFloat(a.volume || 0);
+//         });
+
+//         const finalPool = [];
+//         const cats = ['SHORT_TERM', 'CRYPTO', 'GEOPOLITICS', 'SOCIAL'];
+//         let idx = 0;
+
+//         while (finalPool.length < 10 && targetedMarkets.length > 0) {
+//             const cat = cats[idx % cats.length];
+//             const match = targetedMarkets.findIndex(m => m.category === cat);
+//             if (match !== -1) {
+//                 finalPool.push(targetedMarkets[match]);
+//                 targetedMarkets.splice(match, 1);
+//             } else if (targetedMarkets.length > 0) {
+//                 finalPool.push(targetedMarkets.shift());
+//             }
+//             idx++;
+//         }
+
+//         const rawTrends = finalPool.map(market => {
+//             const hrs = hoursUntilClose(market.endDate);
+//             return {
+//                 title: market.question,
+//                 category: market.category,
+//                 conditionId: market.conditionId,
+//                 tokenId: JSON.parse(market.clobTokenIds || "[]")[0],
+//                 marketPrice: parseFloat(JSON.parse(market.outcomePrices || "[]")[0] || 0),
+//                 endsIn: hrs < 1 ? `${Math.round(hrs*60)}m` : `${hrs.toFixed(1)}h`,
+//                 tickSize: market.minimum_tick_size || "0.01",
+//                 volume: parseFloat(market.volume || 0)
+//             };
+//         });
+
+//         botStatus.watchlist = rawTrends;
+//         console.log(`🎯 Pool seleccionado: ${rawTrends.length} mercados prioritarios`);
+
+//     } catch (e) {
+//         console.error('❌ Error refreshWatchlist:', e.message);
+//     }
 // }
 async function refreshWatchlist() {
     try {
-        botStatus.currentTopic = 'Escaneando Mercados de Alta Probabilidad...';
-        console.log(`\n⏰ [SNIPER] Escaneando 500 mercados en busca de ineficiencias...`);
+        botStatus.currentTopic = 'Buscando oportunidades rápidas (incluyendo 5m/15m)...';
+        console.log(`\n⏰ [SNIPER] Escaneando mercados cortos y de alta frecuencia...`);
 
-        const agent = new https.Agent({ rejectUnauthorized: false });
-        // Añadimos parámetros de ordenamiento por volumen directamente en la API
-        const polyRes = await axios.get(
+        const res = await axios.get(
             'https://gamma-api.polymarket.com/markets?active=true&closed=false&limit=500&order=volume&dir=desc',
-            { httpsAgent: agent, headers: { 'User-Agent': 'Mozilla/5.0' } }
+            { httpsAgent: agent }
         );
 
-        if (!polyRes.data || polyRes.data.length === 0) throw new Error('No mercados devueltos');
-
         const now = Date.now();
-        
-        // 1. Filtro de Calidad: Debe tener conditionId, fecha futura y VOLUMEN MÍNIMO ($5k)
-        const futureMarkets = polyRes.data.filter(m => {
-            const hasData = m.conditionId && m.endDate && m.clobTokenIds;
-            const isFuture = new Date(m.endDate).getTime() > now;
-            const hasLiquidity = parseFloat(m.volume || 0) > 5000; 
-            return hasData && isFuture && hasLiquidity;
+
+        const futureMarkets = res.data.filter(m => {
+            if (!m.conditionId || !m.endDate) return false;
+            
+            const hoursLeft = hoursUntilClose(m.endDate);
+            const volume = parseFloat(m.volume || 0);
+
+            // ✅ Cambios clave:
+            // - Bajamos el umbral de volumen para SHORT_TERM
+            // - Aceptamos mercados que cierren en menos de 48h o tengan volumen decente
+            return new Date(m.endDate).getTime() > now &&
+                   (hoursLeft <= 48 || volume > 6000);   // antes era 8000
         });
 
-        // 2. Clasificación por tus 3 Pilares
-        const targetedMarkets = futureMarkets.map(m => ({ 
-            ...m, 
-            category: getMarketCategory(m.question) 
+        const targetedMarkets = futureMarkets.map(m => ({
+            ...m,
+            category: getMarketCategoryEnhanced(m.question)
         })).filter(m => m.category !== null);
 
-        // 3. El "Mix" del Sniper: Priorizar lo que cierra pronto
+        // Prioridad fuerte a mercados cortos
         targetedMarkets.sort((a, b) => {
             const hrsA = hoursUntilClose(a.endDate);
             const hrsB = hoursUntilClose(b.endDate);
-            
-            // Prioridad máxima a lo que cierra en < 12h (Time-Edge)
-            if (hrsA < 12 && hrsB >= 12) return -1;
-            if (hrsB < 12 && hrsA >= 12) return 1;
-            
-            // Si ambos son pronto o ambos son tarde, decidir por volumen
+            if (hrsA < 48 && hrsB >= 48) return -1;
+            if (hrsB < 48 && hrsA >= 48) return 1;
             return parseFloat(b.volume || 0) - parseFloat(a.volume || 0);
         });
 
         const finalPool = [];
-        const cats = ['CRYPTO', 'GEOPOLITICS', 'SOCIAL'];
+        const cats = ['SHORT_TERM', 'CRYPTO', 'GEOPOLITICS', 'SOCIAL'];
         let idx = 0;
-        
-        // Aseguramos diversidad en el pool de 4 slots
-        while (finalPool.length < 4 && targetedMarkets.length > 0) {
-            const desiredCat = cats[idx % cats.length];
-            const matchIdx = targetedMarkets.findIndex(m => m.category === desiredCat);
-            if (matchIdx !== -1) {
-                finalPool.push(targetedMarkets[matchIdx]);
-                targetedMarkets.splice(matchIdx, 1);
+
+        // Aumentamos el pool a 12-15 para tener más rotación
+        while (finalPool.length < 14 && targetedMarkets.length > 0) {
+            const cat = cats[idx % cats.length];
+            const match = targetedMarkets.findIndex(m => m.category === cat);
+            if (match !== -1) {
+                finalPool.push(targetedMarkets[match]);
+                targetedMarkets.splice(match, 1);
             } else if (targetedMarkets.length > 0) {
-                finalPool.push(targetedMarkets[0]);
-                targetedMarkets.splice(0, 1);
+                finalPool.push(targetedMarkets.shift());
             }
             idx++;
         }
 
-        console.log(`🎯 Pool de Combate: ${finalPool.length} objetivos detectados.`);
-
-        const rawTrends = [];
-        for (const market of finalPool) {
+        const rawTrends = finalPool.map(market => {
             const hrs = hoursUntilClose(market.endDate);
-            const hrsLabel = hrs < 1 ? `${Math.round(hrs * 60)}m` : hrs < 24 ? `${hrs.toFixed(1)}h` : `${Math.ceil(hrs / 24)}d`;
-            const tickSize = market.minimum_tick_size || "0.01";
-            
-            let currentPrice = null;
-            try { currentPrice = parseFloat(JSON.parse(market.outcomePrices)[0]); } catch(e){}
-
-            let clobTokenId = null;
-            try { clobTokenId = JSON.parse(market.clobTokenIds)[0]; } catch(e){}
-
-            rawTrends.push({
+            return {
                 title: market.question,
-                title_es: "Esperando análisis de Claude...",
                 category: market.category,
                 conditionId: market.conditionId,
-                tokenId: clobTokenId,
-                isTradeable: true,
-                endDate: market.endDate,
-                endsIn: hrsLabel,
-                marketPrice: currentPrice,
-                tickSize: tickSize,
-                volume: parseFloat(market.volume).toLocaleString()
-            });
-            console.log(`📡 [${market.category}] $${currentPrice || '?' } | Vol: $${parseFloat(market.volume).toFixed(0)} | Q: "${market.question.substring(0, 35)}..."`);
-        }
+                tokenId: JSON.parse(market.clobTokenIds || "[]")[0],
+                marketPrice: parseFloat(JSON.parse(market.outcomePrices || "[]")[0] || 0),
+                endsIn: hrs < 1 ? `${Math.round(hrs*60)}m` : `${hrs.toFixed(1)}h`,
+                tickSize: market.minimum_tick_size || "0.01",
+                volume: parseFloat(market.volume || 0)
+            };
+        });
 
         botStatus.watchlist = rawTrends;
-    } catch (e) { console.error('❌ Error Sniper Watchlist:', e.message); }
+        console.log(`🎯 Pool seleccionado: ${rawTrends.length} mercados prioritarios (SHORT_TERM + otros)`);
+
+    } catch (e) {
+        console.error('❌ Error refreshWatchlist:', e.message);
+    }
 }
 
 // ==========================================
@@ -493,33 +704,88 @@ async function executeTradeOnChain(conditionId, tokenId, amountUsdc, currentPric
         console.log(`\n--- ⚖️ EJECUCIÓN ON-CHAIN EN POLYMARKET ---`);
 
         if (!clobClient) {
-            throw new Error("clobClient no está inicializado. Llama primero a conectarClob()");
+            throw new Error("clobClient no está inicializado.");
         }
 
-        // 1. Ajuste de decimales según el Tick Size del mercado
-        const decimales = marketTickSize === "0.001" ? 3 : 2;
-        const finalPrice = Number(parseFloat(currentPrice).toFixed(decimales));
+        // 🛡️ 1. AUTO-LIMPIEZA DE FONDOS
+        console.log("🧹 Liberando USDC de órdenes anteriores...");
+        try { await clobClient.cancelAll(); } catch (e) {}
+
+        // 🔍 2. OBTENER LA VERDAD ABSOLUTA DEL MERCADO (Tick Size y Neg Risk)
+        let trueTickSize = "0.01";
+        let isNegRisk = false; // Por defecto asumimos mercado normal
         
-        // 2. Cálculo preciso para evitar el error de "min size $1"
-        let numShares = Number((parseFloat(amountUsdc) / finalPrice).toFixed(2));
-        if (numShares * finalPrice < 1) {
-            console.log("⚠️ Ajustando orden para superar el mínimo de $1 USDC");
-            numShares = Math.ceil(1.05 / finalPrice); 
+        try {
+            // Le preguntamos al servidor central cómo está configurado este mercado
+            const clobMarket = await axios.get(`https://clob.polymarket.com/markets/${conditionId}`);
+            if (clobMarket.data) {
+                // 🚨 EL FIX MAESTRO: Detectamos si exige firma de Riesgo Negativo
+                if (clobMarket.data.neg_risk === true) {
+                    isNegRisk = true;
+                }
+                
+                if (clobMarket.data.tokens) {
+                    const tokenData = clobMarket.data.tokens.find(t => t.token_id === tokenId);
+                    if (tokenData && tokenData.minimum_tick_size) {
+                        trueTickSize = tokenData.minimum_tick_size;
+                    }
+                }
+            }
+        } catch (e) {
+            trueTickSize = String(marketTickSize);
+            console.log("⚠️ No se pudo verificar el servidor, usando valores base.");
+        }
+        
+        const safeTickSize = String(trueTickSize);
+        console.log(`✅ Parámetros CLOB -> Tick: ${safeTickSize} | NegRisk: ${isNegRisk}`);
+
+        // 3. Ajuste de decimales y Precio Base
+        const decimales = safeTickSize === "0.001" ? 3 : (safeTickSize === "0.0001" ? 4 : 2);
+        const minPriceAllowed = parseFloat(safeTickSize);
+        
+        let basePrice = Number(parseFloat(currentPrice).toFixed(decimales));
+        
+        // 🛡️ ESCUDO ANTI-FANTASMAS
+        if (basePrice < minPriceAllowed) {
+            console.log(`⚠️ Mercado fantasma detectado (Precio: $${basePrice}). Ignorando disparo.`);
+            return { success: false, error: "Precio por debajo del mínimo legal" };
         }
 
-        console.log(`📡 Creando orden BUY: ${numShares} shares @ $${finalPrice} (Tick: ${marketTickSize})`);
+        // ⚡ LÓGICA PRO: SLIPPAGE (TOLERANCIA AL DESLIZAMIENTO)
+        // Damos un margen de +2 ticks hacia arriba. 
+        // El servidor siempre cobrará lo más barato, pero esto asegura la ejecución instantánea.
+        let limitPrice = basePrice + (minPriceAllowed * 2);
+        if (limitPrice > 0.99) limitPrice = 0.99; // Límite máximo legal absoluto
+        limitPrice = Number(limitPrice.toFixed(decimales));
 
-        // 3. Usamos la variable dinámica en lugar del texto fijo
+        // 4. Cálculo de munición (Calculamos usando el limitPrice para garantizar saldo suficiente)
+        let numShares = Number((parseFloat(amountUsdc) / limitPrice).toFixed(2));
+        
+        if (numShares < 5) {
+            console.log(`⚠️ Ajustando munición al mínimo requerido (5 shares)`);
+            numShares = 5; 
+        }
+        
+        if (numShares * limitPrice < 1) {
+            numShares = Math.ceil(1.05 / limitPrice); 
+            if (numShares < 5) numShares = 5;
+        }
+
+        numShares = Number(numShares.toFixed(2));
+
+        console.log(`📡 Orden BUY: ${numShares} shares | Target: $${basePrice} | Max Tolerado: $${limitPrice}`);
+
+        // 5. Disparo Final con opciones CAMALEÓNICAS
         const response = await clobClient.createAndPostOrder(
             {
                 tokenID: tokenId,
-                price: finalPrice,
+                price: limitPrice, // <--- DISPARAMOS CON EL PRECIO BLINDADO (SLIPPAGE)
                 side: Side.BUY,
                 size: numShares,
             },
             { 
-                tickSize: marketTickSize, // <--- AHORA ES DINÁMICO
-                negRisk: false      
+                tickSize: safeTickSize, 
+                negRisk: isNegRisk 
             }, 
             OrderType.GTC
         );
@@ -533,7 +799,6 @@ async function executeTradeOnChain(conditionId, tokenId, amountUsdc, currentPric
 
     } catch (error) {
         console.error("❌ Error en executeTradeOnChain:", error.message);
-        if (error.response?.data) console.error("Detalles del error:", error.response.data);
         throw error;
     }
 }
@@ -621,72 +886,363 @@ async function fetchRealTrades() {
 // ==========================================
 let watchlistIndex = 0;
 
+// async function runBot() {
+//     if (botStatus.isPanicStopped) return;
+
+//     botStatus.lastCheck = new Date().toLocaleTimeString();
+
+//     try {
+//         await fetchRealTrades();
+//         await updateRealBalances();
+
+//         if (botStatus.autoTradeEnabled) {
+//             await autoSellManager();
+//         }
+
+//         if (botStatus.watchlist.length === 0 || watchlistIndex >= botStatus.watchlist.length) {
+//             await refreshWatchlist();
+//             watchlistIndex = 0;
+//         }
+
+//         const marketItem = botStatus.watchlist[watchlistIndex];
+//         if (!marketItem) {
+//             watchlistIndex++;
+//             return;
+//         }
+
+//         const marketTitle = marketItem.title;
+//         botStatus.currentMarket = marketItem;
+//         botStatus.currentTopic = marketTitle;
+
+//         const newsString = await getLatestNews(marketTitle, marketItem.category);
+//         const cacheKey = `${marketItem.tokenId}-${newsString.substring(0, 60)}`;
+
+//         let analysis;
+//         if (analysisCache.has(cacheKey)) {
+//             analysis = analysisCache.get(cacheKey);
+//         } else {
+//             analysis = await analyzeMarketWithClaude(marketTitle, newsString);
+//             analysisCache.set(cacheKey, analysis);
+//             if (analysisCache.size > 60) analysisCache.delete(analysisCache.keys().next().value);
+//         }
+
+//         const livePrice = marketItem.marketPrice || 0;
+//         const edge = livePrice > 0 ? (analysis.prob || 0) - livePrice : 0;
+
+//         let autoExecuted = false;
+
+//         // 💡 LÓGICA CORREGIDA: Los controles del Dashboard mandan. 
+//         // Si la matemática supera tus sliders, dispara (o si la IA detecta un STRONG_BUY urgente)
+//         const isStrongSignal = 
+//             (edge >= botStatus.edgeThreshold && analysis.prob >= botStatus.predictionThreshold) ||
+//             analysis.recommendation === "STRONG_BUY";
+
+//         // 💡 CREAMOS EL OBJETO DE SEÑAL AQUÍ ARRIBA
+//         // Para tenerlo listo por si la alerta de Telegram lo necesita
+//         const signalData = {
+//             id: Date.now(),
+//             marketName: marketTitle,
+//             tokenId: marketItem.tokenId,
+//             conditionId: marketItem.conditionId,
+//             probability: analysis.prob || 0,
+//             reasoning: analysis.reason || "Evaluado por Claude",
+//             marketPrice: livePrice,
+//             suggestedInversion: botStatus.microBetAmount,
+//             edge: edge,
+//             urgency: analysis.urgency || 5,
+//             recommendation: analysis.recommendation || "WAIT"
+//         };
+
+//         if (botStatus.autoTradeEnabled && isStrongSignal) {
+//             console.log(`🎯 SNIPER: Edge ${(edge*100).toFixed(1)}% | Prob ${(analysis.prob*100).toFixed(0)}%`);
+
+//             const result = await executeTradeOnChain(
+//                 marketItem.conditionId,
+//                 marketItem.tokenId,
+//                 botStatus.microBetAmount,
+//                 livePrice,
+//                 marketItem.tickSize || "0.01"
+//             );
+
+//             if (result?.success) {
+//                 // 🟢 AQUÍ MANDAMOS LA ALERTA RICA EN DATOS
+//                 await sendSniperAlert(signalData);
+//                 autoExecuted = true;
+//             }
+//         }
+
+//         // Actualizar señales para el dashboard
+//         const signalIndex = botStatus.pendingSignals.findIndex(s => s.tokenId === marketItem.tokenId);
+
+//         if (signalIndex === -1) {
+//             if (!autoExecuted) botStatus.pendingSignals.unshift(signalData);
+//             if (botStatus.pendingSignals.length > 12) botStatus.pendingSignals.pop();
+//         } else {
+//             botStatus.pendingSignals[signalIndex] = { ...botStatus.pendingSignals[signalIndex], ...signalData };
+//         }
+
+//         watchlistIndex = (watchlistIndex + 1) % botStatus.watchlist.length;
+
+//     } catch (error) {
+//         console.error('❌ Error en runBot:', error.message);
+//     }
+// }
+
+// async function runBot() {
+//     if (botStatus.isPanicStopped) return;
+
+//     botStatus.lastCheck = new Date().toLocaleTimeString();
+
+//     try {
+//         await fetchRealTrades();
+//         await updateRealBalances();
+
+//         if (botStatus.autoTradeEnabled) {
+//             await autoSellManager();
+//         }
+
+//         if (botStatus.watchlist.length === 0 || watchlistIndex >= botStatus.watchlist.length) {
+//             await refreshWatchlist();
+//             watchlistIndex = 0;
+//         }
+
+//         const marketItem = botStatus.watchlist[watchlistIndex];
+//         if (!marketItem || !marketItem.tokenId) {
+//             watchlistIndex++;
+//             return;
+//         }
+
+//         const marketTitle = marketItem.title;
+//         botStatus.currentMarket = marketItem;
+//         botStatus.currentTopic = marketTitle;
+
+//         const newsString = await getLatestNews(marketTitle, marketItem.category);
+//         const cacheKey = `${marketItem.tokenId}-${newsString.substring(0, 60)}`;
+
+//         let analysis;
+//         if (analysisCache.has(cacheKey)) {
+//             analysis = analysisCache.get(cacheKey);
+//         } else {
+//             analysis = await analyzeMarketWithClaude(marketTitle, newsString);
+//             analysisCache.set(cacheKey, analysis);
+//             if (analysisCache.size > 60) analysisCache.delete(analysisCache.keys().next().value);
+//         }
+
+//         const livePrice = marketItem.marketPrice || 0;
+//         const edge = livePrice > 0 ? (analysis.prob || 0) - livePrice : 0;
+
+//         let autoExecuted = false;
+
+//         // Lógica más agresiva para short-term
+//         const isStrongSignal = 
+//             analysis.recommendation === "STRONG_BUY" ||
+//             (analysis.recommendation === "BUY" && edge >= botStatus.edgeThreshold) ||
+//             (analysis.urgency >= 8 && edge >= 0.05);   // ← Más sensible en urgencia alta
+
+//         if (botStatus.autoTradeEnabled && isStrongSignal) {
+//             console.log(`🎯 SNIPER: Edge ${(edge*100).toFixed(1)}% | Urgency ${analysis.urgency} | Prob ${(analysis.prob*100).toFixed(0)}%`);
+
+//             const result = await executeTradeOnChain(
+//                 marketItem.conditionId,
+//                 marketItem.tokenId,
+//                 botStatus.microBetAmount,
+//                 livePrice,
+//                 marketItem.tickSize || "0.01"
+//             );
+
+//             if (result?.success) {
+//                 await sendSniperAlert({
+//                     marketName: marketTitle,
+//                     probability: analysis.prob,
+//                     marketPrice: livePrice,
+//                     edge: edge,
+//                     suggestedInversion: botStatus.microBetAmount,
+//                     reasoning: analysis.reason
+//                 });
+//                 autoExecuted = true;
+//             }
+//         }
+
+//         // Actualizar señales para dashboard
+//         const signalIndex = botStatus.pendingSignals.findIndex(s => s.tokenId === marketItem.tokenId);
+
+//         const signalData = {
+//             id: Date.now(),
+//             marketName: marketTitle,
+//             tokenId: marketItem.tokenId,
+//             conditionId: marketItem.conditionId,
+//             probability: analysis.prob || 0,
+//             reasoning: analysis.reason || "Evaluado por Claude",
+//             marketPrice: livePrice,
+//             suggestedInversion: botStatus.microBetAmount,
+//             edge: edge,
+//             urgency: analysis.urgency || 5,
+//             recommendation: analysis.recommendation || "WAIT"
+//         };
+
+//         if (signalIndex === -1) {
+//             if (!autoExecuted) botStatus.pendingSignals.unshift(signalData);
+//             if (botStatus.pendingSignals.length > 12) botStatus.pendingSignals.pop();
+//         } else {
+//             botStatus.pendingSignals[signalIndex] = { ...botStatus.pendingSignals[signalIndex], ...signalData };
+//         }
+
+//         watchlistIndex = (watchlistIndex + 1) % botStatus.watchlist.length;
+
+//     } catch (error) {
+//         console.error('❌ Error en runBot:', error.message);
+//     }
+// }
+
 async function runBot() {
     if (botStatus.isPanicStopped) return;
 
     botStatus.lastCheck = new Date().toLocaleTimeString();
+
     try {
-        // CAPA 1: Actualizar lo que ya tenemos (Gratis - Sin IA)
         await fetchRealTrades();
         await updateRealBalances();
 
-        // Gestionar Ventas Automáticas (Si hay ganancias > 15% o pérdidas > 10%)
         if (botStatus.autoTradeEnabled) {
             await autoSellManager();
         }
 
-        // CAPA 2: Rotación de Watchlist
+        // Refrescar watchlist cuando sea necesario
         if (botStatus.watchlist.length === 0 || watchlistIndex >= botStatus.watchlist.length) {
             await refreshWatchlist();
             watchlistIndex = 0;
         }
 
         const marketItem = botStatus.watchlist[watchlistIndex];
-        const marketTitle = marketItem.title;
-
-        // CAPA 3: ¿Realmente necesitamos a Claude? (Ahorro de tokens)
-        const newsString = await getLatestNews(marketTitle, marketItem.category);
-        const cacheKey = `${marketItem.tokenId}-${newsString.substring(0, 50)}`;
-
-        let prob;
-        if (analysisCache.has(cacheKey)) {
-            console.log(`♻️ Usando análisis en caché para: ${marketTitle.substring(0, 30)}`);
-            prob = analysisCache.get(cacheKey);
-        } else {
-            // Solo gastamos créditos si las noticias cambiaron
-            const analysis = await analyzeMarketWithClaude(marketTitle, newsString);
-            prob = analysis.prob;
-            analysisCache.set(cacheKey, prob);
-            // Limpiar cache viejo si crece mucho
-            if (analysisCache.size > 50) analysisCache.delete(analysisCache.keys().next().value);
+        if (!marketItem || !marketItem.tokenId) {
+            watchlistIndex++;
+            return;
         }
 
-        botStatus.lastProbability = prob;
-        const livePrice = marketItem.marketPrice || 0;
-        const edge = prob - livePrice;
+        const marketTitle = marketItem.title;
+        botStatus.currentMarket = marketItem;
+        botStatus.currentTopic = marketTitle;
 
-        // LÓGICA DE DISPARO AUTOMÁTICO
-        if (botStatus.autoTradeEnabled && edge >= 0.12 && prob >= botStatus.predictionThreshold) {
-            console.log(`🎯 SNIPER: Edge detectado del ${(edge*100).toFixed(0)}%. Disparando...`);
-            
-            const result = await executeTradeOnChain(
-                marketItem.conditionId, 
-                marketItem.tokenId, 
-                botStatus.microBetAmount, 
-                livePrice,
-                marketItem.tickSize
+        const newsString = await getLatestNews(marketTitle, marketItem.category);
+        const cacheKey = `${marketItem.tokenId}-${newsString.substring(0, 60)}`;
+
+        let analysis;
+        if (analysisCache.has(cacheKey)) {
+            analysis = analysisCache.get(cacheKey);
+        } else {
+            analysis = await analyzeMarketWithClaude(marketTitle, newsString);
+            analysisCache.set(cacheKey, analysis);
+            if (analysisCache.size > 60) analysisCache.delete(analysisCache.keys().next().value);
+        }
+
+        // 👇 ¡EL FIX! Le pasamos el dato de Claude a tu panel frontal
+        botStatus.lastProbability = analysis.prob || 0;
+        
+        const livePrice = marketItem.marketPrice || 0;
+        const edge = livePrice > 0 ? (analysis.prob || 0) - livePrice : 0;
+
+        let autoExecuted = false;
+
+        // 🛡️ NUEVO BLINDAJE: ¿Ya tenemos dinero en este mercado?
+        const alreadyInvested = botStatus.activePositions.some(pos => pos.tokenId === marketItem.tokenId);
+
+        // 🔥 LÓGICA DE DISPARO MEJORADA Y MÁS AGRESIVA
+        const isStrongSignal = 
+            (!alreadyInvested) && ( 
+                analysis.recommendation === "STRONG_BUY" ||
+                (analysis.recommendation === "BUY" && edge >= botStatus.edgeThreshold && analysis.prob >= botStatus.predictionThreshold) ||
+                (analysis.urgency >= 8 && edge >= Math.max(0.04, botStatus.edgeThreshold * 0.65)) ||
+                (marketItem.category === "SHORT_TERM" && edge >= 0.045 && analysis.prob >= 0.57)
             );
 
-            // 🟢 NUEVO: ALERTA DE TELEGRAM PARA COMPRAS AUTOMÁTICAS
-            if (result && result.success) {
-                await sendAlert(`🤖 *COMPRA AUTOMÁTICA (SNIPER)*\nMercado: ${marketItem.title}\nInversión: $${botStatus.microBetAmount} USDC\nPrecio MKT: $${livePrice}\nIA Confianza: ${(prob*100).toFixed(0)}%`);
-                await updateRealBalances(); // Refrescamos el frontend
+        // 🧠 CRITERIO DE KELLY (Gestión Dinámica de Capital)
+        // Lo calculamos aquí afuera para que el dashboard también lo muestre
+        const saldoLibre = parseFloat(botStatus.clobOnlyUSDC || botStatus.balanceUSDC) || 0;
+        let dynamicBetAmount = botStatus.microBetAmount; // Por defecto usa el slider de tu panel ($1.00)
+
+        if (edge > 0 && livePrice > 0 && livePrice < 1) {
+            // Fórmula Kelly: f = edge / (1 - precio)
+            const kellyFraction = edge / (1 - livePrice);
+            const kellyMultiplier = 0.25; // Quarter Kelly (Blindaje institucional para baja volatilidad)
+            
+            let calculatedBet = saldoLibre * kellyFraction * kellyMultiplier;
+
+            // ⚖️ Límites de Seguridad (Clamp)
+            const minBet = botStatus.microBetAmount; // Piso: Lo que diga tu slider (ej. $1.00)
+            const maxBet = saldoLibre * 0.15;        // Techo: NUNCA arriesgar más del 15% en un solo tiro
+
+            if (calculatedBet < minBet) calculatedBet = minBet;
+            if (calculatedBet > maxBet) calculatedBet = maxBet;
+
+            dynamicBetAmount = Number(calculatedBet.toFixed(2));
+        }
+
+        // ⚡ EJECUCIÓN DEL DISPARO
+        if (botStatus.autoTradeEnabled && isStrongSignal) {
+            console.log(`🎯 SNIPER DISPARO DETECTADO → ${marketItem.category || 'NORMAL'} | Edge: ${(edge*100).toFixed(1)}% | Prob: ${(analysis.prob*100).toFixed(0)}% | Urgency: ${analysis.urgency}`);
+            
+            if (saldoLibre < 1) {
+                console.log("⚠️ Autopilot: Saldo insuficiente para ejecutar disparo.");
+            } else {
+                console.log(`🧠 Kelly Mode -> Disparo Ajustado: $${dynamicBetAmount} USDC`);
+
+                const result = await executeTradeOnChain(
+                    marketItem.conditionId,
+                    marketItem.tokenId,
+                    dynamicBetAmount, // <--- Usamos el monto de Kelly
+                    livePrice,
+                    marketItem.tickSize || "0.01"
+                );
+
+                if (result?.success) {
+                    console.log(`✅ ¡COMPRA AUTOMÁTICA EJECUTADA!`);
+
+                    await sendSniperAlert({
+                        marketName: marketTitle,
+                        probability: analysis.prob,
+                        marketPrice: livePrice,
+                        edge: edge,
+                        suggestedInversion: dynamicBetAmount, // <--- Enviamos el dato real a Telegram
+                        reasoning: analysis.reason || "Señal fuerte de Claude"
+                    });
+
+                    autoExecuted = true;
+                }
             }
         }
 
-        watchlistIndex++;
+        // === ACTUALIZACIÓN DE SEÑALES PARA EL DASHBOARD ===
+        const signalIndex = botStatus.pendingSignals.findIndex(s => s.tokenId === marketItem.tokenId);
+
+        const signalData = {
+            id: Date.now(),
+            marketName: marketTitle,
+            tokenId: marketItem.tokenId,
+            conditionId: marketItem.conditionId,
+            probability: analysis.prob || 0,
+            reasoning: analysis.reason || "Evaluado por Claude",
+            marketPrice: livePrice,
+            suggestedInversion: dynamicBetAmount, // <--- Tu dashboard ahora mostrará el cálculo de Kelly
+            edge: edge,
+            urgency: analysis.urgency || 5,
+            recommendation: analysis.recommendation || "WAIT",
+            category: marketItem.category 
+        };
+
+        if (signalIndex === -1) {
+            if (!autoExecuted) botStatus.pendingSignals.unshift(signalData);
+            if (botStatus.pendingSignals.length > 12) botStatus.pendingSignals.pop();
+        } else {
+            botStatus.pendingSignals[signalIndex] = { 
+                ...botStatus.pendingSignals[signalIndex], 
+                ...signalData 
+            };
+        }
+
+        watchlistIndex = (watchlistIndex + 1) % botStatus.watchlist.length;
+
     } catch (error) {
-        console.error('❌ Error en ciclo Sniper:', error.message);
+        console.error('❌ Error en runBot:', error.message);
     }
 }
 
@@ -697,24 +1253,78 @@ async function autoSellManager() {
 
         const profit = pos.percentPnl || 0;
         
-        // ESTRATEGIA: Vender si ganamos 20% o si perdemos 15% (Stop Loss)
-        if (profit >= 20 || profit <= -15) {
-            console.log(`💰 AUTO-SELL: Cerrando ${pos.marketName} con ${profit}% PnL`);
+        // ESTRATEGIA: Vender si ganamos 15% o si perdemos 15% (Stop Loss)
+        if (profit >= botStatus.takeProfitThreshold || profit <= -10) {
+            console.log(`\n💰 AUTO-SELL: Evaluando salida de ${pos.marketName.substring(0,35)}... (PnL: ${profit.toFixed(2)}%)`);
             try {
                 const bookResp = await axios.get(`https://clob.polymarket.com/book?token_id=${pos.tokenId}`, { httpsAgent: agent });
-                if (bookResp.data?.bids?.length > 0) {
-                    const bestBid = parseFloat(bookResp.data.bids[0].price);
+                const bids = bookResp.data?.bids;
+
+                if (bids && bids.length > 0) {
+                    const sharesToSell = parseFloat(pos.exactSize);
+                    
+                    // Variables del Radar de Profundidad
+                    let accumulatedShares = 0;
+                    let worstAcceptablePrice = 0;
+                    let isLiquidityEnough = false;
+
+                    // 🔍 BARRIDO DEL LIBRO DE ÓRDENES (Sweeping)
+                    for (const bid of bids) {
+                        const bidPrice = parseFloat(bid.price);
+                        const bidSize = parseFloat(bid.size);
+
+                        accumulatedShares += bidSize;
+                        worstAcceptablePrice = bidPrice; // Bajamos el precio hasta llenar la mochila
+
+                        if (accumulatedShares >= sharesToSell) {
+                            isLiquidityEnough = true;
+                            break;
+                        }
+                    }
+
+                    // 🛡️ PROTECCIÓN 1: Liquidez Insuficiente
+                    if (!isLiquidityEnough) {
+                        console.log(`⚠️ Auto-Sell Abortado: Solo hay ${accumulatedShares} acciones demandadas, tú intentas vender ${sharesToSell}. Esperando más compradores.`);
+                        continue; // Saltamos al siguiente mercado
+                    }
+
+                    // 🛡️ PROTECCIÓN 2: Escudo Anti-Dump (Slippage)
+                    const bestBidPrice = parseFloat(bids[0].price);
+                    const slippageCaida = ((bestBidPrice - worstAcceptablePrice) / bestBidPrice) * 100;
+
+                    if (slippageCaida > 15) {
+                        console.log(`⚠️ Auto-Sell Abortado: Vender tus ${sharesToSell} acciones tumbaría el precio un ${slippageCaida.toFixed(1)}%. Demasiado Slippage.`);
+                        continue; // Saltamos al siguiente mercado
+                    }
+
+                    console.log(`📊 Radar Sell: Mejor oferta $${bestBidPrice} | Límite seguro de salida $${worstAcceptablePrice} (Deslizamiento: ${slippageCaida.toFixed(1)}%)`);
+
+                    // 🧹 Limpiamos órdenes previas para asegurar que nuestras acciones no estén congeladas
+                    try { await clobClient.cancelAll(); } catch (e) {}
+
+                    // ⚡ EJECUCIÓN DEL DISPARO DE SALIDA
+                    // Nota Pro: Usamos worstAcceptablePrice. Como ya es un precio que existe en el Orderbook, 
+                    // Polymarket jamás nos dará el error de "Invalid Signature" por los decimales.
                     await clobClient.createAndPostOrder({
                         tokenID: pos.tokenId,
-                        price: bestBid,
+                        price: worstAcceptablePrice, 
                         side: Side.SELL,
-                        size: pos.exactSize
+                        size: sharesToSell
                     });
-                    await sendAlert(`📉 *VENTA AUTOMÁTICA*\nMercado: ${pos.marketName}\nResultado: ${profit.toFixed(2)}%`);
-                    await updateRealBalances(); // <-- Refrescamos saldos
+
+                    // 🟢 Reporte a Telegram
+                    const rescateEstimado = (sharesToSell * bestBidPrice).toFixed(2);
+                    const icono = profit >= 0 ? '📈' : '🛑';
+                    const tipoVenta = profit >= 0 ? 'TOMA DE GANANCIAS' : 'STOP LOSS';
+                    
+                    await sendAlert(`${icono} *VENTA AUTOMÁTICA (${tipoVenta})*\nMercado: ${pos.marketName}\nResultado: ${profit >= 0 ? '+' : ''}${profit.toFixed(2)}%\nRescatado: ~$${rescateEstimado} USDC`);
+                    
+                    await updateRealBalances(); // <-- Refrescamos saldos inmediatamente
+                } else {
+                    console.log(`⚠️ Auto-Sell Abortado: Libro de órdenes vacío (Nadie quiere comprar en este momento).`);
                 }
             } catch (e) {
-                console.error("Error en auto-venta:", e.message);
+                console.error("❌ Error en auto-venta:", e.message);
             }
         }
     }
@@ -730,30 +1340,45 @@ async function monitorPortfolio() {
         // Primero nos aseguramos de tener los saldos más frescos
         await updateRealBalances();
 
-        if (!botStatus.activePositions || botStatus.activePositions.length === 0) return;
+        if (!botStatus.activePositions || botStatus.activePositions.length === 0) {
+            profitAlertCache.clear(); // Si no hay posiciones, limpiamos la memoria
+            return;
+        }
 
         let posicionesGanadoras = [];
         let totalPnl = 0;
+        
+        // Mapeamos los IDs de las posiciones actuales para limpiar el caché de las que ya se vendieron
+        const currentTokenIds = botStatus.activePositions.map(p => p.tokenId);
+        for (const id of profitAlertCache) {
+            if (!currentTokenIds.includes(id)) profitAlertCache.delete(id);
+        }
 
         for (const pos of botStatus.activePositions) {
             // Solo evaluamos los que están vivos
             if (pos.status.includes('ACTIVO')) {
                 totalPnl += (pos.cashPnl || 0);
                 
-                // 🔥 LA REGLA DE ORO: Si la ganancia supera el 5%, ¡avisa!
+                // 🔥 LA REGLA DE ORO: Si la ganancia supera el 5% y NO hemos avisado antes
                 if (pos.percentPnl && pos.percentPnl >= 5.0) {
-                    posicionesGanadoras.push(
-                        `📈 *${pos.marketName.substring(0,35)}...*\n` +
-                        `Valor Actual: *$${pos.currentValue} USDC*\n` +
-                        `Ganancia: *+$${pos.cashPnl.toFixed(2)} (+${pos.percentPnl.toFixed(1)}%)*`
-                    );
+                    
+                    if (!profitAlertCache.has(pos.tokenId)) {
+                        posicionesGanadoras.push(
+                            `📈 *${pos.marketName.substring(0,35)}...*\n` +
+                            `Valor Actual: *$${pos.currentValue} USDC*\n` +
+                            `Ganancia: *+$${pos.cashPnl.toFixed(2)} (+${pos.percentPnl.toFixed(1)}%)*\n` +
+                            `⏳ _Esperando llegar al Auto-Sell (15%)_`
+                        );
+                        // Lo guardamos en memoria para no volver a hacer spam
+                        profitAlertCache.add(pos.tokenId);
+                    }
                 }
             }
         }
 
-        // Si encontró posiciones jugosas, dispara el mensaje a Telegram
+        // Si encontró NUEVAS posiciones jugosas, dispara el mensaje a Telegram
         if (posicionesGanadoras.length > 0) {
-            const alerta = `🚨 *ALERTA DE TOMA DE GANANCIAS* 🚨\nTienes posiciones en verde listas para operar:\n\n${posicionesGanadoras.join('\n\n')}\n\n💵 *PnL Global Flotante: $${totalPnl.toFixed(2)}*`;
+            const alerta = `🚨 *ALERTA DE TOMA DE GANANCIAS* 🚨\nNuevas posiciones cruzaron el 5% de ganancia:\n\n${posicionesGanadoras.join('\n\n')}\n\n💵 *PnL Global Flotante: $${totalPnl.toFixed(2)}*`;
             await sendAlert(alerta);
         }
 
@@ -784,17 +1409,22 @@ app.post('/api/settings/threshold', async (req, res) => {
 
 // 2. Recibe la orden del Switch "AutoTrade" desde la interfaz Vue
 app.post('/api/settings/autotrade', (req, res) => {
-    const { enabled, amount } = req.body;
+    const { enabled, amount, edgeThreshold, takeProfitThreshold } = req.body; 
     
     if (enabled !== undefined) botStatus.autoTradeEnabled = !!enabled;
     if (amount !== undefined) botStatus.microBetAmount = parseFloat(amount) || botStatus.microBetAmount;
+    if (edgeThreshold !== undefined) botStatus.edgeThreshold = parseFloat(edgeThreshold); 
+    // 👇 NUEVO: Guardamos el Take Profit
+    if (takeProfitThreshold !== undefined) botStatus.takeProfitThreshold = parseFloat(takeProfitThreshold); 
     
-    console.log(`\n⚙️ [CONTROL] Gatillo Sniper: ${botStatus.autoTradeEnabled ? 'ENCENDIDO 🟢' : 'APAGADO 🔴'} | Calibre: $${botStatus.microBetAmount} USDC`);
+    console.log(`\n⚙️ [CONTROL] Autopilot: ${botStatus.autoTradeEnabled} | Calibre: $${botStatus.microBetAmount} | Min Edge: ${(botStatus.edgeThreshold * 100).toFixed(0)}% | Take Profit: ${botStatus.takeProfitThreshold}%`);
     
     res.json({ 
         success: true, 
         autoTradeEnabled: botStatus.autoTradeEnabled, 
-        microBetAmount: botStatus.microBetAmount 
+        microBetAmount: botStatus.microBetAmount,
+        edgeThreshold: botStatus.edgeThreshold,
+        takeProfitThreshold: botStatus.takeProfitThreshold
     });
 });
 

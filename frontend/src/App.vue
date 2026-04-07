@@ -2,7 +2,7 @@
 import { ref, onMounted, computed, onUnmounted } from 'vue'
 import axios from 'axios'
 import { 
-  Activity, ShieldCheck, Target, Cpu, Bot, Clock3, Power, ArrowUpRight
+  Activity, ShieldCheck, Target, Cpu, Bot, Clock3, Power, ArrowUpRight, Lock, LifeBuoy
 } from 'lucide-vue-next'
 import Swal from 'sweetalert2';
 
@@ -20,10 +20,55 @@ const status = ref({
   balancePOL: '0.00',
   executions: [],
   pendingSignals: [],
-  autoTradeEnabled: false,
+  autoTradeEnabled: true,
   microBetAmount: 1.00,
-  predictionThreshold: 0.70
+  predictionThreshold: 0.60,
+  edgeThreshold: 0.06,
+  takeProfitThreshold: 15
 })
+
+// --- 🔒 SISTEMA DE LOGIN PREMIUM ---
+const isAuthenticated = ref(!!localStorage.getItem('poly_auth'));
+const authPassword = ref('');
+
+// Escudo: Si el backend nos expulsa (401), cerramos la sesión automáticamente
+axios.interceptors.response.use(
+  response => response,
+  error => {
+    if (error.response && error.response.status === 401) {
+      isAuthenticated.value = false;
+      localStorage.removeItem('poly_auth');
+    }
+    return Promise.reject(error);
+  }
+);
+
+// Si ya ingresamos la clave antes, la pre-cargamos
+if (isAuthenticated.value) {
+  axios.defaults.headers.common['Authorization'] = localStorage.getItem('poly_auth');
+}
+
+const attemptLogin = async () => {
+  try {
+    const res = await axios.get(`${API_URL}/status`, {
+      headers: { 'Authorization': authPassword.value }
+    });
+    // Si la clave es correcta, el backend responderá con los datos
+    localStorage.setItem('poly_auth', authPassword.value);
+    axios.defaults.headers.common['Authorization'] = authPassword.value;
+    isAuthenticated.value = true;
+    Object.assign(status.value, res.data); // Cargamos el dashboard
+  } catch (error) {
+    Swal.fire({ title: 'Acceso Denegado', text: 'Clave incorrecta', icon: 'error', background: '#1c1917', color: '#ef4444' });
+    authPassword.value = '';
+  }
+};
+
+const logout = () => {
+  localStorage.removeItem('poly_auth');
+  delete axios.defaults.headers.common['Authorization'];
+  isAuthenticated.value = false;
+};
 
 const isAutoTradeUpdating = ref(false);
 const isThresholdUpdating = ref(false);
@@ -191,6 +236,78 @@ const sellPosition = async (tokenId, exactSize) => {
   }
 };
 
+// --- 🛟 BOTÓN DE RESCATE DE FONDOS ---
+const triggerRescue = async () => {
+  try {
+    // Como pusimos el endpoint fuera de '/api', le quitamos esa parte a la URL base
+    const baseUrl = API_URL.replace('/api', '');
+    
+    // Mostramos estado de carga
+    Swal.fire({
+      title: 'Rescatando fondos...',
+      text: 'Cancelando órdenes colgadas en Polymarket.',
+      background: '#1c1917',
+      color: '#D4AF37',
+      didOpen: () => { Swal.showLoading(); }
+    });
+
+    const res = await axios.get(`${baseUrl}/rescate`);
+    
+    // Mostramos el mensaje de éxito del backend
+    Swal.fire({
+      title: '¡Operación Exitosa!',
+      text: res.data,
+      icon: 'success',
+      background: '#1c1917',
+      color: '#10B981', // Emerald
+      confirmButtonColor: '#D4AF37'
+    });
+    
+    fetchStatus(); // Refrescamos los números del dashboard al instante
+  } catch (error) {
+    console.error("Error en rescate:", error);
+    Swal.fire({
+      title: 'Error de Rescate',
+      text: 'No se pudo contactar al servidor para el rescate.',
+      icon: 'error',
+      background: '#1c1917',
+      color: '#EF4444'
+    });
+  }
+};
+
+// --- NUEVO CONTROL DE TAKE PROFIT ---
+const updateTakeProfit = async () => {
+  try {
+    await axios.post(`${API_URL}/settings/autotrade`, { 
+      takeProfitThreshold: status.value.takeProfitThreshold 
+    });
+  } catch (error) {
+    console.error("Error al actualizar Take Profit:", error);
+  }
+};
+
+const setTakeProfit = (val) => {
+  status.value.takeProfitThreshold = val;
+  updateTakeProfit();
+};
+
+// --- NUEVO CONTROL DE EDGE ---
+const updateEdge = async () => {
+  try {
+    await axios.post(`${API_URL}/settings/autotrade`, { 
+      edgeThreshold: status.value.edgeThreshold 
+    });
+  } catch (error) {
+    console.error("Error al actualizar Edge:", error);
+  }
+};
+
+const setEdge = (val) => {
+  status.value.edgeThreshold = val;
+  updateEdge();
+};
+
 // --- COMPUTED PROPERTIES ---
 
 const probColor = computed(() => {
@@ -214,7 +331,37 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="min-h-screen bg-[#09090b] text-zinc-300 font-sans p-4 md:p-8 selection:bg-emerald-500/20 selection:text-emerald-300">
+  <div v-if="!isAuthenticated" class="min-h-screen bg-[#09090b] flex flex-col items-center justify-center p-4 relative overflow-hidden selection:bg-[#D4AF37]/20">
+    <div class="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-[#D4AF37]/5 via-[#09090b] to-[#09090b]"></div>
+    
+    <div class="relative z-10 w-full max-w-md bg-[#111114] border border-zinc-800 p-10 rounded-[2rem] shadow-2xl backdrop-blur-sm">
+      <div class="flex justify-center mb-6">
+        <div class="p-5 bg-[#1c1917] border border-[#D4AF37]/30 rounded-2xl shadow-[0_0_30px_rgba(212,175,55,0.1)]">
+          <Lock :size="48" class="text-[#D4AF37]" />
+        </div>
+      </div>
+      
+      <h2 class="text-3xl font-black text-center text-white mb-2 tracking-tighter">Poly<span class="text-[#D4AF37]">Sniper</span></h2>
+      <p class="text-zinc-500 text-xs text-center uppercase tracking-[0.2em] font-bold mb-10">Bóveda de Trading Privada</p>
+      
+      <form @submit.prevent="attemptLogin" class="space-y-6">
+        <div>
+          <label class="block text-[10px] uppercase font-black text-zinc-500 tracking-widest mb-3 text-center">Clave de Acceso</label>
+          <input 
+            type="password" 
+            v-model="authPassword" 
+            class="w-full bg-[#09090b] border-2 border-zinc-800 text-[#D4AF37] font-mono text-center text-2xl rounded-2xl p-4 focus:outline-none focus:border-[#D4AF37]/50 transition-all shadow-inner"
+            placeholder="••••••••"
+          />
+        </div>
+        
+        <button type="submit" class="w-full bg-[#D4AF37] text-[#3C2A21] font-black tracking-[0.3em] uppercase py-5 rounded-2xl hover:bg-amber-400 transition-all shadow-[0_0_20px_rgba(212,175,55,0.2)] hover:scale-[1.02] active:scale-95">
+          Desbloquear
+        </button>
+      </form>
+    </div>
+  </div>
+  <div v-else class="min-h-screen bg-[#09090b] text-zinc-300 font-sans p-4 md:p-8 selection:bg-emerald-500/20 selection:text-emerald-300">
 
     <header class="max-w-[1600px] mx-auto flex flex-col sm:flex-row sm:items-center justify-between mb-10 gap-4 border-b border-zinc-800 pb-8">
       <div class="flex items-center gap-3">
@@ -232,10 +379,21 @@ onUnmounted(() => {
       </div>
       
       <div class="flex items-center gap-3 bg-zinc-900/50 p-2 rounded-full border border-zinc-800 shadow-inner">
+        
+        <button @click="triggerRescue" class="flex items-center gap-2.5 bg-amber-950/40 text-amber-500 px-5 py-3 rounded-full text-sm font-bold hover:bg-amber-900/60 transition active:scale-95 border border-amber-500/20 group">
+          <LifeBuoy :size="18" class="text-amber-500 group-hover:rotate-180 transition-transform duration-500" />
+          RESCATAR USDC
+        </button>
+
         <button @click="triggerPanicStop" class="flex items-center gap-2.5 bg-red-950 text-red-300 px-5 py-3 rounded-full text-sm font-bold hover:bg-red-900 transition active:scale-95 group">
           <Power :size="18" class="text-red-500 group-hover:animate-pulse" />
           EMERGENCY STOP
         </button>
+
+        <button @click="logout" class="flex items-center justify-center bg-zinc-950 border border-zinc-800 text-zinc-500 p-3 rounded-full hover:text-white hover:border-zinc-600 transition-all">
+          <Lock :size="18" />
+        </button>
+
       </div>
     </header>
 
@@ -344,56 +502,6 @@ onUnmounted(() => {
           </div>
         </div>
 
-        <div class="bg-[#1C1612] border border-[#3C2A21] rounded-2xl overflow-hidden shadow-lg">
-          <div class="p-6 border-b border-[#3C2A21] flex justify-between items-center bg-[#251B15]">
-            <h3 class="text-zinc-400 font-black text-xs tracking-widest uppercase flex items-center gap-2">
-              <Activity :size="14" class="text-zinc-500" />
-              Historial de Ejecuciones (Cerradas)
-            </h3>
-          </div>
-
-          <div class="overflow-x-auto">
-            <table class="w-full text-left border-collapse">
-              <thead>
-                <tr class="text-[10px] text-zinc-500 uppercase tracking-tighter border-b border-[#3C2A21]">
-                  <th class="p-4 font-medium">Mercado</th>
-                  <th class="p-4 font-medium">Inversión</th>
-                  <th class="p-4 font-medium">PnL</th>
-                  <th class="p-4 font-medium">Estado</th>
-                </tr>
-              </thead>
-              <tbody class="text-xs">
-                <tr v-for="exec in status.executions.filter(e => !e.status.includes('ACTIVO'))" :key="exec.id" class="border-b border-[#3C2A21]/50 hover:bg-[#2A1D15] transition-colors">
-                  <td class="p-4">
-                    <div class="font-bold text-zinc-400 line-clamp-1">{{ exec.market }}</div>
-                    <span class="text-[9px] text-[#D4AF37] font-mono uppercase tracking-tighter">{{ exec.time }} | ID: {{ exec.id }}</span>
-                  </td>
-                  
-                  <td class="p-4 text-zinc-500 font-mono font-bold">
-                    ${{ exec.inversion?.toFixed(2) || '0.00' }}
-                  </td>
-
-                  <td class="p-4 font-mono">
-                    <div class="font-bold" :class="(exec.pnlUsdc || 0) >= 0 ? 'text-emerald-500/70' : 'text-rose-500/70'">
-                      ${{ exec.valorActual?.toFixed(2) || '0.00' }}
-                    </div>
-                    <div v-if="exec.pnlUsdc !== undefined" class="text-[9px] font-bold opacity-60" :class="exec.pnlUsdc >= 0 ? 'text-emerald-500' : 'text-rose-500'">
-                      {{ exec.pnlUsdc >= 0 ? '+' : '' }}${{ exec.pnlUsdc?.toFixed(2) }} ({{ exec.pnlPct?.toFixed(1) }}%)
-                    </div>
-                  </td>
-
-                  <td class="p-4 font-mono text-[10px]">
-                    <span class="text-zinc-600 font-bold">FINALIZADO</span>
-                  </td>
-                </tr>
-                <tr v-if="!status.executions || status.executions.filter(e => !e.status.includes('ACTIVO')).length === 0">
-                  <td colspan="4" class="p-12 text-center text-zinc-600 italic border-t border-[#3C2A21]/50">No hay operaciones cerradas aún.</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-
         <div class="bg-[#111114] border-2 border-zinc-800 rounded-3xl p-8 mb-8">
           <div class="flex items-center justify-between mb-8 pb-4 border-b border-zinc-800/50">
             <h2 class="text-xl font-bold text-white flex items-center gap-3">
@@ -467,6 +575,56 @@ onUnmounted(() => {
           </div>
         </div>
 
+        <div class="bg-[#1C1612] border border-[#3C2A21] rounded-2xl overflow-hidden shadow-lg">
+          <div class="p-6 border-b border-[#3C2A21] flex justify-between items-center bg-[#251B15]">
+            <h3 class="text-zinc-400 font-black text-xs tracking-widest uppercase flex items-center gap-2">
+              <Activity :size="14" class="text-zinc-500" />
+              Historial de Ejecuciones (Cerradas)
+            </h3>
+          </div>
+
+          <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse">
+              <thead>
+                <tr class="text-[10px] text-zinc-500 uppercase tracking-tighter border-b border-[#3C2A21]">
+                  <th class="p-4 font-medium">Mercado</th>
+                  <th class="p-4 font-medium">Inversión</th>
+                  <th class="p-4 font-medium">PnL</th>
+                  <th class="p-4 font-medium">Estado</th>
+                </tr>
+              </thead>
+              <tbody class="text-xs">
+                <tr v-for="exec in status.executions.filter(e => !e.status.includes('ACTIVO'))" :key="exec.id" class="border-b border-[#3C2A21]/50 hover:bg-[#2A1D15] transition-colors">
+                  <td class="p-4">
+                    <div class="font-bold text-zinc-400 line-clamp-1">{{ exec.market }}</div>
+                    <span class="text-[9px] text-[#D4AF37] font-mono uppercase tracking-tighter">{{ exec.time }} | ID: {{ exec.id }}</span>
+                  </td>
+                  
+                  <td class="p-4 text-zinc-500 font-mono font-bold">
+                    ${{ exec.inversion?.toFixed(2) || '0.00' }}
+                  </td>
+
+                  <td class="p-4 font-mono">
+                    <div class="font-bold" :class="(exec.pnlUsdc || 0) >= 0 ? 'text-emerald-500/70' : 'text-rose-500/70'">
+                      ${{ exec.valorActual?.toFixed(2) || '0.00' }}
+                    </div>
+                    <div v-if="exec.pnlUsdc !== undefined" class="text-[9px] font-bold opacity-60" :class="exec.pnlUsdc >= 0 ? 'text-emerald-500' : 'text-rose-500'">
+                      {{ exec.pnlUsdc >= 0 ? '+' : '' }}${{ exec.pnlUsdc?.toFixed(2) }} ({{ exec.pnlPct?.toFixed(1) }}%)
+                    </div>
+                  </td>
+
+                  <td class="p-4 font-mono text-[10px]">
+                    <span class="text-zinc-600 font-bold">FINALIZADO</span>
+                  </td>
+                </tr>
+                <tr v-if="!status.executions || status.executions.filter(e => !e.status.includes('ACTIVO')).length === 0">
+                  <td colspan="4" class="p-12 text-center text-zinc-600 italic border-t border-[#3C2A21]/50">No hay operaciones cerradas aún.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
         <div class="bg-[#111114] border-2 border-[#D4AF37]/20 rounded-3xl p-8 mb-8 shadow-[0_0_40px_rgba(212,175,55,0.05)] relative overflow-hidden group">
           <div class="absolute -right-10 -top-10 opacity-5 group-hover:opacity-10 transition-all duration-700 rotate-12">
             <Target :size="200" class="text-[#D4AF37]" />
@@ -532,6 +690,78 @@ onUnmounted(() => {
                     ? 'text-red-500 bg-red-500/10 border-red-500/40' 
                     : 'text-amber-400 bg-amber-400/10 border-amber-400/40'">
             {{ (status.predictionThreshold || 0.70) >= 0.75 ? 'MODO SEGURO' : ((status.predictionThreshold || 0.70) <= 0.40 ? 'ALTO RIESGO' : 'ESTÁNDAR') }}
+          </div>
+        </div>
+
+        <div class="bg-[#1c1917] border-2 border-[#D4AF37]/20 rounded-3xl p-5 flex items-center justify-between gap-6 shadow-xl relative overflow-hidden group mt-6 mb-6">
+          
+          <div class="shrink-0 relative z-10">
+            <h3 class="text-[10px] text-zinc-500 font-black uppercase tracking-[0.2em] mb-1">Mínimo Edge</h3>
+            <div class="flex items-baseline gap-1">
+              <span class="text-[#D4AF37] font-mono text-2xl font-black leading-none">
+                {{ ((status.edgeThreshold || 0.08) * 100).toFixed(0) }}
+              </span>
+              <span class="text-[#D4AF37] text-xs font-bold">%</span>
+            </div>
+          </div>
+          
+          <div class="flex-1 flex flex-col gap-2 relative z-10 px-2 justify-center">
+            <input 
+              type="range"
+              min="0.02" max="0.30" step="0.01"
+              v-model.number="status.edgeThreshold"
+              @change="updateEdge"
+              class="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-[#D4AF37]"
+            />
+            <div class="flex justify-between text-[8px] text-zinc-500 uppercase tracking-widest font-black px-1">
+              <span class="hover:text-rose-500 cursor-pointer transition-colors" @click="setEdge(0.04)">4% Agresivo</span>
+              <span class="hover:text-emerald-500 cursor-pointer transition-colors" @click="setEdge(0.15)">15% Seguro</span>
+            </div>
+          </div>
+          
+          <div class="text-[9px] font-black w-24 leading-tight uppercase text-center py-2 px-1 rounded-lg border transition-all duration-300 relative z-10"
+              :class="(status.edgeThreshold || 0.08) >= 0.12 
+                  ? 'text-emerald-500 bg-emerald-500/10 border-emerald-500/40'
+                  : (status.edgeThreshold || 0.08) <= 0.05 
+                    ? 'text-rose-500 bg-rose-500/10 border-rose-500/40' 
+                    : 'text-amber-400 bg-amber-400/10 border-amber-400/40'">
+            {{ (status.edgeThreshold || 0.08) >= 0.12 ? 'CONSERVADOR' : ((status.edgeThreshold || 0.08) <= 0.05 ? 'FRANCOTIRADOR' : 'ESTÁNDAR') }}
+          </div>
+        </div>
+
+        <div class="bg-[#1c1917] border-2 border-emerald-500/20 rounded-3xl p-5 flex items-center justify-between gap-6 shadow-xl relative overflow-hidden group mb-8">
+          
+          <div class="shrink-0 relative z-10">
+            <h3 class="text-[10px] text-zinc-500 font-black uppercase tracking-[0.2em] mb-1">Take Profit</h3>
+            <div class="flex items-baseline gap-1">
+              <span class="text-emerald-500 font-mono text-2xl font-black leading-none">
+                {{ status.takeProfitThreshold || 15 }}
+              </span>
+              <span class="text-emerald-500 text-xs font-bold">%</span>
+            </div>
+          </div>
+          
+          <div class="flex-1 flex flex-col gap-2 relative z-10 px-2 justify-center">
+            <input 
+              type="range"
+              min="5" max="50" step="1"
+              v-model.number="status.takeProfitThreshold"
+              @change="updateTakeProfit"
+              class="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-emerald-500"
+            />
+            <div class="flex justify-between text-[8px] text-zinc-500 uppercase tracking-widest font-black px-1">
+              <span class="hover:text-emerald-400 cursor-pointer transition-colors" @click="setTakeProfit(10)">10% Scalping</span>
+              <span class="hover:text-amber-500 cursor-pointer transition-colors" @click="setTakeProfit(30)">30% Holdeo</span>
+            </div>
+          </div>
+          
+          <div class="text-[9px] font-black w-24 leading-tight uppercase text-center py-2 px-1 rounded-lg border transition-all duration-300 relative z-10"
+              :class="(status.takeProfitThreshold || 15) >= 25 
+                  ? 'text-amber-500 bg-amber-500/10 border-amber-500/40'
+                  : (status.takeProfitThreshold || 15) <= 10 
+                    ? 'text-emerald-400 bg-emerald-400/10 border-emerald-400/40' 
+                    : 'text-emerald-500 bg-emerald-500/10 border-emerald-500/40'">
+            {{ (status.takeProfitThreshold || 15) >= 25 ? 'PACIENTE' : ((status.takeProfitThreshold || 15) <= 10 ? 'AGRESIVO' : 'ESTÁNDAR') }}
           </div>
         </div>
 
