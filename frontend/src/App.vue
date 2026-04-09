@@ -22,9 +22,15 @@ const status = ref({
   pendingSignals: [],
   autoTradeEnabled: true,
   microBetAmount: 1.00,
-  predictionThreshold: 0.60,
-  edgeThreshold: 0.06,
-  takeProfitThreshold: 15
+  predictionThreshold: 0.70,
+  edgeThreshold: 0.09,
+  takeProfitThreshold: 18,
+  marketFilters: { crypto: true, politics: true, sports: true, pop: true, business: true },
+  copyTradingEnabled: false,
+    maxCopySize: 50,
+    maxCopyPercentOfBalance: 8,
+    autoSelectedWhales: [],
+    copiedTrades: []
 })
 
 // --- 🔒 SISTEMA DE LOGIN PREMIUM ---
@@ -308,7 +314,72 @@ const setEdge = (val) => {
   updateEdge();
 };
 
+const updateCopyTrading = async () => {
+  try {
+    await axios.post(`${API_URL}/settings/copytrading`, {
+      enabled: status.value.copyTradingEnabled,
+      maxCopySize: status.value.maxCopySize,
+      maxCopyPercent: status.value.maxCopyPercentOfBalance,
+      maxWhalesToCopy: status.value.maxWhalesToCopy
+    });
+  } catch (error) {
+    console.error("Error actualizando Copy Trading settings", error);
+  }
+};
+
+const updateFilters = async () => {
+  try {
+    await axios.post(`${API_URL}/settings/filters`, status.value.marketFilters);
+  } catch (error) {
+    console.error("Error actualizando filtros", error);
+  }
+};
+
+// --- SISTEMA DE TERMINAL ---
+const systemLogs = ref([]);
+
+const fetchLogs = async () => {
+  try {
+    const res = await axios.get(`${API_URL}/logs`);
+    // Invertimos el arreglo para que los mensajes más nuevos salgan arriba
+    systemLogs.value = res.data.reverse(); 
+  } catch (error) {
+    console.error("Error al obtener logs de la terminal");
+  }
+};
+
 // --- COMPUTED PROPERTIES ---
+
+// 1. Valor total de las posiciones que siguen vivas
+const activePortfolioValue = computed(() => {
+  if (!status.value.activePositions) return 0;
+  return status.value.activePositions.reduce((acc, pos) => {
+    // Sumamos solo las que no están en fase de "CANJEAR"
+    return !pos.status.includes('CANJEAR') ? acc + parseFloat(pos.currentValue || 0) : acc;
+  }, 0);
+});
+
+// 2. Cartera Total (Efectivo libre + Valor de posiciones activas)
+const totalCartera = computed(() => {
+  const cash = parseFloat(status.value.clobOnlyUSDC || status.value.balanceUSDC || 0);
+  return (cash + activePortfolioValue.value).toFixed(2);
+});
+
+// 3. Beneficio/Pérdida Flotante (Suma del PnL de todas tus posiciones abiertas)
+const floatingPnL = computed(() => {
+  if (!status.value.activePositions) return 0;
+  return status.value.activePositions.reduce((acc, pos) => {
+     return !pos.status.includes('CANJEAR') ? acc + parseFloat(pos.cashPnl || 0) : acc;
+  }, 0);
+});
+
+const floatingPnLPct = computed(() => {
+  const pnl = floatingPnL.value;
+  // Inversión original = Valor actual - Ganancia
+  const invested = activePortfolioValue.value - pnl;
+  if (invested <= 0) return "0.00";
+  return ((pnl / invested) * 100).toFixed(2);
+});
 
 const probColor = computed(() => {
   const p = status.value.lastProbability;
@@ -320,9 +391,15 @@ const probColor = computed(() => {
 // --- CICLO DE VIDA ---
 
 onMounted(() => {
+  // 1. Carga inicial al abrir la app
   fetchStatus();
-  // Polling de 3 segundos para balance y signals (más eficiente que 5)
-  pollingInterval = setInterval(fetchStatus, 3000);
+  fetchLogs(); 
+
+  // 2. Polling de 3 segundos para TODO (Balance, Señales y Terminal en vivo)
+  pollingInterval = setInterval(() => {
+    fetchStatus();
+    fetchLogs(); // <--- NUEVO: La terminal ahora tiene vida propia
+  }, 3000);
 });
 
 onUnmounted(() => {
@@ -401,17 +478,50 @@ onUnmounted(() => {
       
       <div class="col-span-12 xl:col-span-8 space-y-8">
         
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-4"> <div class="bg-[#1c1917] border-2 border-[#D4AF37] p-5 rounded-3xl shadow-[0_0_20px_rgba(212,175,55,0.2)] relative overflow-hidden group">
+<div class="grid grid-cols-1 md:grid-cols-3 gap-5"> 
+          
+          <div class="bg-[#1c1917] border-2 border-[#D4AF37] p-5 rounded-3xl shadow-[0_0_20px_rgba(212,175,55,0.2)] relative overflow-hidden group flex flex-col justify-center">
             <div class="absolute -right-6 -top-6 opacity-10"><Target :size="80" class="text-[#D4AF37]" /></div>
-            <p class="text-[9px] uppercase font-black text-[#D4AF37] tracking-widest mb-1">Polymarket Capital</p>
+            <p class="text-[10px] uppercase font-black text-[#D4AF37] tracking-widest mb-1">Cartera</p>
             <div class="flex items-baseline gap-1">
-              <h3 class="text-3xl font-extrabold text-white font-mono">${{ status.clobOnlyUSDC || status.balanceUSDC }}</h3>
-              <span class="text-[10px] text-zinc-500 font-bold">USDC</span>
+              <h3 class="text-4xl font-extrabold text-white font-mono">${{ totalCartera }}</h3>
             </div>
-            <p class="text-[8px] text-zinc-500 mt-2 uppercase tracking-tighter italic">Listo para operar</p>
+            <p class="text-[9px] text-zinc-400 mt-2 font-bold uppercase tracking-tighter flex items-center gap-1">
+              <span class="w-1.5 h-1.5 rounded-full bg-[#D4AF37] animate-pulse"></span> Valor total de la cuenta
+            </p>
           </div>
 
-          <div class="bg-[#111114] border border-zinc-800 p-5 rounded-3xl hover:border-blue-900/50 transition-all">
+          <div class="bg-[#111114] border border-zinc-800 p-5 rounded-3xl flex flex-col justify-center hover:border-zinc-700 transition-all">
+            <p class="text-[10px] uppercase font-black text-zinc-500 tracking-widest mb-1">Disponible para operar</p>
+            <div class="flex items-baseline gap-1">
+              <h3 class="text-3xl font-bold text-zinc-200 font-mono">${{ status.clobOnlyUSDC || status.balanceUSDC }}</h3>
+              <span class="text-[10px] text-zinc-600 font-bold">USDC</span>
+            </div>
+            <p class="text-[9px] text-zinc-500 mt-2 font-bold uppercase tracking-tighter">
+              Efectivo libre en Polymarket
+            </p>
+          </div>
+
+          <div class="bg-[#111114] border border-zinc-800 p-5 rounded-3xl relative overflow-hidden flex flex-col justify-center">
+            <p class="text-[10px] uppercase font-black tracking-widest mb-1 flex items-center gap-1"
+               :class="floatingPnL >= 0 ? 'text-emerald-500/70' : 'text-rose-500/70'">
+               <Activity :size="12" /> Beneficio / Pérdida
+            </p>
+            <div class="flex items-baseline gap-2">
+              <h3 class="text-3xl font-bold font-mono" :class="floatingPnL >= 0 ? 'text-emerald-500' : 'text-rose-500'">
+                {{ floatingPnL >= 0 ? '+' : '-' }}${{ Math.abs(floatingPnL).toFixed(2) }}
+              </h3>
+              <span class="text-xs font-bold font-mono" :class="floatingPnL >= 0 ? 'text-emerald-500/80' : 'text-rose-500/80'">
+                ({{ floatingPnL >= 0 ? '+' : '' }}{{ floatingPnLPct }}%)
+              </span>
+            </div>
+            
+            <div class="absolute bottom-0 left-0 w-full h-1" 
+                 :class="floatingPnL >= 0 ? 'bg-gradient-to-r from-emerald-900 to-emerald-500' : 'bg-gradient-to-r from-rose-900 to-rose-500'">
+            </div>
+          </div>
+
+          <div class="bg-[#111114] border border-zinc-800 p-5 rounded-3xl hover:border-blue-900/50 transition-all flex flex-col justify-center">
             <p class="text-[9px] uppercase font-black text-zinc-500 tracking-widest mb-1">MetaMask Wallet</p>
             <div class="flex items-baseline gap-1">
               <h3 class="text-2xl font-bold text-zinc-200 font-mono">${{ status.walletOnlyUSDC }}</h3>
@@ -422,7 +532,7 @@ onUnmounted(() => {
             </div>
           </div>
 
-          <div class="bg-[#111114] border border-zinc-800 p-5 rounded-3xl">
+          <div class="bg-[#111114] border border-zinc-800 p-5 rounded-3xl flex flex-col justify-center">
             <p class="text-[9px] uppercase font-black text-zinc-500 tracking-widest mb-1">Gas Network</p>
             <div class="flex items-baseline gap-1">
               <h3 class="text-2xl font-bold text-zinc-200 font-mono">{{ status.balancePOL }}</h3>
@@ -430,7 +540,7 @@ onUnmounted(() => {
             </div>
           </div>
 
-          <div class="bg-[#111114] border border-zinc-800 p-5 rounded-3xl relative overflow-hidden">
+          <div class="bg-[#111114] border border-zinc-800 p-5 rounded-3xl flex flex-col justify-center">
             <p class="text-[9px] uppercase font-black text-zinc-500 tracking-widest mb-1">IA Confidence</p>
             <h3 class="text-2xl font-bold font-mono" :class="probColor">{{ (status.lastProbability * 100).toFixed(1) }}%</h3>
           </div>
@@ -575,6 +685,62 @@ onUnmounted(() => {
           </div>
         </div>
 
+        <div class="bg-[#111114] border-2 border-purple-500/10 rounded-3xl p-8 mb-8">
+          <div class="flex items-center justify-between mb-8 pb-4 border-b border-zinc-800/50">
+            <h2 class="text-xl font-bold text-white flex items-center gap-3">
+                <Target :size="24" class="text-purple-500" /> 
+                Operaciones Copy Trading (Whales)
+            </h2>
+            <div class="text-[10px] font-black uppercase tracking-widest bg-purple-500/10 text-purple-400 px-3 py-1 rounded-lg border border-purple-500/20">
+              Piloto Automático
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div v-for="trade in status.copiedTrades" :key="trade.id" class="bg-[#1c1917] border border-purple-500/20 rounded-2xl p-5 hover:border-purple-500/50 transition-all flex flex-col justify-between relative overflow-hidden">
+              
+              <div class="absolute -right-4 -bottom-4 opacity-5 pointer-events-none">
+                 <Target :size="100" class="text-purple-500" />
+              </div>
+
+              <div class="relative z-10">
+                <div class="flex justify-between items-start mb-4">
+                  <div class="flex flex-col">
+                    <span class="text-[8px] font-black text-zinc-500 uppercase tracking-widest">Entrada MKT</span>
+                    <span class="text-xl font-black text-white font-mono">${{ trade.price.toFixed(3) }}</span>
+                  </div>
+                  <span class="text-[9px] font-mono text-purple-400 bg-purple-500/10 px-2 py-1 rounded-lg border border-purple-500/20">
+                    {{ trade.time }}
+                  </span>
+                </div>
+                
+                <p class="text-zinc-300 font-bold text-xs leading-tight mb-4 line-clamp-3" :title="trade.market">{{ trade.market }}</p>
+              </div>
+              
+              <div class="flex justify-between items-center bg-[#171319] border border-purple-500/10 rounded-xl p-3 relative z-10">
+                <div class="flex flex-col">
+                  <span class="text-[8px] font-black text-zinc-500 uppercase">Whale ID</span>
+                  <span class="text-xs font-mono font-bold text-purple-400">
+                    {{ trade.whale.substring(0, 6) }}...{{ trade.whale.substring(trade.whale.length - 4) }}
+                  </span>
+                </div>
+
+                <div class="flex flex-col items-end">
+                  <span class="text-[8px] font-black text-zinc-500 uppercase">Inversión</span>
+                  <span class="text-xs font-mono font-bold text-emerald-400">${{ Number(trade.size).toFixed(2) }}</span>
+                </div>
+              </div>
+
+            </div>
+
+            <div v-if="!status.copiedTrades || status.copiedTrades.length === 0" 
+                 class="col-span-full bg-zinc-900/30 border border-zinc-800 border-dashed rounded-2xl p-8 text-center flex flex-col items-center justify-center">
+                 <Target :size="24" class="text-zinc-600 mb-2" />
+                 <p class="text-zinc-500 text-xs font-medium italic">Esperando que las ballenas realicen movimientos...</p>
+            </div>
+          </div>
+        </div>
+
         <div class="bg-[#1C1612] border border-[#3C2A21] rounded-2xl overflow-hidden shadow-lg">
           <div class="p-6 border-b border-[#3C2A21] flex justify-between items-center bg-[#251B15]">
             <h3 class="text-zinc-400 font-black text-xs tracking-widest uppercase flex items-center gap-2">
@@ -587,38 +753,58 @@ onUnmounted(() => {
             <table class="w-full text-left border-collapse">
               <thead>
                 <tr class="text-[10px] text-zinc-500 uppercase tracking-tighter border-b border-[#3C2A21]">
+                  <th class="p-4 font-medium w-28">Actividad</th>
                   <th class="p-4 font-medium">Mercado</th>
-                  <th class="p-4 font-medium">Inversión</th>
-                  <th class="p-4 font-medium">PnL</th>
-                  <th class="p-4 font-medium">Estado</th>
+                  <th class="p-4 font-medium text-right">Valor</th>
+                  <th class="p-4 font-medium text-right">Tiempo</th>
                 </tr>
               </thead>
+
               <tbody class="text-xs">
-                <tr v-for="exec in status.executions.filter(e => !e.status.includes('ACTIVO'))" :key="exec.id" class="border-b border-[#3C2A21]/50 hover:bg-[#2A1D15] transition-colors">
-                  <td class="p-4">
-                    <div class="font-bold text-zinc-400 line-clamp-1">{{ exec.market }}</div>
-                    <span class="text-[9px] text-[#D4AF37] font-mono uppercase tracking-tighter">{{ exec.time }} | ID: {{ exec.id }}</span>
+                <tr v-for="exec in status.executions" :key="exec.id" class="border-b border-[#3C2A21]/50 hover:bg-[#2A1D15] transition-colors">
+                  
+                  <td class="p-4 font-bold text-xs whitespace-nowrap">
+                    <div v-if="exec.status === 'Vendido'" class="text-zinc-300 flex items-center gap-2">
+                      <div class="w-4 h-4 rounded-full bg-zinc-800 flex items-center justify-center text-[10px] text-zinc-400 font-black">−</div> Vendido
+                    </div>
+                    <div v-else-if="exec.status === 'Comprado'" class="text-zinc-300 flex items-center gap-2">
+                      <div class="w-4 h-4 rounded-full bg-zinc-800 flex items-center justify-center text-[10px] text-zinc-400 font-black">+</div> Comprado
+                    </div>
+                    <div v-else-if="exec.status === 'Perdido'" class="text-rose-500 flex items-center gap-2">
+                      <div class="w-4 h-4 rounded-full bg-rose-500/20 flex items-center justify-center text-[10px] text-rose-500 font-black">×</div> Perdido
+                    </div>
                   </td>
                   
-                  <td class="p-4 text-zinc-500 font-mono font-bold">
-                    ${{ exec.inversion?.toFixed(2) || '0.00' }}
-                  </td>
-
-                  <td class="p-4 font-mono">
-                    <div class="font-bold" :class="(exec.pnlUsdc || 0) >= 0 ? 'text-emerald-500/70' : 'text-rose-500/70'">
-                      ${{ exec.valorActual?.toFixed(2) || '0.00' }}
-                    </div>
-                    <div v-if="exec.pnlUsdc !== undefined" class="text-[9px] font-bold opacity-60" :class="exec.pnlUsdc >= 0 ? 'text-emerald-500' : 'text-rose-500'">
-                      {{ exec.pnlUsdc >= 0 ? '+' : '' }}${{ exec.pnlUsdc?.toFixed(2) }} ({{ exec.pnlPct?.toFixed(1) }}%)
+                  <td class="p-4">
+                    <div class="font-bold text-zinc-300 mb-1.5 leading-snug pr-4">{{ exec.market }}</div>
+                    <div class="flex items-center gap-2">
+                      <span class="px-2 py-0.5 rounded text-[10px] font-bold"
+                            :class="exec.outcome === 'Yes' || exec.outcome === 'Over' ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20' : 'bg-rose-500/10 text-rose-500 border border-rose-500/20'">
+                        {{ exec.outcome }} {{ exec.priceCents }}¢
+                      </span>
+                      <span class="text-[10px] text-zinc-500 font-medium">{{ exec.shares }} acciones</span>
                     </div>
                   </td>
-
-                  <td class="p-4 font-mono text-[10px]">
-                    <span class="text-zinc-600 font-bold">FINALIZADO</span>
+                  
+                  <td class="p-4 font-mono font-bold text-right text-sm">
+                    <div v-if="exec.status === 'Vendido'" class="text-emerald-500">
+                      +${{ exec.inversion?.toFixed(2) }}
+                    </div>
+                    <div v-else-if="exec.status === 'Comprado'" class="text-zinc-300">
+                      -${{ exec.inversion?.toFixed(2) }}
+                    </div>
+                    <div v-else-if="exec.status === 'Perdido'" class="text-zinc-600">
+                      -
+                    </div>
                   </td>
+
+                  <td class="p-4 text-[10px] text-zinc-500 font-mono text-right whitespace-nowrap">
+                    {{ exec.time }}
+                  </td>
+
                 </tr>
-                <tr v-if="!status.executions || status.executions.filter(e => !e.status.includes('ACTIVO')).length === 0">
-                  <td colspan="4" class="p-12 text-center text-zinc-600 italic border-t border-[#3C2A21]/50">No hay operaciones cerradas aún.</td>
+                <tr v-if="!status.executions || status.executions.length === 0">
+                  <td colspan="4" class="p-12 text-center text-zinc-600 italic border-t border-[#3C2A21]/50">El historial está vacío.</td>
                 </tr>
               </tbody>
             </table>
@@ -653,14 +839,39 @@ onUnmounted(() => {
           </div>
         </div>
 
+        <div class="bg-[#0a0a0a] border border-[#D4AF37]/30 rounded-3xl p-5 shadow-2xl mt-8">
+          <div class="flex justify-between items-center mb-4 border-b border-[#D4AF37]/20 pb-3">
+            <div class="flex items-center gap-2">
+              <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+              <h3 class="text-[10px] text-[#D4AF37] font-black uppercase tracking-[0.2em]">Live Terminal</h3>
+            </div>
+            <button @click="fetchLogs" class="text-[10px] text-zinc-400 hover:text-[#D4AF37] uppercase tracking-widest font-bold transition-colors border border-zinc-800 hover:border-[#D4AF37]/50 px-3 py-1 rounded-lg">
+              Actualizar
+            </button>
+          </div>
+          
+          <div class="h-64 overflow-y-auto custom-scroll flex flex-col gap-1.5 font-mono text-[10px] sm:text-xs pr-2 bg-black/50 p-3 rounded-xl border border-zinc-900">
+            <div v-for="(log, i) in systemLogs" :key="i" class="leading-relaxed border-b border-zinc-900/50 pb-1" :class="log.type === 'error' ? 'text-rose-500' : 'text-zinc-300'">
+              <span class="text-zinc-600 mr-2">[{{ log.time }}]</span>
+              <span v-if="log.type === 'error'" class="mr-1">❌</span>
+              <span v-else-if="log.message.includes('🎯')" class="mr-1"></span>
+              <span v-else class="text-zinc-500 mr-1">></span>
+              {{ log.message }}
+            </div>
+            <div v-if="systemLogs.length === 0" class="text-zinc-600 italic text-center mt-10">
+              Esperando actividad del servidor...
+            </div>
+          </div>
+        </div>
+
       </div>
 
       <div class="col-span-12 xl:col-span-4 h-full space-y-6">
 
         <div class="bg-[#1c1917] border-2 border-[#D4AF37]/20 rounded-3xl p-5 flex items-center justify-between gap-6 shadow-xl relative overflow-hidden group">
           
-          <div class="shrink-0 relative z-10">
-            <h3 class="text-[10px] text-zinc-500 font-black uppercase tracking-[0.2em] mb-1">Filtro Sensibilidad</h3>
+          <div class="shrink-0 relative z-10 w-[60px] sm:w-auto">
+            <h3 class="text-[10px] text-zinc-500 font-black uppercase tracking-[0.2em] mb-1 leading-tight sm:leading-normal">Filtro<br class="sm:hidden"> Sens.</h3>
             <div class="flex items-baseline gap-1">
               <span class="text-[#D4AF37] font-mono text-2xl font-black leading-none">
                 {{ ((status.predictionThreshold || 0.70) * 100).toFixed(0) }}
@@ -672,18 +883,18 @@ onUnmounted(() => {
           <div class="flex-1 flex flex-col gap-2 relative z-10 px-2 justify-center">
             <input 
               type="range"
-              min="0.10" max="0.95" step="0.05"
+              min="0.10" max="0.95" step="0.01"
               v-model.number="status.predictionThreshold"
               @change="updateThreshold"
               class="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-[#D4AF37]"
             />
-            <div class="flex justify-between text-[8px] text-zinc-500 uppercase tracking-widest font-black px-1">
+            <div class="flex justify-between text-[8px] text-zinc-500 uppercase tracking-widest font-black px-1 flex-col sm:flex-row text-center sm:text-left gap-1 sm:gap-0">
               <span class="hover:text-amber-500 cursor-pointer transition-colors" @click="setThreshold(0.50)">50% Riesgo</span>
               <span class="hover:text-emerald-500 cursor-pointer transition-colors" @click="setThreshold(0.85)">85% Seguro</span>
             </div>
           </div>
           
-          <div class="text-[9px] font-black w-24 leading-tight uppercase text-center py-2 px-1 rounded-lg border transition-all duration-300 relative z-10"
+          <div class="text-[7.5px] sm:text-[9px] shrink-0 font-black w-20 sm:w-24 leading-tight uppercase text-center py-2 px-1 rounded-lg border transition-all duration-300 relative z-10"
               :class="(status.predictionThreshold || 0.70) >= 0.75 
                   ? 'text-emerald-500 bg-emerald-500/10 border-emerald-500/40'
                   : (status.predictionThreshold || 0.70) <= 0.40 
@@ -691,6 +902,7 @@ onUnmounted(() => {
                     : 'text-amber-400 bg-amber-400/10 border-amber-400/40'">
             {{ (status.predictionThreshold || 0.70) >= 0.75 ? 'MODO SEGURO' : ((status.predictionThreshold || 0.70) <= 0.40 ? 'ALTO RIESGO' : 'ESTÁNDAR') }}
           </div>
+          
         </div>
 
         <div class="bg-[#1c1917] border-2 border-[#D4AF37]/20 rounded-3xl p-5 flex items-center justify-between gap-6 shadow-xl relative overflow-hidden group mt-6 mb-6">
@@ -807,6 +1019,137 @@ onUnmounted(() => {
               <div v-if="status.autoTradeEnabled" class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></div>
               <span>{{ status.autoTradeEnabled ? 'ARMADO' : 'SEGURO' }}</span>
             </div>
+          </div>
+        </div>
+
+        <div class="bg-[#111114] border-2 border-emerald-500/20 hover:border-emerald-500/50 rounded-3xl p-6 transition-all shadow-xl">
+          <div class="flex items-center justify-between mb-4 pb-4 border-b border-zinc-800">
+            <div class="flex items-center gap-3">
+              <div class="p-2 bg-emerald-500/10 rounded-xl border border-emerald-500/20">
+                <ShieldCheck :size="20" class="text-emerald-500" />
+              </div>
+              <div>
+                <h3 class="text-white font-black text-sm tracking-wide">Filtro de Mercados</h3>
+                <p class="text-[10px] text-zinc-500">Apaga sectores con alta volatilidad</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            <label v-for="(val, key) in status.marketFilters" :key="key" class="flex items-center justify-between p-3 rounded-xl border cursor-pointer transition-all"
+                  :class="val ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-zinc-900 border-zinc-800 opacity-50 hover:opacity-100'">
+              <span class="text-xs font-bold text-white capitalize">{{ key }}</span>
+              <input type="checkbox" v-model="status.marketFilters[key]" @change="updateFilters" class="sr-only">
+              <div class="w-3 h-3 rounded-full" :class="val ? 'bg-emerald-400 shadow-[0_0_10px_#34d399]' : 'bg-zinc-600'"></div>
+            </label>
+          </div>
+        </div>
+
+        <!-- ==================== COPY TRADING CONTROLS ==================== -->
+        <div class="bg-[#111114] border-2 border-purple-500/20 hover:border-purple-500/50 rounded-3xl p-6 transition-all shadow-xl">
+          <div class="flex items-center justify-between mb-4 pb-4 border-b border-zinc-800">
+            <div class="flex items-center gap-3">
+              <div class="p-2 bg-purple-500/10 rounded-xl border border-purple-500/20">
+                <Target :size="20" class="text-purple-500" />
+              </div>
+              <div>
+                <h3 class="text-white font-black text-sm tracking-wide">Copy Trading</h3>
+                <p class="text-[10px] text-zinc-500">Copiar a las mejores whales</p>
+              </div>
+            </div>
+            
+            <!-- Toggle corregido (igual estilo que Autopilot) -->
+            <label class="relative inline-flex items-center cursor-pointer group/toggle">
+              <input 
+                type="checkbox" 
+                v-model="status.copyTradingEnabled" 
+                @change="updateCopyTrading"
+                class="sr-only peer"
+              >
+              <div class="w-11 h-6 bg-zinc-800 rounded-full peer peer-focus:ring-2 peer-focus:ring-purple-500/20 
+                          peer-checked:after:translate-x-full peer-checked:after:border-white 
+                          after:content-[''] after:absolute after:top-[2px] after:left-[2px] 
+                          after:bg-zinc-300 after:border-gray-300 after:border after:rounded-full 
+                          after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-500 
+                          group-hover/toggle:shadow-[0_0_15px_rgba(168,85,247,0.3)]"></div>
+            </label>
+          </div>
+
+          <div v-if="status.copyTradingEnabled" class="space-y-5">
+            
+            <!-- Tamaño máximo por copia -->
+            <div>
+              <div class="flex justify-between text-xs mb-1.5">
+                <span class="text-zinc-400">Tamaño máximo por copia</span>
+                <span class="font-mono text-purple-400">{{ status.maxCopySize }} shares</span>
+              </div>
+              <input 
+                type="range" 
+                min="10" 
+                max="200" 
+                step="5"
+                v-model.number="status.maxCopySize"
+                @change="updateCopyTrading"
+                class="w-full accent-purple-500"
+              >
+            </div>
+
+            <!-- % máximo del balance -->
+            <div>
+              <div class="flex justify-between text-xs mb-1.5">
+                <span class="text-zinc-400">% máximo del balance por copia</span>
+                <span class="font-mono text-purple-400">{{ status.maxCopyPercentOfBalance }}%</span>
+              </div>
+              <input 
+                type="range" 
+                min="2" 
+                max="15" 
+                step="1"
+                v-model.number="status.maxCopyPercentOfBalance"
+                @change="updateCopyTrading"
+                class="w-full accent-purple-500"
+              >
+            </div>
+
+            <!-- Cantidad de ballenas seleccionadas -->
+             <div>
+              <div class="flex justify-between text-xs mb-1.5">
+                <span class="text-zinc-400">Cantidad de ballenas a copiar</span>
+                <span class="font-mono text-purple-400">{{ status.maxWhalesToCopy || 10 }}</span>
+              </div>
+              <input 
+                type="range" 
+                min="1" 
+                max="20" 
+                step="1"
+                v-model.number="status.maxWhalesToCopy"
+                @change="updateCopyTrading"
+                class="w-full accent-purple-500"
+              >
+            </div>
+
+            <!-- Lista de Whales seleccionadas -->
+            <div>
+              <p class="text-xs text-zinc-400 mb-2">Whales seleccionadas automáticamente</p>
+              <div class="max-h-52 overflow-y-auto custom-scroll space-y-2 text-xs">
+                <div v-for="(whale, i) in status.autoSelectedWhales || []" :key="i"
+                     class="bg-zinc-900/70 border border-zinc-700 rounded-xl p-3">
+                  <div class="font-mono text-purple-400 text-[10px]">{{ whale.address.substring(0,12) }}...</div>
+                  <div class="flex justify-between text-[10px] mt-1 text-zinc-400">
+                    <span>PnL: <span class="text-emerald-400">${{ Number(whale.pnl || 0).toLocaleString() }}</span></span>
+                    <span>Vol: ${{ Number(whale.volume || 0).toLocaleString() }}</span>
+                  </div>
+                </div>
+                <div v-if="!status.autoSelectedWhales || status.autoSelectedWhales.length === 0" 
+                     class="text-center py-4 text-zinc-500 text-xs">
+                  Esperando selección automática...
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div v-else class="text-center py-8 text-zinc-500 text-sm italic">
+            Activa Copy Trading para seguir automáticamente a las mejores ballenas
           </div>
         </div>
         
