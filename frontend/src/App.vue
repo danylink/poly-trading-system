@@ -25,7 +25,7 @@ const status = ref({
   predictionThreshold: 0.70,
   edgeThreshold: 0.09,
   takeProfitThreshold: 18,
-  marketFilters: { crypto: true, politics: true, sports: true, pop: true, business: true },
+  marketFilters: { crypto: true, politics: true, business: true, sports: false, pop: false },
   copyTradingEnabled: false,
     maxCopySize: 50,
     maxCopyPercentOfBalance: 8,
