@@ -1305,11 +1305,11 @@ async function runBot() {
         const alreadyClosed = closedPositionsCache.has(targetTokenId);
 
         const isStrongSignal = 
-            (!alreadyInvested && !alreadyClosed) && (
-                (analysis.recommendation === "STRONG_BUY" && edge > 0.08) ||
-                (analysis.recommendation === "BUY" && edge >= botStatus.edgeThreshold && targetProb >= botStatus.predictionThreshold) ||
-                (analysis.urgency >= 9 && edge >= 0.07) ||                    // más exigente
-                (marketItem.category === "SHORT_TERM" && edge >= 0.095 && targetProb >= 0.68)  // más exigente
+            (!alreadyInvested && !alreadyClosed) && (          // ← 1. Seguridad básica
+                (analysis.recommendation === "STRONG_BUY" && edge > 0.09) ||     // ← 2. Claude dice "fuerte"
+                (analysis.recommendation === "BUY" && edge >= botStatus.edgeThreshold && targetProb >= botStatus.predictionThreshold) || 
+                (analysis.urgency >= 9 && edge >= 0.085) ||                      // ← 3. Urgencia alta
+                (marketItem.category === "SHORT_TERM" && edge >= 0.11 && targetProb >= 0.73)  // ← 4. Mercados rápidos
             );
 
         let autoExecuted = false;
