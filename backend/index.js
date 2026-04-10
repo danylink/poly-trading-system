@@ -170,18 +170,21 @@ let botStatus = {
 // ==========================================
 // 🧠 MOTOR DE MEMORIA PERSISTENTE
 // ==========================================
+// ==========================================
+// 🧠 MOTOR DE MEMORIA PERSISTENTE
+// ==========================================
 const CONFIG_FILE = './bot_config.json';
 
 // Función para GUARDAR la configuración en el disco duro
 function saveConfigToDisk() {
     try {
-        // Solo guardamos lo que nos importa (Riesgo, Filtros y Copy-Trading)
         const configToSave = {
             standardConfig: botStatus.standardConfig,
             volatileConfig: botStatus.volatileConfig,
             marketFilters: botStatus.marketFilters,
             copyTradingEnabled: botStatus.copyTradingEnabled,
-            maxCopySize: botStatus.maxCopySize
+            maxCopySize: botStatus.maxCopySize,
+            maxWhalesToCopy: botStatus.maxWhalesToCopy // 🔥 AQUÍ AGREGAMOS LAS BALLENAS
         };
         fs.writeFileSync(CONFIG_FILE, JSON.stringify(configToSave, null, 2), 'utf8');
         console.log("💾 Configuración guardada en el disco duro.");
@@ -203,6 +206,9 @@ function loadConfigFromDisk() {
             if (savedConfig.marketFilters) botStatus.marketFilters = savedConfig.marketFilters;
             if (savedConfig.copyTradingEnabled !== undefined) botStatus.copyTradingEnabled = savedConfig.copyTradingEnabled;
             if (savedConfig.maxCopySize !== undefined) botStatus.maxCopySize = savedConfig.maxCopySize;
+            
+            // 🔥 AQUÍ RESTAURAMOS LAS BALLENAS
+            if (savedConfig.maxWhalesToCopy !== undefined) botStatus.maxWhalesToCopy = savedConfig.maxWhalesToCopy;
 
             console.log("📂 Configuración anterior restaurada con éxito.");
         } else {
