@@ -1,0 +1,25 @@
+{
+  "standardConfig": {
+    "predictionThreshold": 0.7,
+    "edgeThreshold": 0.09,
+    "takeProfitThreshold": 20,
+    "stopLossThreshold": -20,
+    "maxCopyPercentOfBalance": 8
+  },
+  "volatileConfig": {
+    "predictionThreshold": 0.85,
+    "edgeThreshold": 0.12,
+    "takeProfitThreshold": 25,
+    "stopLossThreshold": -30,
+    "maxCopyPercentOfBalance": 2
+  },
+  "marketFilters": {
+    "crypto": true,
+    "politics": true,
+    "business": true,
+    "sports": false,
+    "pop": false
+  },
+  "copyTradingEnabled": true,
+  "maxCopySize": 50
+}
