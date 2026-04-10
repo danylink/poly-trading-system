@@ -888,148 +888,92 @@ onUnmounted(() => {
 
       <div class="col-span-12 xl:col-span-4 h-full space-y-6">
 
-        <div class="bg-[#1c1917] border-2 border-[#D4AF37]/20 rounded-3xl p-5 flex items-center justify-between gap-6 shadow-xl relative overflow-hidden group">
+        <div class="bg-[#111114] border-2 border-[#D4AF37]/20 hover:border-[#D4AF37]/40 rounded-3xl p-6 transition-all shadow-xl mb-8 group">
           
-          <div class="shrink-0 relative z-10 w-[60px] sm:w-auto">
-            <h3 class="text-[10px] text-zinc-500 font-black uppercase tracking-[0.2em] mb-1 leading-tight sm:leading-normal">Filtro<br class="sm:hidden"> Sens.</h3>
-            <div class="flex items-baseline gap-1">
-              <span class="text-[#D4AF37] font-mono text-2xl font-black leading-none">
-                {{ ((status.predictionThreshold || 0.70) * 100).toFixed(0) }}
-              </span>
-              <span class="text-[#D4AF37] text-xs font-bold">%</span>
+          <div class="flex items-center justify-between mb-6 pb-4 border-b border-zinc-800">
+            <div class="flex items-center gap-3">
+              <div class="p-2 bg-[#D4AF37]/10 rounded-xl border border-[#D4AF37]/20">
+                <ShieldCheck :size="20" class="text-[#D4AF37]" />
+              </div>
+              <div>
+                <h3 class="text-white font-black text-sm tracking-wide">Gestión de Riesgo</h3>
+                <p class="text-[10px] text-zinc-500">Parámetros de ejecución on-chain</p>
+              </div>
             </div>
           </div>
-          
-          <div class="flex-1 flex flex-col gap-2 relative z-10 px-2 justify-center">
-            <input 
-              type="range"
-              min="0.10" max="0.95" step="0.01"
-              v-model.number="status.predictionThreshold"
-              @change="updateThreshold"
-              class="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-[#D4AF37]"
-            />
-            <div class="flex justify-between text-[8px] text-zinc-500 uppercase tracking-widest font-black px-1 flex-col sm:flex-row text-center sm:text-left gap-1 sm:gap-0">
-              <span class="hover:text-amber-500 cursor-pointer transition-colors" @click="setThreshold(0.50)">50% Riesgo</span>
-              <span class="hover:text-emerald-500 cursor-pointer transition-colors" @click="setThreshold(0.85)">85% Seguro</span>
-            </div>
-          </div>
-          
-          <div class="text-[7.5px] sm:text-[9px] shrink-0 font-black w-20 sm:w-24 leading-tight uppercase text-center py-2 px-1 rounded-lg border transition-all duration-300 relative z-10"
-              :class="(status.predictionThreshold || 0.70) >= 0.75 
-                  ? 'text-emerald-500 bg-emerald-500/10 border-emerald-500/40'
-                  : (status.predictionThreshold || 0.70) <= 0.40 
-                    ? 'text-red-500 bg-red-500/10 border-red-500/40' 
-                    : 'text-amber-400 bg-amber-400/10 border-amber-400/40'">
-            {{ (status.predictionThreshold || 0.70) >= 0.75 ? 'MODO SEGURO' : ((status.predictionThreshold || 0.70) <= 0.40 ? 'ALTO RIESGO' : 'ESTÁNDAR') }}
-          </div>
-          
-        </div>
 
-        <div class="bg-[#1c1917] border-2 border-[#D4AF37]/20 rounded-3xl p-5 flex items-center justify-between gap-6 shadow-xl relative overflow-hidden group mt-6 mb-6">
-          
-          <div class="shrink-0 relative z-10">
-            <h3 class="text-[10px] text-zinc-500 font-black uppercase tracking-[0.2em] mb-1">Mínimo Edge</h3>
-            <div class="flex items-baseline gap-1">
-              <span class="text-[#D4AF37] font-mono text-2xl font-black leading-none">
-                {{ ((status.edgeThreshold || 0.08) * 100).toFixed(0) }}
-              </span>
-              <span class="text-[#D4AF37] text-xs font-bold">%</span>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            
+            <div class="flex flex-col gap-2 p-4 rounded-xl border border-zinc-800 bg-[#1c1917] relative overflow-hidden">
+              <div class="flex justify-between items-center mb-1">
+                <label class="text-[10px] text-zinc-500 font-black uppercase tracking-[0.2em]">Filtro Sens.</label>
+                <span class="text-[8px] font-black px-1.5 py-0.5 rounded border"
+                  :class="(status.predictionThreshold || 0.70) >= 0.75 ? 'text-emerald-500 bg-emerald-500/10 border-emerald-500/40' : (status.predictionThreshold || 0.70) <= 0.40 ? 'text-red-500 bg-red-500/10 border-red-500/40' : 'text-amber-400 bg-amber-400/10 border-amber-400/40'">
+                  {{ (status.predictionThreshold || 0.70) >= 0.75 ? 'MODO SEGURO' : ((status.predictionThreshold || 0.70) <= 0.40 ? 'ALTO RIESGO' : 'ESTÁNDAR') }}
+                </span>
+              </div>
+              <div class="flex items-center gap-3">
+                <input type="number" min="10" max="95" step="1"
+                  :value="Math.round((status.predictionThreshold || 0.70) * 100)"
+                  @change="status.predictionThreshold = $event.target.value / 100; updateThreshold();"
+                  class="flex-1 w-full px-3 py-2 rounded-lg bg-zinc-900 text-white font-mono text-sm border border-zinc-700 focus:border-[#D4AF37] focus:ring-1 focus:ring-[#D4AF37] outline-none transition-all" />
+                <span class="text-[#D4AF37] font-bold text-sm">%</span>
+              </div>
+              <div class="text-[9px] text-zinc-600 font-medium">Rango permitido: 10 - 95</div>
             </div>
-          </div>
-          
-          <div class="flex-1 flex flex-col gap-2 relative z-10 px-2 justify-center">
-            <input 
-              type="range"
-              min="0.02" max="0.30" step="0.01"
-              v-model.number="status.edgeThreshold"
-              @change="updateEdge"
-              class="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-[#D4AF37]"
-            />
-            <div class="flex justify-between text-[8px] text-zinc-500 uppercase tracking-widest font-black px-1">
-              <span class="hover:text-rose-500 cursor-pointer transition-colors" @click="setEdge(0.04)">4% Agresivo</span>
-              <span class="hover:text-emerald-500 cursor-pointer transition-colors" @click="setEdge(0.15)">15% Seguro</span>
-            </div>
-          </div>
-          
-          <div class="text-[9px] font-black w-24 leading-tight uppercase text-center py-2 px-1 rounded-lg border transition-all duration-300 relative z-10"
-              :class="(status.edgeThreshold || 0.08) >= 0.12 
-                  ? 'text-emerald-500 bg-emerald-500/10 border-emerald-500/40'
-                  : (status.edgeThreshold || 0.08) <= 0.05 
-                    ? 'text-rose-500 bg-rose-500/10 border-rose-500/40' 
-                    : 'text-amber-400 bg-amber-400/10 border-amber-400/40'">
-            {{ (status.edgeThreshold || 0.08) >= 0.12 ? 'CONSERVADOR' : ((status.edgeThreshold || 0.08) <= 0.05 ? 'FRANCOTIRADOR' : 'ESTÁNDAR') }}
-          </div>
-        </div>
 
-        <div class="bg-[#1c1917] border-2 border-emerald-500/20 rounded-3xl p-5 flex items-center justify-between gap-6 shadow-xl relative overflow-hidden group mb-8">
-          
-          <div class="shrink-0 relative z-10">
-            <h3 class="text-[10px] text-zinc-500 font-black uppercase tracking-[0.2em] mb-1">Take Profit</h3>
-            <div class="flex items-baseline gap-1">
-              <span class="text-emerald-500 font-mono text-2xl font-black leading-none">
-                {{ status.takeProfitThreshold || 15 }}
-              </span>
-              <span class="text-emerald-500 text-xs font-bold">%</span>
+            <div class="flex flex-col gap-2 p-4 rounded-xl border border-zinc-800 bg-[#1c1917] relative overflow-hidden">
+              <div class="flex justify-between items-center mb-1">
+                <label class="text-[10px] text-zinc-500 font-black uppercase tracking-[0.2em]">Mínimo Edge</label>
+                <span class="text-[8px] font-black px-1.5 py-0.5 rounded border"
+                  :class="(status.edgeThreshold || 0.08) >= 0.12 ? 'text-emerald-500 bg-emerald-500/10 border-emerald-500/40' : (status.edgeThreshold || 0.08) <= 0.05 ? 'text-rose-500 bg-rose-500/10 border-rose-500/40' : 'text-amber-400 bg-amber-400/10 border-amber-400/40'">
+                  {{ (status.edgeThreshold || 0.08) >= 0.12 ? 'CONSERVADOR' : ((status.edgeThreshold || 0.08) <= 0.05 ? 'FRANCOTIRADOR' : 'ESTÁNDAR') }}
+                </span>
+              </div>
+              <div class="flex items-center gap-3">
+                <input type="number" min="2" max="30" step="1"
+                  :value="Math.round((status.edgeThreshold || 0.08) * 100)"
+                  @change="status.edgeThreshold = $event.target.value / 100; updateEdge();"
+                  class="flex-1 w-full px-3 py-2 rounded-lg bg-zinc-900 text-white font-mono text-sm border border-zinc-700 focus:border-[#D4AF37] focus:ring-1 focus:ring-[#D4AF37] outline-none transition-all" />
+                <span class="text-[#D4AF37] font-bold text-sm">%</span>
+              </div>
+              <div class="text-[9px] text-zinc-600 font-medium">Rango permitido: 2 - 30</div>
             </div>
-          </div>
-          
-          <div class="flex-1 flex flex-col gap-2 relative z-10 px-2 justify-center">
-            <input 
-              type="range"
-              min="5" max="50" step="1"
-              v-model.number="status.takeProfitThreshold"
-              @change="updateTakeProfit"
-              class="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-emerald-500"
-            />
-            <div class="flex justify-between text-[8px] text-zinc-500 uppercase tracking-widest font-black px-1">
-              <span class="hover:text-emerald-400 cursor-pointer transition-colors" @click="setTakeProfit(10)">10% Scalping</span>
-              <span class="hover:text-amber-500 cursor-pointer transition-colors" @click="setTakeProfit(30)">30% Holdeo</span>
-            </div>
-          </div>
-          
-          <div class="text-[9px] font-black w-24 leading-tight uppercase text-center py-2 px-1 rounded-lg border transition-all duration-300 relative z-10"
-              :class="(status.takeProfitThreshold || 15) >= 25 
-                  ? 'text-amber-500 bg-amber-500/10 border-amber-500/40'
-                  : (status.takeProfitThreshold || 15) <= 10 
-                    ? 'text-emerald-400 bg-emerald-400/10 border-emerald-400/40' 
-                    : 'text-emerald-500 bg-emerald-500/10 border-emerald-500/40'">
-            {{ (status.takeProfitThreshold || 15) >= 25 ? 'PACIENTE' : ((status.takeProfitThreshold || 15) <= 10 ? 'AGRESIVO' : 'ESTÁNDAR') }}
-          </div>
-        </div>
 
-        <div class="bg-[#1c1917] border-2 border-rose-500/20 rounded-3xl p-5 flex items-center justify-between gap-6 shadow-xl relative overflow-hidden group mb-8">
-          
-          <div class="shrink-0 relative z-10">
-            <h3 class="text-[10px] text-zinc-500 font-black uppercase tracking-[0.2em] mb-1">Stop Loss</h3>
-            <div class="flex items-baseline gap-1">
-              <span class="text-rose-500 font-mono text-2xl font-black leading-none">
-                {{ status.stopLossThreshold || -15 }}
-              </span>
-              <span class="text-rose-500 text-xs font-bold">%</span>
+            <div class="flex flex-col gap-2 p-4 rounded-xl border border-zinc-800 bg-[#1c1917] relative overflow-hidden">
+              <div class="flex justify-between items-center mb-1">
+                <label class="text-[10px] text-zinc-500 font-black uppercase tracking-[0.2em]">Take Profit</label>
+                <span class="text-[8px] font-black px-1.5 py-0.5 rounded border"
+                  :class="(status.takeProfitThreshold || 15) >= 25 ? 'text-amber-500 bg-amber-500/10 border-amber-500/40' : (status.takeProfitThreshold || 15) <= 10 ? 'text-emerald-400 bg-emerald-400/10 border-emerald-400/40' : 'text-emerald-500 bg-emerald-500/10 border-emerald-500/40'">
+                  {{ (status.takeProfitThreshold || 15) >= 25 ? 'PACIENTE' : ((status.takeProfitThreshold || 15) <= 10 ? 'AGRESIVO' : 'ESTÁNDAR') }}
+                </span>
+              </div>
+              <div class="flex items-center gap-3">
+                <input type="number" min="5" max="50" step="1"
+                  v-model.number="status.takeProfitThreshold" @change="updateTakeProfit"
+                  class="flex-1 w-full px-3 py-2 rounded-lg bg-zinc-900 text-white font-mono text-sm border border-zinc-700 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none transition-all" />
+                <span class="text-emerald-500 font-bold text-sm">%</span>
+              </div>
+              <div class="text-[9px] text-zinc-600 font-medium">Rango permitido: 5 - 50</div>
             </div>
-          </div>
-          
-          <div class="flex-1 flex flex-col gap-2 relative z-10 px-2 justify-center">
-            <input 
-              type="range"
-              min="-50" max="-5" step="1"
-              v-model.number="status.stopLossThreshold"
-              @change="updateStopLoss"
-              class="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-rose-500"
-            />
-            <div class="flex justify-between text-[8px] text-zinc-500 uppercase tracking-widest font-black px-1">
-              <span class="hover:text-amber-500 cursor-pointer transition-colors" @click="setStopLoss(-50)">-50% Holdeo</span>
-              <span class="hover:text-rose-400 cursor-pointer transition-colors" @click="setStopLoss(-10)">-10% Estricto</span>
+
+            <div class="flex flex-col gap-2 p-4 rounded-xl border border-zinc-800 bg-[#1c1917] relative overflow-hidden">
+              <div class="flex justify-between items-center mb-1">
+                <label class="text-[10px] text-zinc-500 font-black uppercase tracking-[0.2em]">Stop Loss</label>
+                <span class="text-[8px] font-black px-1.5 py-0.5 rounded border"
+                  :class="(status.stopLossThreshold || -15) <= -30 ? 'text-amber-500 bg-amber-500/10 border-amber-500/40' : (status.stopLossThreshold || -15) >= -10 ? 'text-rose-400 bg-rose-400/10 border-rose-400/40' : 'text-rose-500 bg-rose-500/10 border-rose-500/40'">
+                  {{ (status.stopLossThreshold || -15) <= -30 ? 'PACIENTE' : ((status.stopLossThreshold || -15) >= -10 ? 'ESTRICTO' : 'ESTÁNDAR') }}
+                </span>
+              </div>
+              <div class="flex items-center gap-3">
+                <input type="number" min="-50" max="-5" step="1"
+                  v-model.number="status.stopLossThreshold" @change="updateStopLoss"
+                  class="flex-1 w-full px-3 py-2 rounded-lg bg-zinc-900 text-white font-mono text-sm border border-zinc-700 focus:border-rose-500 focus:ring-1 focus:ring-rose-500 outline-none transition-all" />
+                <span class="text-rose-500 font-bold text-sm">%</span>
+              </div>
+              <div class="text-[9px] text-zinc-600 font-medium">Rango permitido: -50 a -5</div>
             </div>
-          </div>
-          
-          <div class="text-[9px] font-black w-24 leading-tight uppercase text-center py-2 px-1 rounded-lg border transition-all duration-300 relative z-10"
-              :class="(status.stopLossThreshold || -15) <= -30 
-                  ? 'text-amber-500 bg-amber-500/10 border-amber-500/40'
-                  : (status.stopLossThreshold || -15) >= -10 
-                    ? 'text-rose-400 bg-rose-400/10 border-rose-400/40' 
-                    : 'text-rose-500 bg-rose-500/10 border-rose-500/40'">
-            {{ (status.stopLossThreshold || -15) <= -30 ? 'PACIENTE' : ((status.stopLossThreshold || -15) >= -10 ? 'ESTRICTO' : 'ESTÁNDAR') }}
+
           </div>
         </div>
 
@@ -1098,6 +1042,64 @@ onUnmounted(() => {
               <input type="checkbox" v-model="status.marketFilters[key]" @change="updateFilters" class="sr-only">
               <div class="w-3 h-3 rounded-full" :class="status.marketFilters[key] ? 'bg-emerald-400 shadow-[0_0_10px_#34d399]' : 'bg-zinc-600'"></div>
             </label>
+          </div>
+        </div>
+
+        <div class="bg-[#111114] border-2 border-emerald-500/20 hover:border-emerald-500/50 rounded-3xl p-6 transition-all shadow-xl mb-8">
+          <div class="flex items-center justify-between mb-4 pb-4 border-b border-zinc-800">
+            <div class="flex items-center gap-3">
+              <div class="p-2 bg-emerald-500/10 rounded-xl border border-emerald-500/20">
+                <ShieldCheck :size="20" class="text-emerald-500" />
+              </div>
+              <div>
+                <h3 class="text-white font-black text-sm tracking-wide">Configuración de Riesgo</h3>
+                <p class="text-[10px] text-zinc-500">Parámetros clave de ejecución del bot</p>
+              </div>
+            </div>
+          </div>
+          
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            
+            <div class="flex flex-col gap-2 p-3 rounded-xl border border-zinc-800 bg-zinc-900/50">
+              <label class="text-xs font-bold text-white mb-1">Filtro de Sensibilidad (0.1 - 1.0)</label>
+              <div class="flex items-center gap-2">
+                <input type="number" min="0.1" max="1.0" step="0.01" 
+                  v-model.number="status.predictionThreshold" @change="updateFilters"
+                  class="flex-1 px-3 py-1.5 rounded-lg bg-zinc-800 text-white text-sm border border-zinc-700 accent-emerald-500" />
+                <span class="text-zinc-500 text-sm">%</span>
+              </div>
+            </div>
+
+            <div class="flex flex-col gap-2 p-3 rounded-xl border border-zinc-800 bg-zinc-900/50">
+              <label class="text-xs font-bold text-white mb-1">Mínimo Edge (0.01 - 0.5)</label>
+              <div class="flex items-center gap-2">
+                <input type="number" min="0.01" max="0.5" step="0.01" 
+                  v-model.number="status.edgeThreshold" @change="updateFilters"
+                  class="flex-1 px-3 py-1.5 rounded-lg bg-zinc-800 text-white text-sm border border-zinc-700 accent-emerald-500" />
+                <span class="text-zinc-500 text-sm">%</span>
+              </div>
+            </div>
+
+            <div class="flex flex-col gap-2 p-3 rounded-xl border border-zinc-800 bg-zinc-900/50">
+              <label class="text-xs font-bold text-white mb-1">Take Profit (5 - 100)</label>
+              <div class="flex items-center gap-2">
+                <input type="number" min="5" max="100" step="1" 
+                  v-model.number="status.takeProfitThreshold" @change="updateTakeProfit"
+                  class="flex-1 px-3 py-1.5 rounded-lg bg-zinc-800 text-white text-sm border border-zinc-700 accent-emerald-500" />
+                <span class="text-zinc-500 text-sm">%</span>
+              </div>
+            </div>
+
+            <div class="flex flex-col gap-2 p-3 rounded-xl border border-zinc-800 bg-zinc-900/50">
+              <label class="text-xs font-bold text-white mb-1">Stop Loss (-50 a -5)</label>
+              <div class="flex items-center gap-2">
+                <input type="number" min="-50" max="-5" step="1" 
+                  v-model.number="status.stopLossThreshold" @change="updateStopLoss"
+                  class="flex-1 px-3 py-1.5 rounded-lg bg-zinc-800 text-white text-sm border border-zinc-700 accent-emerald-500" />
+                <span class="text-zinc-500 text-sm">%</span>
+              </div>
+            </div>
+
           </div>
         </div>
 
