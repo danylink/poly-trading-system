@@ -33,6 +33,9 @@ const status = ref({
     copiedTrades: []
 })
 
+// Arreglo maestro para forzar el orden visual de los filtros
+const filterOrder = ['crypto', 'politics', 'business', 'sports', 'pop'];
+
 // --- 🔒 SISTEMA DE LOGIN PREMIUM ---
 const isAuthenticated = ref(!!localStorage.getItem('poly_auth'));
 const authPassword = ref('');
@@ -1036,11 +1039,11 @@ onUnmounted(() => {
           </div>
 
           <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            <label v-for="(val, key) in status.marketFilters" :key="key" class="flex items-center justify-between p-3 rounded-xl border cursor-pointer transition-all"
-                  :class="val ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-zinc-900 border-zinc-800 opacity-50 hover:opacity-100'">
+            <label v-for="key in filterOrder" :key="key" class="flex items-center justify-between p-3 rounded-xl border cursor-pointer transition-all"
+                  :class="status.marketFilters[key] ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-zinc-900 border-zinc-800 opacity-50 hover:opacity-100'">
               <span class="text-xs font-bold text-white capitalize">{{ key }}</span>
               <input type="checkbox" v-model="status.marketFilters[key]" @change="updateFilters" class="sr-only">
-              <div class="w-3 h-3 rounded-full" :class="val ? 'bg-emerald-400 shadow-[0_0_10px_#34d399]' : 'bg-zinc-600'"></div>
+              <div class="w-3 h-3 rounded-full" :class="status.marketFilters[key] ? 'bg-emerald-400 shadow-[0_0_10px_#34d399]' : 'bg-zinc-600'"></div>
             </label>
           </div>
         </div>
