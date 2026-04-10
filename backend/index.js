@@ -1086,7 +1086,7 @@ function isMarketAllowed(title = "", slug = "") {
 }
 
 // ⚖️ ESCÁNER DE PERFIL DE RIESGO
-function getRiskProfile(marketName = "", category = "") {
+/* function getRiskProfile(marketName = "", category = "") {
     const lower = (marketName + " " + category).toLowerCase();
 
     // Mercados volátiles (deportes, pop, temperature, vs, match, etc.)
@@ -1112,7 +1112,7 @@ function getRiskProfile(marketName = "", category = "") {
         config: botStatus.standardConfig, 
         profileType: 'ESTANDAR' 
     };
-}
+} */
 
 // ==========================================
 // 10. CICLO PRINCIPAL (EL CEREBRO DEL BOT)
