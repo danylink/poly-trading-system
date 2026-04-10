@@ -274,7 +274,10 @@ async function updateRealBalances() {
             if (Array.isArray(positions) && positions.length > 0) {
                 for (const pos of positions) {
                     const size = parseFloat(pos.size || pos['tamaño'] || 0);
-                    if (size <= 0) continue;
+                    
+                    // 🧹 FIX QUANT: Ignorar el "polvo" residual (menos de 0.1 shares) 
+                    // para evitar que queden posiciones fantasmas en el dashboard después de vender.
+                    if (size < 0.1) continue; 
 
                     const cashPnl = parseFloat(pos.cashPnl || pos['ganancias en efectivo'] || 0);
                     const percentPnl = parseFloat(pos.percentPnl || pos['porcentaje de ganancias'] || 0);
@@ -740,12 +743,21 @@ async function executeTradeOnChain(conditionId, tokenId, amountUsdc, currentPric
 // ==========================================
 // 8.5 EJECUCIÓN DE VENTA (NUEVO MOTOR DEDICADO)
 // ==========================================
+// 🧠 Memoria a corto plazo para evitar Spam por retrasos de la API de Polymarket
+const recentlySoldTokens = new Set();
+
 async function executeSellOnChain(conditionId, tokenId, exactShares, limitPrice, marketTickSize = "0.01") {
     try {
+        // 1. CANDADO ANTI-SPAM (COOLDOWN)
+        if (recentlySoldTokens.has(tokenId)) {
+            console.log(`      ⏳ Token en cooldown (Esperando actualización de API). Venta ignorada.`);
+            return { success: false, reason: "COOLDOWN_ACTIVE" };
+        }
+
         console.log(`\n--- 🔴 EJECUCIÓN DE VENTA ON-CHAIN ---`);
         if (!clobClient) throw new Error("clobClient no está inicializado.");
 
-        // 1. OBTENER SALDO REAL DIRECTO DE LA BLOCKCHAIN
+        // 2. OBTENER SALDO REAL DIRECTO DE LA BLOCKCHAIN
         let realBalance = 0;
         try {
             const userAddress = process.env.POLY_PROXY_ADDRESS || "0x876E00CBF5c4fe22F4FA263F4cb713650cB758d2";
@@ -762,27 +774,24 @@ async function executeSellOnChain(conditionId, tokenId, exactShares, limitPrice,
             console.log("⚠️ No se pudo obtener el saldo en tiempo real, usando la memoria del bot.");
         }
 
-        // 2. CÁLCULO SEGURO DE SHARES
+        // 3. CÁLCULO SEGURO DE SHARES
         let sharesToSell = parseFloat(exactShares);
         
-        // Si la memoria del bot dice que tienes más de lo que realmente tienes en la blockchain, corregimos:
         if (realBalance > 0 && sharesToSell > realBalance) {
             sharesToSell = realBalance;
         }
 
         // TRUCO QUANT: Restamos un margen microscópico (0.01 shares) para evadir los errores de "Not enough balance"
         sharesToSell = Math.max(0, sharesToSell - 0.01);
-        
-        // Truncamos a 2 decimales hacia abajo para enviar a la API de Polymarket
         sharesToSell = Math.floor(sharesToSell * 100) / 100;
 
-        // Si después de todo el cálculo intentamos vender 0, cancelamos para no hacer spam a la red.
         if (sharesToSell <= 0) {
-           console.log(`⚠️ Venta abortada: Balance de acciones demasiado bajo (0.00).`);
+           console.log(`⚠️ Venta abortada: Balance de acciones demasiado bajo (Polvo residual).`);
+           recentlySoldTokens.add(tokenId); // Lo marcamos para ignorarlo y no hacer spam
            return { success: false, reason: "LOW_BALANCE" };
         }
 
-        // 3. CONFIGURAR TICK SIZE Y PRECIO
+        // 4. CONFIGURAR TICK SIZE Y PRECIO
         let trueTickSize = marketTickSize;
         let isNegRisk = false;
 
@@ -802,12 +811,11 @@ async function executeSellOnChain(conditionId, tokenId, exactShares, limitPrice,
         const decimales = trueTickSize === "0.001" ? 3 : (trueTickSize === "0.0001" ? 4 : 2);
         let safeLimitPrice = Number(parseFloat(limitPrice).toFixed(decimales));
         
-        // Evitamos mandar precio $0.00 a la blockchain porque rebota
         if (safeLimitPrice <= 0) safeLimitPrice = parseFloat(trueTickSize);
 
         console.log(`📡 Orden SELL: ${sharesToSell} shares | Target: $${safeLimitPrice} | NegRisk: ${isNegRisk}`);
 
-        // 4. DISPARAR A LA BLOCKCHAIN
+        // 5. DISPARAR A LA BLOCKCHAIN
         const response = await clobClient.createAndPostOrder(
             {
                 tokenID: tokenId,
@@ -824,6 +832,13 @@ async function executeSellOnChain(conditionId, tokenId, exactShares, limitPrice,
 
         if (response && response.success) {
             console.log(`🎉 ¡VENTA ACEPTADA! Order ID: ${response.orderID}`);
+            
+            // 🧠 ACTIVAR MEMORIA: Recordar que ya lo vendimos por 3 minutos
+            recentlySoldTokens.add(tokenId);
+            setTimeout(() => {
+                recentlySoldTokens.delete(tokenId);
+            }, 3 * 60 * 1000); // 3 minutos de cooldown
+            
             return { success: true, hash: response.orderID }; 
         } else {
             throw new Error(`Orden rechazada: ${JSON.stringify(response)}`);
