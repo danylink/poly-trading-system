@@ -1375,6 +1375,7 @@ async function runBot() {
             }
         }
 
+
         // === ACTUALIZAR DASHBOARD CON LA SEÑAL FUSIONADA ===
         const signalIndex = botStatus.pendingSignals.findIndex(s => s.tokenId === targetTokenId);
 
@@ -1392,7 +1393,8 @@ async function runBot() {
             recommendation: finalAnalysis.recommendation || "WAIT",
             category: marketItem.category,
             side: targetSideLabel,
-            profile: profileType
+            profile: profileType,
+            engine: finalAnalysis.engine // 🔥 AGREGAMOS ESTA LÍNEA PARA EL DASHBOARD
         };
 
         if (signalIndex === -1) {

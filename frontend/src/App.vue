@@ -709,8 +709,8 @@ onUnmounted(() => {
         <div class="bg-[#111114] border-2 border-zinc-800 rounded-3xl p-8 mb-8">
           <div class="flex items-center justify-between mb-8 pb-4 border-b border-zinc-800/50">
             <h2 class="text-xl font-bold text-white flex items-center gap-3">
-                <ShieldCheck :size="24" class="text-[#D4AF37]" /> 
-                Señales Claude 4.6 Sonnet
+                <Bot :size="24" class="text-[#D4AF37]" /> 
+                Señales Multi-Agente
             </h2>
           </div>
 
@@ -719,9 +719,17 @@ onUnmounted(() => {
               <div>
                 <div class="flex justify-between items-center mb-4">
                   <span class="text-2xl font-black text-[#D4AF37] font-mono">{{ (signal.probability * 100).toFixed(0) }}%</span>
-                  <span class="text-[8px] bg-emerald-500/10 text-emerald-500 px-2 py-0.5 rounded-full border border-emerald-500/20">
-                    IA OPTIMIZADA
+                  
+                  <span v-if="signal.engine === 'Claude + Gemini'" class="text-[9px] bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded-md border border-emerald-500/30 font-black tracking-widest flex items-center gap-1">
+                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> CONSENSO
                   </span>
+                  <span v-else-if="signal.engine === 'Gemini'" class="text-[9px] bg-blue-500/10 text-blue-400 px-2 py-0.5 rounded-md border border-blue-500/30 font-black tracking-widest flex items-center gap-1">
+                    🔮 GEMINI
+                  </span>
+                  <span v-else class="text-[9px] bg-[#D4AF37]/10 text-[#D4AF37] px-2 py-0.5 rounded-md border border-[#D4AF37]/30 font-black tracking-widest flex items-center gap-1">
+                    🧠 CLAUDE
+                  </span>
+
                 </div>
                 <p class="text-white font-bold text-sm leading-tight mb-4 line-clamp-3" :title="signal.marketName">{{ signal.marketName }}</p>
                 <div class="bg-black/40 rounded-xl p-4 border border-zinc-800/50 h-20 overflow-y-auto custom-scroll mb-4">
@@ -1204,7 +1212,7 @@ onUnmounted(() => {
             
             <div class="flex justify-between items-center bg-[#161619] p-4 rounded-2xl border border-zinc-800/60">
               <span class="text-[10px] text-zinc-500 font-black uppercase tracking-widest">Motor IA</span>
-              <span class="text-xs font-mono font-bold text-[#D4AF37]">Claude 4.6 Sonnet</span>
+              <span class="text-[10px] font-mono font-bold text-[#D4AF37]">Claude + Gemini Flash</span>
             </div>
 
             <div class="flex justify-between items-center bg-[#161619] p-4 rounded-2xl border border-zinc-800/60">
