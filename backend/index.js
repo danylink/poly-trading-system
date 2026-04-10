@@ -1616,7 +1616,7 @@ app.post('/api/settings/threshold', async (req, res) => {
 
 // 2. Recibe la orden de Riesgo y AutoTrade desde la interfaz Vue
 app.post('/api/settings/autotrade', (req, res) => {
-    const { enabled, amount, profile, predictionThreshold, edgeThreshold, takeProfitThreshold, stopLossThreshold } = req.body;
+    const { enabled, amount, profile, predictionThreshold, edgeThreshold, takeProfitThreshold, stopLossThreshold, maxCopyPercentOfBalance } = req.body;
 
     if (enabled !== undefined) botStatus.autoTradeEnabled = !!enabled;
     if (amount !== undefined) botStatus.microBetAmount = parseFloat(amount);
