@@ -25,6 +25,7 @@ const status = ref({
   predictionThreshold: 0.70,
   edgeThreshold: 0.09,
   takeProfitThreshold: 18,
+  stopLossThreshold: -15,
   marketFilters: { crypto: true, politics: true, business: true, sports: false, pop: false },
   copyTradingEnabled: false,
     maxCopySize: 50,
@@ -299,6 +300,22 @@ const updateTakeProfit = async () => {
 const setTakeProfit = (val) => {
   status.value.takeProfitThreshold = val;
   updateTakeProfit();
+};
+
+// --- NUEVO CONTROL DE STOP LOSS ---
+const updateStopLoss = async () => {
+  try {
+    await axios.post(`${API_URL}/settings/autotrade`, { 
+      stopLossThreshold: status.value.stopLossThreshold 
+    });
+  } catch (error) {
+    console.error("Error al actualizar Stop Loss:", error);
+  }
+};
+
+const setStopLoss = (val) => {
+  status.value.stopLossThreshold = val;
+  updateStopLoss();
 };
 
 // --- NUEVO CONTROL DE EDGE ---
@@ -977,6 +994,42 @@ onUnmounted(() => {
                     ? 'text-emerald-400 bg-emerald-400/10 border-emerald-400/40' 
                     : 'text-emerald-500 bg-emerald-500/10 border-emerald-500/40'">
             {{ (status.takeProfitThreshold || 15) >= 25 ? 'PACIENTE' : ((status.takeProfitThreshold || 15) <= 10 ? 'AGRESIVO' : 'ESTÁNDAR') }}
+          </div>
+        </div>
+
+        <div class="bg-[#1c1917] border-2 border-rose-500/20 rounded-3xl p-5 flex items-center justify-between gap-6 shadow-xl relative overflow-hidden group mb-8">
+          
+          <div class="shrink-0 relative z-10">
+            <h3 class="text-[10px] text-zinc-500 font-black uppercase tracking-[0.2em] mb-1">Stop Loss</h3>
+            <div class="flex items-baseline gap-1">
+              <span class="text-rose-500 font-mono text-2xl font-black leading-none">
+                {{ status.stopLossThreshold || -15 }}
+              </span>
+              <span class="text-rose-500 text-xs font-bold">%</span>
+            </div>
+          </div>
+          
+          <div class="flex-1 flex flex-col gap-2 relative z-10 px-2 justify-center">
+            <input 
+              type="range"
+              min="-50" max="-5" step="1"
+              v-model.number="status.stopLossThreshold"
+              @change="updateStopLoss"
+              class="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-rose-500"
+            />
+            <div class="flex justify-between text-[8px] text-zinc-500 uppercase tracking-widest font-black px-1">
+              <span class="hover:text-amber-500 cursor-pointer transition-colors" @click="setStopLoss(-50)">-50% Holdeo</span>
+              <span class="hover:text-rose-400 cursor-pointer transition-colors" @click="setStopLoss(-10)">-10% Estricto</span>
+            </div>
+          </div>
+          
+          <div class="text-[9px] font-black w-24 leading-tight uppercase text-center py-2 px-1 rounded-lg border transition-all duration-300 relative z-10"
+              :class="(status.stopLossThreshold || -15) <= -30 
+                  ? 'text-amber-500 bg-amber-500/10 border-amber-500/40'
+                  : (status.stopLossThreshold || -15) >= -10 
+                    ? 'text-rose-400 bg-rose-400/10 border-rose-400/40' 
+                    : 'text-rose-500 bg-rose-500/10 border-rose-500/40'">
+            {{ (status.stopLossThreshold || -15) <= -30 ? 'PACIENTE' : ((status.stopLossThreshold || -15) >= -10 ? 'ESTRICTO' : 'ESTÁNDAR') }}
           </div>
         </div>
 

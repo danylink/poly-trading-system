@@ -126,6 +126,7 @@ let botStatus = {
     predictionThreshold: 0.70,
     edgeThreshold: 0.09,
     takeProfitThreshold: 18,
+    stopLossThreshold: -15,
     autoTradeEnabled: true,
     microBetAmount: 1.00,
     suggestedInversion: 0, 
@@ -1539,7 +1540,7 @@ async function autoSellManager() {
         }
 
         // 2. STOP LOSS
-        if (profit <= -15) {   
+        if (profit <= botStatus.stopLossThreshold) {   
             console.log(`🛑 EVALUANDO STOP LOSS: ${marketNameShort} (${profit.toFixed(1)}%)`);
 
             try {
@@ -1779,22 +1780,24 @@ app.post('/api/settings/threshold', async (req, res) => {
 
 // 2. Recibe la orden del Switch "AutoTrade" desde la interfaz Vue
 app.post('/api/settings/autotrade', (req, res) => {
-    const { enabled, amount, edgeThreshold, takeProfitThreshold } = req.body; 
+    const { enabled, amount, edgeThreshold, takeProfitThreshold, stopLossThreshold } = req.body; 
     
     if (enabled !== undefined) botStatus.autoTradeEnabled = !!enabled;
     if (amount !== undefined) botStatus.microBetAmount = parseFloat(amount) || botStatus.microBetAmount;
     if (edgeThreshold !== undefined) botStatus.edgeThreshold = parseFloat(edgeThreshold); 
-    // 👇 NUEVO: Guardamos el Take Profit
     if (takeProfitThreshold !== undefined) botStatus.takeProfitThreshold = parseFloat(takeProfitThreshold); 
+    // 👇 NUEVO: Guardamos el Stop Loss
+    if (stopLossThreshold !== undefined) botStatus.stopLossThreshold = parseFloat(stopLossThreshold); 
     
-    console.log(`\n⚙️ [CONTROL] Autopilot: ${botStatus.autoTradeEnabled} | Calibre: $${botStatus.microBetAmount} | Min Edge: ${(botStatus.edgeThreshold * 100).toFixed(0)}% | Take Profit: ${botStatus.takeProfitThreshold}%`);
+    console.log(`\n⚙️ [CONTROL] Autopilot: ${botStatus.autoTradeEnabled} | Calibre: $${botStatus.microBetAmount} | Min Edge: ${(botStatus.edgeThreshold * 100).toFixed(0)}% | TP: ${botStatus.takeProfitThreshold}% | SL: ${botStatus.stopLossThreshold}%`);
     
     res.json({ 
         success: true, 
         autoTradeEnabled: botStatus.autoTradeEnabled, 
         microBetAmount: botStatus.microBetAmount,
         edgeThreshold: botStatus.edgeThreshold,
-        takeProfitThreshold: botStatus.takeProfitThreshold
+        takeProfitThreshold: botStatus.takeProfitThreshold,
+        stopLossThreshold: botStatus.stopLossThreshold
     });
 });
 
