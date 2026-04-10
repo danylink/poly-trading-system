@@ -12,6 +12,7 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 
 // --- ESTADO REACTIVO UNIFICADO ---
 const status = ref({
+  // 1. Variables Generales del Dashboard (Intactas)
   lastCheck: null,
   lastProbability: 0,
   currentMarket: { title: 'Cargando radar...' },
@@ -22,17 +23,51 @@ const status = ref({
   pendingSignals: [],
   autoTradeEnabled: true,
   microBetAmount: 1.00,
-  predictionThreshold: 0.70,
-  edgeThreshold: 0.09,
-  takeProfitThreshold: 18,
-  stopLossThreshold: -15,
-  marketFilters: { crypto: true, politics: true, business: true, sports: false, pop: false },
+  marketFilters: { crypto: true, politics: true, business: true, sports: true, pop: true },
+  
+  // 2. Variables Generales de Copy Trading (Intactas)
   copyTradingEnabled: false,
-    maxCopySize: 50,
-    maxCopyPercentOfBalance: 8,
-    autoSelectedWhales: [],
-    copiedTrades: []
-})
+  maxCopySize: 50,
+  autoSelectedWhales: [],
+  copiedTrades: [],
+
+  // 3. 👇 NUEVA ARQUITECTURA DE PERFILES (Doble Cerebro)
+  activeProfileName: 'standardConfig', // Controla el Switch visual
+  
+  // VERSION GROOK
+    standardConfig: {
+        predictionThreshold: 0.75,      // subido de 0.70
+        edgeThreshold: 0.105,           // subido de 0.09
+        takeProfitThreshold: 20,
+        stopLossThreshold: -18,         // más paciente que -20
+        maxCopyPercentOfBalance: 8
+    },
+
+    volatileConfig: {
+        predictionThreshold: 0.82,
+        edgeThreshold: 0.13,
+        takeProfitThreshold: 12,        // más conservador en take profit
+        stopLossThreshold: -12,         // más conservador que -10
+        maxCopyPercentOfBalance: 4      // menos riesgo en volatile
+    }
+// VERSION GEMINI     
+/*   standardConfig: {
+    predictionThreshold: 0.70,
+    edgeThreshold: 0.09,
+    takeProfitThreshold: 20,
+    stopLossThreshold: -20,
+    maxCopyPercentOfBalance: 8
+  },
+  
+  volatileConfig: {
+    predictionThreshold: 0.85,
+    edgeThreshold: 0.12,
+    takeProfitThreshold: 10,
+    stopLossThreshold: -10,
+    maxCopyPercentOfBalance: 3
+  } */
+
+});
 
 // Arreglo maestro para forzar el orden visual de los filtros
 const filterOrder = ['crypto', 'politics', 'business', 'sports', 'pop'];
@@ -286,64 +321,61 @@ const triggerRescue = async () => {
   }
 };
 
-// --- NUEVO CONTROL DE TAKE PROFIT ---
-const updateTakeProfit = async () => {
+// --- ⚖️ FUNCIONES DE RIESGO BIFURCADO ---
+const updateRiskSettings = async () => {
   try {
+    const profileName = status.value.activeProfileName;
+    const config = status.value[profileName];
+    const profileStr = profileName === 'standardConfig' ? 'ESTANDAR' : 'VOLATIL';
+
     await axios.post(`${API_URL}/settings/autotrade`, { 
-      takeProfitThreshold: status.value.takeProfitThreshold 
+      profile: profileStr,
+      predictionThreshold: config.predictionThreshold,
+      edgeThreshold: config.edgeThreshold,
+      takeProfitThreshold: config.takeProfitThreshold,
+      stopLossThreshold: config.stopLossThreshold,
+      // Opcional: también puedes enviar maxCopyPercent si quieres
+      maxCopyPercentOfBalance: config.maxCopyPercentOfBalance
     });
+
+    console.log(`✅ Configuración guardada para perfil ${profileStr}`);
   } catch (error) {
-    console.error("Error al actualizar Take Profit:", error);
+    console.error("❌ Error al guardar configuración de riesgo:", error.message);
   }
 };
 
-const setTakeProfit = (val) => {
-  status.value.takeProfitThreshold = val;
-  updateTakeProfit();
-};
-
-// --- NUEVO CONTROL DE STOP LOSS ---
-const updateStopLoss = async () => {
+const updateCopySettings = async () => {
   try {
-    await axios.post(`${API_URL}/settings/autotrade`, { 
-      stopLossThreshold: status.value.stopLossThreshold 
+    const profileStr = status.value.activeProfileName === 'standardConfig' ? 'ESTANDAR' : 'VOLATIL';
+    const config = status.value[status.value.activeProfileName];
+
+    await axios.post(`${API_URL}/settings/copytrading`, { 
+      profile: profileStr,
+      maxCopySize: status.value.maxCopySize,
+      maxCopyPercent: config.maxCopyPercentOfBalance
     });
   } catch (error) {
-    console.error("Error al actualizar Stop Loss:", error);
+    console.error('Error updating copy settings:', error);
   }
-};
-
-const setStopLoss = (val) => {
-  status.value.stopLossThreshold = val;
-  updateStopLoss();
-};
-
-// --- NUEVO CONTROL DE EDGE ---
-const updateEdge = async () => {
-  try {
-    await axios.post(`${API_URL}/settings/autotrade`, { 
-      edgeThreshold: status.value.edgeThreshold 
-    });
-  } catch (error) {
-    console.error("Error al actualizar Edge:", error);
-  }
-};
-
-const setEdge = (val) => {
-  status.value.edgeThreshold = val;
-  updateEdge();
 };
 
 const updateCopyTrading = async () => {
   try {
+    const currentProfile = status.value[status.value.activeProfileName];
+
     await axios.post(`${API_URL}/settings/copytrading`, {
       enabled: status.value.copyTradingEnabled,
-      maxCopySize: status.value.maxCopySize,
-      maxCopyPercent: status.value.maxCopyPercentOfBalance,
-      maxWhalesToCopy: status.value.maxWhalesToCopy
+      maxCopySize: status.value.maxCopySize || 50,
+      maxCopyPercent: currentProfile.maxCopyPercentOfBalance || 8,   // ← Corregido
+      maxWhalesToCopy: status.value.maxWhalesToCopy || 5,
+      
+      // Enviamos el perfil actual para que el backend sepa qué modo de riesgo usar
+      profile: status.value.activeProfileName === 'standardConfig' ? 'ESTANDAR' : 'VOLATIL'
     });
+
+    console.log(`✅ Copy Trading actualizado | Perfil: ${status.value.activeProfileName} | Max %: ${currentProfile.maxCopyPercentOfBalance}%`);
   } catch (error) {
-    console.error("Error actualizando Copy Trading settings", error);
+    console.error("❌ Error actualizando Copy Trading settings:", error.message);
   }
 };
 
@@ -366,6 +398,18 @@ const fetchLogs = async () => {
   } catch (error) {
     console.error("Error al obtener logs de la terminal");
   }
+};
+
+const switchProfile = async (profileName) => {
+  // Solo cambiamos si es diferente
+  if (status.value.activeProfileName === profileName) return;
+
+  status.value.activeProfileName = profileName;
+
+  console.log(`🔄 Editando perfil: ${profileName === 'standardConfig' ? 'ESTÁNDAR' : 'VOLÁTIL'}`);
+
+  // Guardamos inmediatamente los cambios del perfil que acabamos de dejar
+  await updateRiskSettings();
 };
 
 // --- COMPUTED PROPERTIES ---
@@ -888,90 +932,111 @@ onUnmounted(() => {
 
       <div class="col-span-12 xl:col-span-4 h-full space-y-6">
 
-        <div class="bg-[#111114] border-2 border-[#D4AF37]/20 hover:border-[#D4AF37]/40 rounded-3xl p-6 transition-all shadow-xl mb-8 group">
+        <div class="bg-[#111114] border border-zinc-800/80 rounded-[2rem] p-6 lg:p-8 transition-all duration-500 relative overflow-hidden group mb-8"
+             :class="status.activeProfileName === 'standardConfig' ? 'shadow-[0_0_50px_rgba(14,165,233,0.03)] hover:border-sky-500/30' : 'shadow-[0_0_50px_rgba(249,115,22,0.03)] hover:border-orange-500/30'">
           
-          <div class="flex items-center justify-between mb-6 pb-4 border-b border-zinc-800">
-            <div class="flex items-center gap-3">
-              <div class="p-2 bg-[#D4AF37]/10 rounded-xl border border-[#D4AF37]/20">
-                <ShieldCheck :size="20" class="text-[#D4AF37]" />
+          <div class="absolute -top-32 -right-32 w-64 h-64 rounded-full blur-[100px] opacity-20 pointer-events-none transition-colors duration-700"
+               :class="status.activeProfileName === 'standardConfig' ? 'bg-sky-500' : 'bg-orange-500'"></div>
+
+          <div class="flex flex-col gap-5 mb-8 relative z-10">
+            
+            <div class="flex items-center gap-4">
+              <div class="p-3.5 rounded-2xl border transition-colors duration-500 shadow-inner shrink-0"
+                   :class="status.activeProfileName === 'standardConfig' ? 'bg-sky-500/10 border-sky-500/20 text-sky-400' : 'bg-orange-500/10 border-orange-500/20 text-orange-400'">
+                <ShieldCheck :size="24" />
               </div>
               <div>
-                <h3 class="text-white font-black text-sm tracking-wide">Gestión de Riesgo</h3>
-                <p class="text-[10px] text-zinc-500">Parámetros de ejecución on-chain</p>
+                <h3 class="text-white font-black text-lg tracking-tight">Gestión de Riesgo</h3>
+                <p class="text-xs text-zinc-500 font-medium">Ajuste algorítmico por sector de mercado</p>
               </div>
             </div>
+
+            <div class="flex p-1.5 bg-[#09090b] rounded-xl border border-zinc-800/80 w-full shadow-inner">
+              <button 
+                @click="switchProfile('standardConfig')"
+                :class="status.activeProfileName === 'standardConfig' 
+                  ? 'bg-sky-500/15 text-sky-400 border-sky-500/20 shadow-[0_0_15px_rgba(14,165,233,0.1)]' 
+                  : 'text-zinc-500 border-transparent hover:text-zinc-300'"
+                class="flex-1 px-2 py-3 rounded-lg text-[10px] sm:text-[11px] font-black uppercase tracking-widest border transition-all duration-300 flex justify-center items-center">
+                  📘 Crypto / Política
+              </button>
+
+              <button 
+                @click="switchProfile('volatileConfig')"
+                :class="status.activeProfileName === 'volatileConfig' 
+                  ? 'bg-orange-500/15 text-orange-400 border-orange-500/20 shadow-[0_0_15px_rgba(249,115,22,0.1)]' 
+                  : 'text-zinc-500 border-transparent hover:text-zinc-300'"
+                class="flex-1 px-2 py-3 rounded-lg text-[10px] sm:text-[11px] font-black uppercase tracking-widest border transition-all duration-300 flex justify-center items-center">
+                  📙 Deportes / Pop
+              </button>
+            </div>
+            
           </div>
 
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-5 relative z-10">
             
-            <div class="flex flex-col gap-2 p-4 rounded-xl border border-zinc-800 bg-[#1c1917] relative overflow-hidden">
-              <div class="flex justify-between items-center mb-1">
-                <label class="text-[10px] text-zinc-500 font-black uppercase tracking-[0.2em]">Filtro Sens.</label>
-                <span class="text-[8px] font-black px-1.5 py-0.5 rounded border"
-                  :class="(status.predictionThreshold || 0.70) >= 0.75 ? 'text-emerald-500 bg-emerald-500/10 border-emerald-500/40' : (status.predictionThreshold || 0.70) <= 0.40 ? 'text-red-500 bg-red-500/10 border-red-500/40' : 'text-amber-400 bg-amber-400/10 border-amber-400/40'">
-                  {{ (status.predictionThreshold || 0.70) >= 0.75 ? 'MODO SEGURO' : ((status.predictionThreshold || 0.70) <= 0.40 ? 'ALTO RIESGO' : 'ESTÁNDAR') }}
+            <div class="flex flex-col p-5 rounded-2xl bg-[#161619] border border-zinc-800/60 hover:border-zinc-700/80 transition-colors">
+              <div class="flex justify-between items-center mb-4">
+                <label class="text-[11px] text-zinc-400 font-bold uppercase tracking-widest whitespace-nowrap">Filtro Sens.</label>
+                <span class="text-[9px] font-black px-2 py-1 rounded-md border shrink-0 whitespace-nowrap" :class="status.activeProfileName === 'standardConfig' ? 'text-sky-400 bg-sky-400/10 border-sky-400/20' : 'text-orange-400 bg-orange-400/10 border-orange-400/20'">
+                  CERTEZA
                 </span>
               </div>
-              <div class="flex items-center gap-3">
+              <div class="relative w-full">
                 <input type="number" min="10" max="95" step="1"
-                  :value="Math.round((status.predictionThreshold || 0.70) * 100)"
-                  @change="status.predictionThreshold = $event.target.value / 100; updateThreshold();"
-                  class="flex-1 w-full px-3 py-2 rounded-lg bg-zinc-900 text-white font-mono text-sm border border-zinc-700 focus:border-[#D4AF37] focus:ring-1 focus:ring-[#D4AF37] outline-none transition-all" />
-                <span class="text-[#D4AF37] font-bold text-sm">%</span>
+                  :value="Math.round((status[status.activeProfileName].predictionThreshold || 0.70) * 100)"
+                  @change="status[status.activeProfileName].predictionThreshold = $event.target.value / 100; updateRiskSettings();"
+                  class="w-full h-12 bg-[#09090b] border border-zinc-800/80 rounded-xl pl-4 pr-10 text-white font-mono text-lg font-bold outline-none transition-all placeholder-zinc-700 appearance-none" 
+                  :class="status.activeProfileName === 'standardConfig' ? 'focus:border-sky-500/50 focus:ring-1 focus:ring-sky-500/50' : 'focus:border-orange-500/50 focus:ring-1 focus:ring-orange-500/50'" />
+                <span class="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-500 font-black pointer-events-none">%</span>
               </div>
-              <div class="text-[9px] text-zinc-600 font-medium">Rango permitido: 10 - 95</div>
             </div>
 
-            <div class="flex flex-col gap-2 p-4 rounded-xl border border-zinc-800 bg-[#1c1917] relative overflow-hidden">
-              <div class="flex justify-between items-center mb-1">
-                <label class="text-[10px] text-zinc-500 font-black uppercase tracking-[0.2em]">Mínimo Edge</label>
-                <span class="text-[8px] font-black px-1.5 py-0.5 rounded border"
-                  :class="(status.edgeThreshold || 0.08) >= 0.12 ? 'text-emerald-500 bg-emerald-500/10 border-emerald-500/40' : (status.edgeThreshold || 0.08) <= 0.05 ? 'text-rose-500 bg-rose-500/10 border-rose-500/40' : 'text-amber-400 bg-amber-400/10 border-amber-400/40'">
-                  {{ (status.edgeThreshold || 0.08) >= 0.12 ? 'CONSERVADOR' : ((status.edgeThreshold || 0.08) <= 0.05 ? 'FRANCOTIRADOR' : 'ESTÁNDAR') }}
+            <div class="flex flex-col p-5 rounded-2xl bg-[#161619] border border-zinc-800/60 hover:border-zinc-700/80 transition-colors">
+              <div class="flex justify-between items-center mb-4">
+                <label class="text-[11px] text-zinc-400 font-bold uppercase tracking-widest whitespace-nowrap">Mínimo Edge</label>
+                <span class="text-[9px] font-black px-2 py-1 rounded-md border shrink-0 whitespace-nowrap" :class="status.activeProfileName === 'standardConfig' ? 'text-sky-400 bg-sky-400/10 border-sky-400/20' : 'text-orange-400 bg-orange-400/10 border-orange-400/20'">
+                  VENTAJA
                 </span>
               </div>
-              <div class="flex items-center gap-3">
+              <div class="relative w-full">
                 <input type="number" min="2" max="30" step="1"
-                  :value="Math.round((status.edgeThreshold || 0.08) * 100)"
-                  @change="status.edgeThreshold = $event.target.value / 100; updateEdge();"
-                  class="flex-1 w-full px-3 py-2 rounded-lg bg-zinc-900 text-white font-mono text-sm border border-zinc-700 focus:border-[#D4AF37] focus:ring-1 focus:ring-[#D4AF37] outline-none transition-all" />
-                <span class="text-[#D4AF37] font-bold text-sm">%</span>
+                  :value="Math.round((status[status.activeProfileName].edgeThreshold || 0.08) * 100)"
+                  @change="status[status.activeProfileName].edgeThreshold = $event.target.value / 100; updateRiskSettings();"
+                  class="w-full h-12 bg-[#09090b] border border-zinc-800/80 rounded-xl pl-4 pr-10 text-white font-mono text-lg font-bold outline-none transition-all placeholder-zinc-700 appearance-none" 
+                  :class="status.activeProfileName === 'standardConfig' ? 'focus:border-sky-500/50 focus:ring-1 focus:ring-sky-500/50' : 'focus:border-orange-500/50 focus:ring-1 focus:ring-orange-500/50'" />
+                <span class="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-500 font-black pointer-events-none">%</span>
               </div>
-              <div class="text-[9px] text-zinc-600 font-medium">Rango permitido: 2 - 30</div>
             </div>
 
-            <div class="flex flex-col gap-2 p-4 rounded-xl border border-zinc-800 bg-[#1c1917] relative overflow-hidden">
-              <div class="flex justify-between items-center mb-1">
-                <label class="text-[10px] text-zinc-500 font-black uppercase tracking-[0.2em]">Take Profit</label>
-                <span class="text-[8px] font-black px-1.5 py-0.5 rounded border"
-                  :class="(status.takeProfitThreshold || 15) >= 25 ? 'text-amber-500 bg-amber-500/10 border-amber-500/40' : (status.takeProfitThreshold || 15) <= 10 ? 'text-emerald-400 bg-emerald-400/10 border-emerald-400/40' : 'text-emerald-500 bg-emerald-500/10 border-emerald-500/40'">
-                  {{ (status.takeProfitThreshold || 15) >= 25 ? 'PACIENTE' : ((status.takeProfitThreshold || 15) <= 10 ? 'AGRESIVO' : 'ESTÁNDAR') }}
+            <div class="flex flex-col p-5 rounded-2xl bg-[#161619] border border-zinc-800/60 hover:border-zinc-700/80 transition-colors">
+              <div class="flex justify-between items-center mb-4">
+                <label class="text-[11px] text-zinc-400 font-bold uppercase tracking-widest whitespace-nowrap">Take Profit</label>
+                <span class="text-[9px] font-black px-2 py-1 rounded-md border text-emerald-400 bg-emerald-400/10 border-emerald-400/20 shrink-0 whitespace-nowrap">
+                  GANANCIAS
                 </span>
               </div>
-              <div class="flex items-center gap-3">
-                <input type="number" min="5" max="50" step="1"
-                  v-model.number="status.takeProfitThreshold" @change="updateTakeProfit"
-                  class="flex-1 w-full px-3 py-2 rounded-lg bg-zinc-900 text-white font-mono text-sm border border-zinc-700 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none transition-all" />
-                <span class="text-emerald-500 font-bold text-sm">%</span>
+              <div class="relative w-full">
+                <input type="number" min="5" max="100" step="1"
+                  v-model.number="status[status.activeProfileName].takeProfitThreshold" @change="updateRiskSettings"
+                  class="w-full h-12 bg-[#09090b] border border-zinc-800/80 rounded-xl pl-4 pr-10 text-white font-mono text-lg font-bold outline-none transition-all placeholder-zinc-700 appearance-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50" />
+                <span class="absolute right-4 top-1/2 -translate-y-1/2 text-emerald-600 font-black pointer-events-none">%</span>
               </div>
-              <div class="text-[9px] text-zinc-600 font-medium">Rango permitido: 5 - 50</div>
             </div>
 
-            <div class="flex flex-col gap-2 p-4 rounded-xl border border-zinc-800 bg-[#1c1917] relative overflow-hidden">
-              <div class="flex justify-between items-center mb-1">
-                <label class="text-[10px] text-zinc-500 font-black uppercase tracking-[0.2em]">Stop Loss</label>
-                <span class="text-[8px] font-black px-1.5 py-0.5 rounded border"
-                  :class="(status.stopLossThreshold || -15) <= -30 ? 'text-amber-500 bg-amber-500/10 border-amber-500/40' : (status.stopLossThreshold || -15) >= -10 ? 'text-rose-400 bg-rose-400/10 border-rose-400/40' : 'text-rose-500 bg-rose-500/10 border-rose-500/40'">
-                  {{ (status.stopLossThreshold || -15) <= -30 ? 'PACIENTE' : ((status.stopLossThreshold || -15) >= -10 ? 'ESTRICTO' : 'ESTÁNDAR') }}
+            <div class="flex flex-col p-5 rounded-2xl bg-[#161619] border border-zinc-800/60 hover:border-zinc-700/80 transition-colors">
+              <div class="flex justify-between items-center mb-4">
+                <label class="text-[11px] text-zinc-400 font-bold uppercase tracking-widest whitespace-nowrap">Stop Loss</label>
+                <span class="text-[9px] font-black px-2 py-1 rounded-md border text-rose-400 bg-rose-400/10 border-rose-400/20 shrink-0 whitespace-nowrap">
+                  PÉRDIDAS
                 </span>
               </div>
-              <div class="flex items-center gap-3">
-                <input type="number" min="-50" max="-5" step="1"
-                  v-model.number="status.stopLossThreshold" @change="updateStopLoss"
-                  class="flex-1 w-full px-3 py-2 rounded-lg bg-zinc-900 text-white font-mono text-sm border border-zinc-700 focus:border-rose-500 focus:ring-1 focus:ring-rose-500 outline-none transition-all" />
-                <span class="text-rose-500 font-bold text-sm">%</span>
+              <div class="relative w-full">
+                <input type="number" min="-90" max="-5" step="1"
+                  v-model.number="status[status.activeProfileName].stopLossThreshold" @change="updateRiskSettings"
+                  class="w-full h-12 bg-[#09090b] border border-zinc-800/80 rounded-xl pl-4 pr-10 text-white font-mono text-lg font-bold outline-none transition-all placeholder-zinc-700 appearance-none focus:border-rose-500/50 focus:ring-1 focus:ring-rose-500/50" />
+                <span class="absolute right-4 top-1/2 -translate-y-1/2 text-rose-600 font-black pointer-events-none">%</span>
               </div>
-              <div class="text-[9px] text-zinc-600 font-medium">Rango permitido: -50 a -5</div>
             </div>
 
           </div>
@@ -1045,64 +1110,6 @@ onUnmounted(() => {
           </div>
         </div>
 
-        <div class="bg-[#111114] border-2 border-emerald-500/20 hover:border-emerald-500/50 rounded-3xl p-6 transition-all shadow-xl mb-8">
-          <div class="flex items-center justify-between mb-4 pb-4 border-b border-zinc-800">
-            <div class="flex items-center gap-3">
-              <div class="p-2 bg-emerald-500/10 rounded-xl border border-emerald-500/20">
-                <ShieldCheck :size="20" class="text-emerald-500" />
-              </div>
-              <div>
-                <h3 class="text-white font-black text-sm tracking-wide">Configuración de Riesgo</h3>
-                <p class="text-[10px] text-zinc-500">Parámetros clave de ejecución del bot</p>
-              </div>
-            </div>
-          </div>
-          
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            
-            <div class="flex flex-col gap-2 p-3 rounded-xl border border-zinc-800 bg-zinc-900/50">
-              <label class="text-xs font-bold text-white mb-1">Filtro de Sensibilidad (0.1 - 1.0)</label>
-              <div class="flex items-center gap-2">
-                <input type="number" min="0.1" max="1.0" step="0.01" 
-                  v-model.number="status.predictionThreshold" @change="updateFilters"
-                  class="flex-1 px-3 py-1.5 rounded-lg bg-zinc-800 text-white text-sm border border-zinc-700 accent-emerald-500" />
-                <span class="text-zinc-500 text-sm">%</span>
-              </div>
-            </div>
-
-            <div class="flex flex-col gap-2 p-3 rounded-xl border border-zinc-800 bg-zinc-900/50">
-              <label class="text-xs font-bold text-white mb-1">Mínimo Edge (0.01 - 0.5)</label>
-              <div class="flex items-center gap-2">
-                <input type="number" min="0.01" max="0.5" step="0.01" 
-                  v-model.number="status.edgeThreshold" @change="updateFilters"
-                  class="flex-1 px-3 py-1.5 rounded-lg bg-zinc-800 text-white text-sm border border-zinc-700 accent-emerald-500" />
-                <span class="text-zinc-500 text-sm">%</span>
-              </div>
-            </div>
-
-            <div class="flex flex-col gap-2 p-3 rounded-xl border border-zinc-800 bg-zinc-900/50">
-              <label class="text-xs font-bold text-white mb-1">Take Profit (5 - 100)</label>
-              <div class="flex items-center gap-2">
-                <input type="number" min="5" max="100" step="1" 
-                  v-model.number="status.takeProfitThreshold" @change="updateTakeProfit"
-                  class="flex-1 px-3 py-1.5 rounded-lg bg-zinc-800 text-white text-sm border border-zinc-700 accent-emerald-500" />
-                <span class="text-zinc-500 text-sm">%</span>
-              </div>
-            </div>
-
-            <div class="flex flex-col gap-2 p-3 rounded-xl border border-zinc-800 bg-zinc-900/50">
-              <label class="text-xs font-bold text-white mb-1">Stop Loss (-50 a -5)</label>
-              <div class="flex items-center gap-2">
-                <input type="number" min="-50" max="-5" step="1" 
-                  v-model.number="status.stopLossThreshold" @change="updateStopLoss"
-                  class="flex-1 px-3 py-1.5 rounded-lg bg-zinc-800 text-white text-sm border border-zinc-700 accent-emerald-500" />
-                <span class="text-zinc-500 text-sm">%</span>
-              </div>
-            </div>
-
-          </div>
-        </div>
-
         <!-- ==================== COPY TRADING CONTROLS ==================== -->
         <div class="bg-[#111114] border-2 border-purple-500/20 hover:border-purple-500/50 rounded-3xl p-6 transition-all shadow-xl">
           <div class="flex items-center justify-between mb-4 pb-4 border-b border-zinc-800">
@@ -1156,15 +1163,15 @@ onUnmounted(() => {
             <div>
               <div class="flex justify-between text-xs mb-1.5">
                 <span class="text-zinc-400">% máximo del balance por copia</span>
-                <span class="font-mono text-purple-400">{{ status.maxCopyPercentOfBalance }}%</span>
+                <span class="font-mono text-purple-400">{{ status[status.activeProfileName].maxCopyPercentOfBalance }}%</span>
               </div>
               <input 
                 type="range" 
-                min="2" 
+                min="1" 
                 max="15" 
                 step="1"
-                v-model.number="status.maxCopyPercentOfBalance"
-                @change="updateCopyTrading"
+                v-model.number="status[status.activeProfileName].maxCopyPercentOfBalance"
+                @change="updateCopySettings"
                 class="w-full accent-purple-500"
               >
             </div>

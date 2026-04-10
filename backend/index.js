@@ -1086,15 +1086,32 @@ function isMarketAllowed(title = "", slug = "") {
 }
 
 // ⚖️ ESCÁNER DE PERFIL DE RIESGO
-function getRiskProfile(title = "") {
-    const text = title.toLowerCase();
-    const isSports = text.match(/nba|nfl|mlb|nhl|soccer|tennis|f1|ufc|league|champions|madrid|lakers|spread|sports|yankees|athletics|club|fc|atp|wta|sarasota|masters|tour|match|inning|over\/under|o\/u|win on 202|vs\.|vs /i);
-    const isPop = text.match(/movie|oscar|grammy|mrbeast|box office|pop culture|youtube|tiktok|spotify|billboard/i);
-    
-    if (isSports || isPop) {
-        return { profileType: 'VOLATIL', config: botStatus.volatileConfig };
+function getRiskProfile(marketName = "", category = "") {
+    const lower = (marketName + " " + category).toLowerCase();
+
+    // Mercados volátiles (deportes, pop, temperature, vs, match, etc.)
+    if (lower.includes("vs") || 
+        lower.includes("spread") || 
+        lower.includes("o/u") || 
+        lower.includes("temperature") || 
+        lower.includes("temperatura") || 
+        lower.includes("win") || 
+        lower.includes("match") || 
+        lower.includes("game") || 
+        lower.includes("set") ||
+        botStatus.marketFilters.sports === true) {   // si tienes filtro sports activo
+
+        return { 
+            config: botStatus.volatileConfig, 
+            profileType: 'VOLATIL' 
+        };
     }
-    return { profileType: 'ESTANDAR', config: botStatus.standardConfig };
+
+    // Por defecto: estándar (crypto, politics, business)
+    return { 
+        config: botStatus.standardConfig, 
+        profileType: 'ESTANDAR' 
+    };
 }
 
 // ==========================================
@@ -1108,11 +1125,11 @@ async function runBot() {
     botStatus.lastCheck = new Date().toLocaleTimeString();
 
     try {
-        // Actualizaciones principales
+        // 1. Actualizaciones principales
         await fetchRealTrades();
         await updateRealBalances();
 
-        // Copy-Trading + Controles de Riesgo
+        // 2. Copy-Trading + Controles de Riesgo
         if (botStatus.copyTradingEnabled) {
             if (!botStatus.lastWhaleSelection || 
                 (Date.now() - new Date(botStatus.lastWhaleSelection).getTime()) > 10 * 60 * 1000) {
@@ -1128,7 +1145,7 @@ async function runBot() {
             await autoSellManager();
         }
 
-        // Refresh Watchlist solo cuando sea necesario
+        // 3. Refresh Watchlist
         if (botStatus.watchlist.length === 0 || watchlistIndex >= botStatus.watchlist.length) {
             await refreshWatchlist();
             watchlistIndex = 0;
@@ -1144,6 +1161,7 @@ async function runBot() {
         botStatus.currentMarket = marketItem;
         botStatus.currentTopic = marketTitle;
 
+        // 4. Análisis IA
         const newsString = await getLatestNews(marketTitle, marketItem.category);
         const cacheKey = `${marketItem.tokenId}-${newsString.substring(0, 60)}`;
 
@@ -1181,7 +1199,7 @@ async function runBot() {
         let targetProb = probYes;
         let targetSideLabel = "SÍ";
 
-        if (edgeNo > edgeYes && edgeNo > 0.02) {
+        if (edgeNo > edgeYes && edgeNo > 0.03) {
             bestEdge = edgeNo;
             targetTokenId = marketItem.tokenNo;
             targetPrice = priceNo;
@@ -1192,16 +1210,16 @@ async function runBot() {
         const livePrice = targetPrice;
         const edge = bestEdge;
 
-        // 👇 NUEVO BLOQUEO DE CATEGORÍAS
-        if (!isMarketAllowed(marketTitle, marketItem.slug)) {
-            console.log(`      ⛔ [FILTRO] Mercado ignorado por categoría apagada: ${marketTitle.substring(0,30)}`);
+        // Filtro de categorías
+        if (!isMarketAllowed(marketTitle, marketItem.slug || "")) {
+            console.log(`⛔ [FILTRO] Mercado ignorado por categoría: ${marketTitle.substring(0,30)}...`);
             watchlistIndex = (watchlistIndex + 1) % botStatus.watchlist.length;
             return;
         }
 
-        // Filtro anti-penny stocks y anti-precios extremos
+        // Filtro anti-penny / anti-precios extremos
         if (livePrice < 0.05 || livePrice > 0.85) {
-            console.log(`⏭️ Ignorando mercado: Precio ($${livePrice}) fuera de zona segura.`);
+            console.log(`⏭️ Ignorando: Precio $${livePrice} fuera de zona segura.`);
             watchlistIndex = (watchlistIndex + 1) % botStatus.watchlist.length;
             return;
         }
@@ -1209,21 +1227,15 @@ async function runBot() {
         const alreadyInvested = botStatus.activePositions.some(pos => pos.tokenId === targetTokenId);
         const alreadyClosed = closedPositionsCache.has(targetTokenId);
 
-        /*
+        // ====================== SELECCIÓN CORRECTA DE PERFIL POR MERCADO ======================
+        const { config: profile, profileType } = getRiskProfile(marketTitle, marketItem.category || "");
+
         const isStrongSignal = 
             (!alreadyInvested && !alreadyClosed) && (
-                (analysis.recommendation === "STRONG_BUY" && edge > 0.08) ||
-                (analysis.recommendation === "BUY" && edge >= botStatus.edgeThreshold && targetProb >= botStatus.predictionThreshold) ||
-                (analysis.urgency >= 9 && edge >= 0.07) ||                    // más exigente
-                (marketItem.category === "SHORT_TERM" && edge >= 0.095 && targetProb >= 0.68)  // más exigente
-            );
-        */
-        const isStrongSignal = 
-            (!alreadyInvested && !alreadyClosed) && (          // ← 1. Seguridad básica
-                (analysis.recommendation === "STRONG_BUY" && edge > 0.09) ||     // ← 2. Claude dice "fuerte"
-                (analysis.recommendation === "BUY" && edge >= botStatus.edgeThreshold && targetProb >= botStatus.predictionThreshold) || 
-                (analysis.urgency >= 9 && edge >= 0.085) ||                      // ← 3. Urgencia alta
-                (marketItem.category === "SHORT_TERM" && edge >= 0.11 && targetProb >= 0.73)  // ← 4. Mercados rápidos
+                (analysis.recommendation === "STRONG_BUY" && edge > 0.105) ||
+                (analysis.recommendation === "BUY" && edge >= profile.edgeThreshold && targetProb >= profile.predictionThreshold) ||
+                (analysis.urgency >= 9 && edge >= Math.max(0.09, profile.edgeThreshold * 0.85)) ||
+                (marketItem.category === "SHORT_TERM" && edge >= 0.13 && targetProb >= 0.77)
             );
 
         let autoExecuted = false;
@@ -1242,7 +1254,7 @@ async function runBot() {
                 dynamicBetAmount = Math.max(dynamicBetAmount, botStatus.microBetAmount);
             }
 
-            console.log(`🎯 SNIPER DISPARO → [${targetSideLabel}] | Edge: ${(edge*100).toFixed(1)}% | Prob: ${(targetProb*100).toFixed(0)}%`);
+            console.log(`🎯 SNIPER DISPARO [${profileType}] → [${targetSideLabel}] | Edge: ${(edge*100).toFixed(1)}% | Prob: ${(targetProb*100).toFixed(0)}%`);
 
             const result = await executeTradeOnChain(
                 marketItem.conditionId,
@@ -1252,7 +1264,6 @@ async function runBot() {
                 marketItem.tickSize || "0.01"
             );
 
-            // 👇 CÓDIGO CORREGIDO: Alerta dorada original del Sniper
             if (result?.success) {
                 console.log(`✅ ¡COMPRA AUTOMÁTICA EJECUTADA (${targetSideLabel})!`);
 
@@ -1285,7 +1296,8 @@ async function runBot() {
             urgency: analysis.urgency || 5,
             recommendation: analysis.recommendation || "WAIT",
             category: marketItem.category,
-            side: targetSideLabel
+            side: targetSideLabel,
+            profile: profileType   // ← CAMBIO AQUÍ (usa profileType del getRiskProfile)
         };
 
         if (signalIndex === -1) {
@@ -1303,6 +1315,27 @@ async function runBot() {
 }
 
 
+// === FUNCIÓN AUXILIAR (agrega esto arriba de autoSellManager) ===
+function getRiskProfile(marketName = "", category = "") {
+    const text = (marketName + " " + (category || "")).toLowerCase();
+
+    // Mercados claramente volátiles
+    const isVolatileMarket = /vs|spread|o\/u|temperature|temperatura|win on|match|game|set|inning|quarter|half/i.test(text);
+
+    if (isVolatileMarket) {
+        return { 
+            config: botStatus.volatileConfig, 
+            profileType: 'VOLATIL' 
+        };
+    }
+
+    return { 
+        config: botStatus.standardConfig, 
+        profileType: 'ESTANDAR' 
+    };
+}
+
+// === AUTO SELL MANAGER MEJORADO ===
 async function autoSellManager() {
     for (const pos of botStatus.activePositions) {
         if (pos.status && pos.status.includes('CANJEAR')) continue;
@@ -1310,97 +1343,94 @@ async function autoSellManager() {
         const profit = pos.percentPnl || 0;
         const marketNameShort = (pos.marketName || "Mercado desconocido").substring(0, 45);
 
-        // 🎯 FIX: Obtenemos las reglas exactas para este mercado específico
-        const { config: riskConfig, profileType } = getRiskProfile(marketNameShort);
+        // Obtenemos la configuración según el tipo de mercado
+        const { config: riskConfig, profileType } = getRiskProfile(pos.marketName);
 
-        // 1. TAKE PROFIT (18% o más)
+        // ====================== TAKE PROFIT ======================
         if (profit >= riskConfig.takeProfitThreshold) {
             console.log(`📈 TAKE PROFIT [${profileType}]: ${marketNameShort} (+${profit.toFixed(1)}%)`);
 
             try {
-                const bookResp = await axios.get(`https://clob.polymarket.com/book?token_id=${pos.tokenId}`, { httpsAgent: agent, timeout: 6500 });
+                const bookResp = await axios.get(`https://clob.polymarket.com/book?token_id=${pos.tokenId}`, 
+                    { httpsAgent: agent, timeout: 6500 });
+
                 const bids = bookResp.data?.bids || [];
+                if (bids.length === 0) continue;
+
                 const sharesToSell = parseFloat(pos.exactSize || pos.size || 0);
+                const bestPrice = parseFloat(bids[0].price);
 
-                if (bids.length > 0 && sharesToSell > 0) {
-                    const bestPrice = parseFloat(bids[0].price);
-                    
-                    // 🛡️ PROTECCIÓN ANTI-CARROÑEROS PARA EL TAKE PROFIT
-                    if (bestPrice <= 0.04) {
-                        console.log(`⚠️ Libro de órdenes vacío (Mejor oferta $${bestPrice}). Esperando liquidez real para tomar ganancias...`);
-                        continue;
-                    }
+                if (bestPrice <= 0.005) continue;   // protección ligera
 
-                    // 🎯 Usamos el NUEVO motor de ventas
-                    const result = await executeSellOnChain(pos.conditionId || null, pos.tokenId, sharesToSell, bestPrice, "0.01");
-                    
-                    if (result?.success) {
-                        closedPositionsCache.add(pos.tokenId);
-                        await sendAlert(`✅ *TAKE PROFIT EJECUTADO*\nMercado: ${marketNameShort}\nGanancia: +${profit.toFixed(1)}%`);
-                    }
+                const result = await executeSellOnChain(
+                    pos.conditionId || null, 
+                    pos.tokenId, 
+                    sharesToSell, 
+                    bestPrice, 
+                    "0.01"
+                );
+
+                if (result?.success) {
+                    closedPositionsCache.add(pos.tokenId);
+                    await sendAlert(`✅ *TAKE PROFIT [${profileType}]*\nMercado: ${marketNameShort}\nGanancia: +${profit.toFixed(1)}%`);
+                    await updateRealBalances();
                 }
             } catch (e) {
-                console.error(`❌ Error en Take Profit de ${marketNameShort}:`, e.message);
+                console.error(`❌ Take Profit error:`, e.message);
             }
             continue;
         }
 
-        // 2. STOP LOSS
-        if (profit <= riskConfig.stopLossThreshold) {   
-            console.log(`🛑 EVALUANDO STOP LOSS [${profileType}]: ${marketNameShort} (${profit.toFixed(1)}%)`);
+        // ====================== STOP LOSS ======================
+        if (profit <= riskConfig.stopLossThreshold) {
+            console.log(`🛑 STOP LOSS [${profileType}]: ${marketNameShort} (${profit.toFixed(1)}%)`);
 
             try {
-                const bookResp = await axios.get(`https://clob.polymarket.com/book?token_id=${pos.tokenId}`, { httpsAgent: agent, timeout: 6500 });
-                const bids = bookResp.data?.bids || [];
+                const bookResp = await axios.get(`https://clob.polymarket.com/book?token_id=${pos.tokenId}`, 
+                    { httpsAgent: agent, timeout: 6500 });
 
-                if (bids.length === 0) {
-                    console.log(`⚠️ No hay compradores. Esperando...`);
-                    continue;
-                }
+                const bids = bookResp.data?.bids || [];
+                if (bids.length === 0) continue;
 
                 const sharesToSell = parseFloat(pos.exactSize || pos.size || 0);
                 if (sharesToSell <= 0) continue;
 
                 const bestBidPrice = parseFloat(bids[0].price);
 
-                // 🛡️ PISO DE RESCATE: Si nos ofrecen menos de 4 centavos, preferimos aguantar
-                if (bestBidPrice <= 0.04) {
-                    console.log(`⚠️ Precio de rescate ($${bestBidPrice}) es una trampa de bots. Abortando venta, modo HOLD activado.`);
+                if (bestBidPrice <= 0.005) {
+                    console.log(`⚠️ Precio extremo. Manteniendo HOLD.`);
                     continue;
                 }
 
                 let accumulated = 0;
                 let worstPrice = bestBidPrice;
-
                 for (const bid of bids) {
                     accumulated += parseFloat(bid.size || 0);
                     worstPrice = parseFloat(bid.price);
                     if (accumulated >= sharesToSell) break;
                 }
 
-                const slippagePercent = ((bestBidPrice - worstPrice) / bestBidPrice) * 100;
+                const slippage = ((bestBidPrice - worstPrice) / bestBidPrice) * 100;
+                if (slippage > 18) continue;
 
-                if (slippagePercent > 18) {
-                    console.log(`⚠️ Slippage muy alto (${slippagePercent.toFixed(1)}%). Abortando venta.`);
-                    continue;
-                }
-
-                // 🎯 Usamos el NUEVO motor de ventas
-                const result = await executeSellOnChain(pos.conditionId || null, pos.tokenId, sharesToSell, worstPrice, "0.01");
+                const result = await executeSellOnChain(
+                    pos.conditionId || null, 
+                    pos.tokenId, 
+                    sharesToSell, 
+                    worstPrice, 
+                    "0.01"
+                );
 
                 if (result?.success) {
                     closedPositionsCache.add(pos.tokenId);
-                    const rescateEstimado = (sharesToSell * worstPrice).toFixed(2);
+                    const rescate = (sharesToSell * worstPrice).toFixed(2);
                     await sendAlert(
-                        `🛑 *VENTA AUTOMÁTICA (STOP LOSS)*\n` +
-                        `Mercado: ${marketNameShort}\n` +
-                        `PnL: ${profit.toFixed(1)}%\n` +
-                        `Rescatado ≈ $${rescateEstimado} USDC`
+                        `🛑 *STOP LOSS [${profileType}]*\nMercado: ${marketNameShort}\nPnL: ${profit.toFixed(1)}%\nRescatado ≈ $${rescate} USDC`
                     );
+                    await updateRealBalances();
                 }
-
             } catch (e) {
-                console.error(`❌ Error vendiendo ${marketNameShort}:`, e.message);
+                console.error(`❌ Stop Loss error:`, e.message);
             }
         }
     }
@@ -1586,31 +1616,28 @@ app.post('/api/settings/threshold', async (req, res) => {
 
 // 2. Recibe la orden de Riesgo y AutoTrade desde la interfaz Vue
 app.post('/api/settings/autotrade', (req, res) => {
-    // Agregamos 'profile' y 'predictionThreshold' para centralizar todo
-    const { enabled, amount, profile, edgeThreshold, takeProfitThreshold, stopLossThreshold, predictionThreshold } = req.body; 
-    
+    const { enabled, amount, profile, predictionThreshold, edgeThreshold, takeProfitThreshold, stopLossThreshold } = req.body;
+
     if (enabled !== undefined) botStatus.autoTradeEnabled = !!enabled;
-    if (amount !== undefined) botStatus.microBetAmount = parseFloat(amount) || botStatus.microBetAmount;
-    
-    // Guardamos en el perfil correcto
+    if (amount !== undefined) botStatus.microBetAmount = parseFloat(amount);
+
+    // Aquí es donde debes mejorar:
     if (profile === 'ESTANDAR') {
-        if (edgeThreshold !== undefined) botStatus.standardConfig.edgeThreshold = parseFloat(edgeThreshold); 
-        if (takeProfitThreshold !== undefined) botStatus.standardConfig.takeProfitThreshold = parseFloat(takeProfitThreshold); 
-        if (stopLossThreshold !== undefined) botStatus.standardConfig.stopLossThreshold = parseFloat(stopLossThreshold); 
         if (predictionThreshold !== undefined) botStatus.standardConfig.predictionThreshold = parseFloat(predictionThreshold);
-    } else if (profile === 'VOLATIL') {
-        if (edgeThreshold !== undefined) botStatus.volatileConfig.edgeThreshold = parseFloat(edgeThreshold); 
-        if (takeProfitThreshold !== undefined) botStatus.volatileConfig.takeProfitThreshold = parseFloat(takeProfitThreshold); 
-        if (stopLossThreshold !== undefined) botStatus.volatileConfig.stopLossThreshold = parseFloat(stopLossThreshold); 
+        if (edgeThreshold !== undefined) botStatus.standardConfig.edgeThreshold = parseFloat(edgeThreshold);
+        if (takeProfitThreshold !== undefined) botStatus.standardConfig.takeProfitThreshold = parseFloat(takeProfitThreshold);
+        if (stopLossThreshold !== undefined) botStatus.standardConfig.stopLossThreshold = parseFloat(stopLossThreshold);
+        if (maxCopyPercentOfBalance !== undefined) botStatus.standardConfig.maxCopyPercentOfBalance = parseFloat(maxCopyPercentOfBalance);
+    } 
+    else if (profile === 'VOLATIL') {
         if (predictionThreshold !== undefined) botStatus.volatileConfig.predictionThreshold = parseFloat(predictionThreshold);
+        if (edgeThreshold !== undefined) botStatus.volatileConfig.edgeThreshold = parseFloat(edgeThreshold);
+        if (takeProfitThreshold !== undefined) botStatus.volatileConfig.takeProfitThreshold = parseFloat(takeProfitThreshold);
+        if (stopLossThreshold !== undefined) botStatus.volatileConfig.stopLossThreshold = parseFloat(stopLossThreshold);
+        if (maxCopyPercentOfBalance !== undefined) botStatus.volatileConfig.maxCopyPercentOfBalance = parseFloat(maxCopyPercentOfBalance);
     }
-    
-    res.json({ 
-        success: true, 
-        autoTradeEnabled: botStatus.autoTradeEnabled, 
-        standardConfig: botStatus.standardConfig,
-        volatileConfig: botStatus.volatileConfig
-    });
+
+    res.json({ success: true, ...botStatus });
 });
 
 // 3. Toggle Copy-Trading + filtros
