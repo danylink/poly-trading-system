@@ -1056,7 +1056,7 @@ async function checkAndCopyWhaleTrades() {
 
                 const side = (trade.side || "").toUpperCase();
                 const tokenId = trade.asset;
-                const conditionId = trade.conditionId; // <--- NUEVO: Llave para mercados NegRisk
+                const conditionId = trade.conditionId; // <--- Llave para mercados NegRisk
                 const whaleSize = parseFloat(trade.size || 0); 
                 const price = parseFloat(trade.price || 0);
                 
@@ -1064,17 +1064,20 @@ async function checkAndCopyWhaleTrades() {
                 const title = trade.title || "Mercado desconocido";
                 const slug = trade.slug || "";
 
-                // 👇 NUEVO BLOQUEO DE CATEGORÍAS
-                if (!isMarketAllowed(title, slug)) {
-                    console.log(`      ⛔ [FILTRO] Ignorando ballena en mercado bloqueado por categoría: ${title.substring(0,30)}`);
-                    continue; 
-                }
-
+                // Filtros de tamaño y tiempo generales
                 if (!tokenId || whaleSize < 100) continue; 
                 if (Date.now() - timestamp > 20 * 60 * 1000) continue; 
 
                 // ==================== COPIA DE COMPRA ====================
                 if (side === "BUY") {
+                    
+                    // 🛡️ FIX (FUGA DE FILTRO): El bloqueo va AQUÍ ADENTRO.
+                    // Solo bloqueamos compras nuevas. Las ventas de posiciones existentes siempre pasan.
+                    if (!isMarketAllowed(title, slug)) {
+                        console.log(`      ⛔ [FILTRO] Ignorando COMPRA en mercado bloqueado por categoría: ${title.substring(0,30)}`);
+                        continue; 
+                    }
+
                     const alreadyHavePosition = botStatus.activePositions.some(p => p.tokenId === tokenId);
                     const alreadyCopiedRecently = botStatus.copiedTrades.some(t => 
                         t.tokenId === tokenId && (Date.now() - t.id) < 10 * 60 * 1000
@@ -1095,7 +1098,6 @@ async function checkAndCopyWhaleTrades() {
 
                     console.log(`      🔥 [COPY BUY] Whale compró ${whaleSize.toFixed(1)} @ $${price.toFixed(3)} → ${title.substring(0,55)}...`);
 
-                    // 🎯 FIX: Enviamos el conditionId en lugar de null
                     const result = await executeTradeOnChain(conditionId, tokenId, montoInversion, price, "0.01");
 
                     if (result?.success) {
@@ -1138,15 +1140,15 @@ async function checkAndCopyWhaleTrades() {
 
                 // ==================== COPIA DE VENTA ====================
                 else if (side === "SELL") {
+                    
+                    // 🔓 AQUÍ NO HAY FILTRO. Si la ballena vende, nosotros siempre vendemos.
                     const copiedIndex = botStatus.copiedPositions.findIndex(p => p.tokenId === tokenId && p.whale === whale.address);
                     if (copiedIndex === -1) continue;
 
                     const position = botStatus.copiedPositions[copiedIndex];
 
-                    console.log(`      🔥 [COPY SELL] Whale vendió → Vendiendo nuestra posición`);
+                    console.log(`      🔥 [COPY SELL] Whale vendió → Vendiendo nuestra posición ignorando filtros`);
 
-                    // 🎯 FIX: Enviamos el conditionId en lugar de null
-                    //const sellResult = await executeTradeOnChain(conditionId, tokenId, position.sizeCopied, price * 0.97, "0.01");
                     const sellResult = await executeSellOnChain(conditionId, tokenId, position.sizeCopied, price * 0.97, "0.01");
 
                     if (sellResult?.success) {
