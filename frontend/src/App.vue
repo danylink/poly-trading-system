@@ -22,6 +22,7 @@ const status = ref({
   executions: [],
   pendingSignals: [],
   autoTradeEnabled: true,
+  isPanicStopped: false,
   microBetAmount: 1.00,
   marketFilters: { crypto: true, politics: true, business: true, sports: true, pop: true },
   
@@ -344,6 +345,34 @@ const updateRiskSettings = async () => {
   }
 };
 
+// --- 🚨 BOTÓN DE FRENO DE EMERGENCIA / DESBLOQUEO ---
+const triggerPanicStop = async () => {
+  try {
+    const action = status.value.isPanicStopped ? 'resume' : 'stop';
+    
+    Swal.fire({
+      title: action === 'stop' ? 'Activando Freno...' : 'Liberando Candado...',
+      background: '#1c1917',
+      color: '#D4AF37',
+      didOpen: () => { Swal.showLoading(); }
+    });
+
+    await axios.post(`${API_URL}/panic`, { action });
+    await fetchStatus(); 
+    
+    Swal.fire({
+      title: action === 'stop' ? 'SISTEMA DETENIDO' : 'SISTEMA REACTIVADO',
+      text: action === 'stop' ? 'El bot no comprará ni venderá nada.' : 'El bot vuelve a operar con normalidad.',
+      icon: action === 'stop' ? 'warning' : 'success',
+      background: '#1c1917',
+      color: '#fff',
+      confirmButtonColor: '#D4AF37'
+    });
+  } catch (error) {
+    console.error("Error en panic stop:", error);
+  }
+};
+
 const updateCopySettings = async () => {
   try {
     const profileStr = status.value.activeProfileName === 'standardConfig' ? 'ESTANDAR' : 'VOLATIL';
@@ -526,9 +555,10 @@ onUnmounted(() => {
           RESCATAR USDC
         </button>
 
-        <button @click="triggerPanicStop" class="flex items-center gap-2.5 bg-red-950 text-red-300 px-5 py-3 rounded-full text-sm font-bold hover:bg-red-900 transition active:scale-95 group">
-          <Power :size="18" class="text-red-500 group-hover:animate-pulse" />
-          EMERGENCY STOP
+        <button @click="triggerPanicStop" class="flex items-center gap-2.5 px-5 py-3 rounded-full text-sm font-bold transition active:scale-95 group border"
+                :class="status.isPanicStopped ? 'bg-amber-950/40 text-amber-500 border-amber-500/20 hover:bg-amber-900/60' : 'bg-red-950 text-red-300 border-transparent hover:bg-red-900'">
+          <Power :size="18" :class="status.isPanicStopped ? 'text-amber-500' : 'text-red-500 group-hover:animate-pulse'" />
+          {{ status.isPanicStopped ? 'QUITAR CANDADO' : 'EMERGENCY STOP' }}
         </button>
 
         <button @click="logout" class="flex items-center justify-center bg-zinc-950 border border-zinc-800 text-zinc-500 p-3 rounded-full hover:text-white hover:border-zinc-600 transition-all">

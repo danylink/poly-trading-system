@@ -1805,23 +1805,23 @@ app.post('/api/sell', async (req, res) => {
     }
 });
 
-// Toggle Copy-Trading + filtros
-app.post('/api/settings/copytrading', (req, res) => {
-    const { enabled, maxCopySize, maxCopyPercent } = req.body;
+// 🚀 ENDPOINT DE PÁNICO (Freno de emergencia manual y automático)
+app.post('/api/panic', (req, res) => {
+    const { action } = req.body;
     
-    if (enabled !== undefined) botStatus.copyTradingEnabled = !!enabled;
-    if (maxCopySize !== undefined) botStatus.maxCopySize = parseFloat(maxCopySize) || 50;
-    if (maxCopyPercent !== undefined) botStatus.maxCopyPercentOfBalance = parseFloat(maxCopyPercent) || 8;
-
-    console.log(`⚙️ Copy-Trading: ${botStatus.copyTradingEnabled ? 'ON' : 'OFF'} | Max Size: ${botStatus.maxCopySize} shares | Max % Balance: ${botStatus.maxCopyPercentOfBalance}%`);
+    if (action === 'stop') {
+        botStatus.isPanicStopped = true;
+        console.log("🚨 [EMERGENCIA] Bot detenido manualmente desde el panel.");
+    } else if (action === 'resume') {
+        botStatus.isPanicStopped = false;
+        // Reiniciamos el balance base para que el límite del 10% empiece a contar desde los $119 actuales
+        botStatus.dailyStartBalance = parseFloat(botStatus.clobOnlyUSDC || 0); 
+        console.log("✅ [EMERGENCIA] Candado liberado. Bot reactivado.");
+    }
     
-    res.json({ 
-        success: true, 
-        copyTradingEnabled: botStatus.copyTradingEnabled,
-        maxCopySize: botStatus.maxCopySize,
-        maxCopyPercentOfBalance: botStatus.maxCopyPercentOfBalance
-    });
+    res.json({ success: true, isPanicStopped: botStatus.isPanicStopped });
 });
+
 
 // ==========================================
 // 11. INICIO DEL MOTOR DEL SNIPER
