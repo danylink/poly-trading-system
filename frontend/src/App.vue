@@ -962,14 +962,13 @@ onUnmounted(() => {
 
       <div class="col-span-12 xl:col-span-4 h-full space-y-6">
 
-        <div class="bg-[#111114] border border-zinc-800/80 rounded-[2rem] p-6 lg:p-8 transition-all duration-500 relative overflow-hidden group mb-8"
+        <div class="bg-[#111114] border border-zinc-800/80 rounded-[2rem] p-6 lg:p-8 transition-all duration-500 relative overflow-hidden group shadow-lg"
              :class="status.activeProfileName === 'standardConfig' ? 'shadow-[0_0_50px_rgba(14,165,233,0.03)] hover:border-sky-500/30' : 'shadow-[0_0_50px_rgba(249,115,22,0.03)] hover:border-orange-500/30'">
           
           <div class="absolute -top-32 -right-32 w-64 h-64 rounded-full blur-[100px] opacity-20 pointer-events-none transition-colors duration-700"
                :class="status.activeProfileName === 'standardConfig' ? 'bg-sky-500' : 'bg-orange-500'"></div>
 
           <div class="flex flex-col gap-5 mb-8 relative z-10">
-            
             <div class="flex items-center gap-4">
               <div class="p-3.5 rounded-2xl border transition-colors duration-500 shadow-inner shrink-0"
                    :class="status.activeProfileName === 'standardConfig' ? 'bg-sky-500/10 border-sky-500/20 text-sky-400' : 'bg-orange-500/10 border-orange-500/20 text-orange-400'">
@@ -977,47 +976,34 @@ onUnmounted(() => {
               </div>
               <div>
                 <h3 class="text-white font-black text-lg tracking-tight">Gestión de Riesgo</h3>
-                <p class="text-xs text-zinc-500 font-medium">Ajuste algorítmico por sector de mercado</p>
+                <p class="text-xs text-zinc-500 font-medium">Ajuste algorítmico por sector</p>
               </div>
             </div>
 
             <div class="flex p-1.5 bg-[#09090b] rounded-xl border border-zinc-800/80 w-full shadow-inner">
               <button 
                 @click="switchProfile('standardConfig')"
-                :class="status.activeProfileName === 'standardConfig' 
-                  ? 'bg-sky-500/15 text-sky-400 border-sky-500/20 shadow-[0_0_15px_rgba(14,165,233,0.1)]' 
-                  : 'text-zinc-500 border-transparent hover:text-zinc-300'"
+                :class="status.activeProfileName === 'standardConfig' ? 'bg-sky-500/15 text-sky-400 border-sky-500/20 shadow-[0_0_15px_rgba(14,165,233,0.1)]' : 'text-zinc-500 border-transparent hover:text-zinc-300'"
                 class="flex-1 px-2 py-3 rounded-lg text-[10px] sm:text-[11px] font-black uppercase tracking-widest border transition-all duration-300 flex justify-center items-center">
                   📘 Crypto / Política
               </button>
-
               <button 
                 @click="switchProfile('volatileConfig')"
-                :class="status.activeProfileName === 'volatileConfig' 
-                  ? 'bg-orange-500/15 text-orange-400 border-orange-500/20 shadow-[0_0_15px_rgba(249,115,22,0.1)]' 
-                  : 'text-zinc-500 border-transparent hover:text-zinc-300'"
+                :class="status.activeProfileName === 'volatileConfig' ? 'bg-orange-500/15 text-orange-400 border-orange-500/20 shadow-[0_0_15px_rgba(249,115,22,0.1)]' : 'text-zinc-500 border-transparent hover:text-zinc-300'"
                 class="flex-1 px-2 py-3 rounded-lg text-[10px] sm:text-[11px] font-black uppercase tracking-widest border transition-all duration-300 flex justify-center items-center">
                   📙 Deportes / Pop
               </button>
             </div>
-            
           </div>
 
           <div class="grid grid-cols-1 md:grid-cols-2 gap-5 relative z-10">
-            
             <div class="flex flex-col p-5 rounded-2xl bg-[#161619] border border-zinc-800/60 hover:border-zinc-700/80 transition-colors">
               <div class="flex justify-between items-center mb-4">
                 <label class="text-[11px] text-zinc-400 font-bold uppercase tracking-widest whitespace-nowrap">Filtro Sens.</label>
-                <span class="text-[9px] font-black px-2 py-1 rounded-md border shrink-0 whitespace-nowrap" :class="status.activeProfileName === 'standardConfig' ? 'text-sky-400 bg-sky-400/10 border-sky-400/20' : 'text-orange-400 bg-orange-400/10 border-orange-400/20'">
-                  CERTEZA
-                </span>
+                <span class="text-[9px] font-black px-2 py-1 rounded-md border shrink-0 whitespace-nowrap" :class="status.activeProfileName === 'standardConfig' ? 'text-sky-400 bg-sky-400/10 border-sky-400/20' : 'text-orange-400 bg-orange-400/10 border-orange-400/20'">CERTEZA</span>
               </div>
               <div class="relative w-full">
-                <input type="number" min="10" max="95" step="1"
-                  :value="Math.round((status[status.activeProfileName].predictionThreshold || 0.70) * 100)"
-                  @change="status[status.activeProfileName].predictionThreshold = $event.target.value / 100; updateRiskSettings();"
-                  class="w-full h-12 bg-[#09090b] border border-zinc-800/80 rounded-xl pl-4 pr-10 text-white font-mono text-lg font-bold outline-none transition-all placeholder-zinc-700 appearance-none" 
-                  :class="status.activeProfileName === 'standardConfig' ? 'focus:border-sky-500/50 focus:ring-1 focus:ring-sky-500/50' : 'focus:border-orange-500/50 focus:ring-1 focus:ring-orange-500/50'" />
+                <input type="number" min="10" max="95" step="1" :value="Math.round((status[status.activeProfileName].predictionThreshold || 0.70) * 100)" @change="status[status.activeProfileName].predictionThreshold = $event.target.value / 100; updateRiskSettings();" class="w-full h-12 bg-[#09090b] border border-zinc-800/80 rounded-xl pl-4 pr-10 text-white font-mono text-lg font-bold outline-none transition-all placeholder-zinc-700 appearance-none" :class="status.activeProfileName === 'standardConfig' ? 'focus:border-sky-500/50 focus:ring-1 focus:ring-sky-500/50' : 'focus:border-orange-500/50 focus:ring-1 focus:ring-orange-500/50'" />
                 <span class="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-500 font-black pointer-events-none">%</span>
               </div>
             </div>
@@ -1025,16 +1011,10 @@ onUnmounted(() => {
             <div class="flex flex-col p-5 rounded-2xl bg-[#161619] border border-zinc-800/60 hover:border-zinc-700/80 transition-colors">
               <div class="flex justify-between items-center mb-4">
                 <label class="text-[11px] text-zinc-400 font-bold uppercase tracking-widest whitespace-nowrap">Mínimo Edge</label>
-                <span class="text-[9px] font-black px-2 py-1 rounded-md border shrink-0 whitespace-nowrap" :class="status.activeProfileName === 'standardConfig' ? 'text-sky-400 bg-sky-400/10 border-sky-400/20' : 'text-orange-400 bg-orange-400/10 border-orange-400/20'">
-                  VENTAJA
-                </span>
+                <span class="text-[9px] font-black px-2 py-1 rounded-md border shrink-0 whitespace-nowrap" :class="status.activeProfileName === 'standardConfig' ? 'text-sky-400 bg-sky-400/10 border-sky-400/20' : 'text-orange-400 bg-orange-400/10 border-orange-400/20'">VENTAJA</span>
               </div>
               <div class="relative w-full">
-                <input type="number" min="2" max="30" step="1"
-                  :value="Math.round((status[status.activeProfileName].edgeThreshold || 0.08) * 100)"
-                  @change="status[status.activeProfileName].edgeThreshold = $event.target.value / 100; updateRiskSettings();"
-                  class="w-full h-12 bg-[#09090b] border border-zinc-800/80 rounded-xl pl-4 pr-10 text-white font-mono text-lg font-bold outline-none transition-all placeholder-zinc-700 appearance-none" 
-                  :class="status.activeProfileName === 'standardConfig' ? 'focus:border-sky-500/50 focus:ring-1 focus:ring-sky-500/50' : 'focus:border-orange-500/50 focus:ring-1 focus:ring-orange-500/50'" />
+                <input type="number" min="2" max="30" step="1" :value="Math.round((status[status.activeProfileName].edgeThreshold || 0.08) * 100)" @change="status[status.activeProfileName].edgeThreshold = $event.target.value / 100; updateRiskSettings();" class="w-full h-12 bg-[#09090b] border border-zinc-800/80 rounded-xl pl-4 pr-10 text-white font-mono text-lg font-bold outline-none transition-all placeholder-zinc-700 appearance-none" :class="status.activeProfileName === 'standardConfig' ? 'focus:border-sky-500/50 focus:ring-1 focus:ring-sky-500/50' : 'focus:border-orange-500/50 focus:ring-1 focus:ring-orange-500/50'" />
                 <span class="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-500 font-black pointer-events-none">%</span>
               </div>
             </div>
@@ -1042,14 +1022,10 @@ onUnmounted(() => {
             <div class="flex flex-col p-5 rounded-2xl bg-[#161619] border border-zinc-800/60 hover:border-zinc-700/80 transition-colors">
               <div class="flex justify-between items-center mb-4">
                 <label class="text-[11px] text-zinc-400 font-bold uppercase tracking-widest whitespace-nowrap">Take Profit</label>
-                <span class="text-[9px] font-black px-2 py-1 rounded-md border text-emerald-400 bg-emerald-400/10 border-emerald-400/20 shrink-0 whitespace-nowrap">
-                  GANANCIAS
-                </span>
+                <span class="text-[9px] font-black px-2 py-1 rounded-md border text-emerald-400 bg-emerald-400/10 border-emerald-400/20 shrink-0 whitespace-nowrap">GANANCIAS</span>
               </div>
               <div class="relative w-full">
-                <input type="number" min="5" max="100" step="1"
-                  v-model.number="status[status.activeProfileName].takeProfitThreshold" @change="updateRiskSettings"
-                  class="w-full h-12 bg-[#09090b] border border-zinc-800/80 rounded-xl pl-4 pr-10 text-white font-mono text-lg font-bold outline-none transition-all placeholder-zinc-700 appearance-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50" />
+                <input type="number" min="5" max="100" step="1" v-model.number="status[status.activeProfileName].takeProfitThreshold" @change="updateRiskSettings" class="w-full h-12 bg-[#09090b] border border-zinc-800/80 rounded-xl pl-4 pr-10 text-white font-mono text-lg font-bold outline-none transition-all placeholder-zinc-700 appearance-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50" />
                 <span class="absolute right-4 top-1/2 -translate-y-1/2 text-emerald-600 font-black pointer-events-none">%</span>
               </div>
             </div>
@@ -1057,217 +1033,181 @@ onUnmounted(() => {
             <div class="flex flex-col p-5 rounded-2xl bg-[#161619] border border-zinc-800/60 hover:border-zinc-700/80 transition-colors">
               <div class="flex justify-between items-center mb-4">
                 <label class="text-[11px] text-zinc-400 font-bold uppercase tracking-widest whitespace-nowrap">Stop Loss</label>
-                <span class="text-[9px] font-black px-2 py-1 rounded-md border text-rose-400 bg-rose-400/10 border-rose-400/20 shrink-0 whitespace-nowrap">
-                  PÉRDIDAS
-                </span>
+                <span class="text-[9px] font-black px-2 py-1 rounded-md border text-rose-400 bg-rose-400/10 border-rose-400/20 shrink-0 whitespace-nowrap">PÉRDIDAS</span>
               </div>
               <div class="relative w-full">
-                <input type="number" min="-90" max="-5" step="1"
-                  v-model.number="status[status.activeProfileName].stopLossThreshold" @change="updateRiskSettings"
-                  class="w-full h-12 bg-[#09090b] border border-zinc-800/80 rounded-xl pl-4 pr-10 text-white font-mono text-lg font-bold outline-none transition-all placeholder-zinc-700 appearance-none focus:border-rose-500/50 focus:ring-1 focus:ring-rose-500/50" />
+                <input type="number" min="-90" max="-5" step="1" v-model.number="status[status.activeProfileName].stopLossThreshold" @change="updateRiskSettings" class="w-full h-12 bg-[#09090b] border border-zinc-800/80 rounded-xl pl-4 pr-10 text-white font-mono text-lg font-bold outline-none transition-all placeholder-zinc-700 appearance-none focus:border-rose-500/50 focus:ring-1 focus:ring-rose-500/50" />
                 <span class="absolute right-4 top-1/2 -translate-y-1/2 text-rose-600 font-black pointer-events-none">%</span>
               </div>
             </div>
-
           </div>
         </div>
 
-        <div class="bg-[#111114] border-2 border-emerald-500/20 hover:border-emerald-500/50 rounded-3xl p-6 transition-all shadow-xl relative overflow-hidden group">
-          <div class="absolute -right-6 -top-6 opacity-5 group-hover:opacity-10 transition-all duration-700">
-            <Cpu :size="120" class="text-emerald-500" />
-          </div>
+        <div class="bg-[#111114] border border-zinc-800/80 rounded-[2rem] p-6 lg:p-8 transition-all duration-500 relative overflow-hidden group shadow-[0_0_50px_rgba(52,211,153,0.02)] hover:border-emerald-500/30">
+          <div class="absolute -top-32 -right-32 w-64 h-64 bg-emerald-500 rounded-full blur-[100px] opacity-5 pointer-events-none transition-colors duration-700"></div>
           
-          <div class="relative z-10 flex items-center justify-between mb-4 pb-4 border-b border-zinc-800">
-            <div class="flex items-center gap-3">
-              <div class="p-2 bg-emerald-500/10 rounded-xl border border-emerald-500/20 shadow-[0_0_15px_rgba(16,185,129,0.2)]">
-                <Cpu :size="20" class="text-emerald-500" />
+          <div class="flex items-center justify-between mb-6 relative z-10 pb-6 border-b border-zinc-800/80">
+            <div class="flex items-center gap-4">
+              <div class="p-3.5 rounded-2xl border transition-colors duration-500 shadow-inner shrink-0 bg-emerald-500/10 border-emerald-500/20 text-emerald-400">
+                <ShieldCheck :size="24" />
               </div>
               <div>
-                <h3 class="text-white font-black text-sm tracking-wide">Autopilot Sniper</h3>
-                <p class="text-[10px] text-zinc-500 uppercase tracking-widest mt-0.5">Disparo Automático</p>
+                <h3 class="text-white font-black text-lg tracking-tight">Filtros de Mercado</h3>
+                <p class="text-xs text-zinc-500 font-medium">Bloqueo de sectores volátiles</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 sm:grid-cols-3 gap-4 relative z-10">
+            <label v-for="key in filterOrder" :key="key" class="flex flex-col items-center justify-center p-4 rounded-2xl border cursor-pointer transition-all duration-300 relative overflow-hidden"
+                  :class="status.marketFilters[key] ? 'bg-emerald-500/10 border-emerald-500/30 shadow-[0_0_15px_rgba(16,185,129,0.1)]' : 'bg-[#161619] border-zinc-800/60 hover:border-zinc-700'">
+              <div v-if="status.marketFilters[key]" class="absolute top-0 w-full h-1 bg-emerald-500"></div>
+              <span class="text-[11px] font-black uppercase tracking-widest mt-1" :class="status.marketFilters[key] ? 'text-emerald-400' : 'text-zinc-500'">{{ key }}</span>
+              <input type="checkbox" v-model="status.marketFilters[key]" @change="updateFilters" class="sr-only">
+            </label>
+          </div>
+        </div>
+
+        <div class="bg-[#111114] border border-zinc-800/80 rounded-[2rem] p-6 lg:p-8 transition-all duration-500 relative overflow-hidden group shadow-[0_0_50px_rgba(16,185,129,0.02)] hover:border-emerald-500/30">
+          <div class="absolute -top-32 -right-32 w-64 h-64 bg-emerald-500 rounded-full blur-[100px] opacity-10 pointer-events-none transition-colors duration-700"></div>
+          <div class="absolute -right-6 -top-6 opacity-5 group-hover:opacity-10 transition-all duration-700 pointer-events-none">
+            <Cpu :size="150" class="text-emerald-500" />
+          </div>
+          
+          <div class="flex items-center justify-between mb-6 relative z-10 pb-6 border-b border-zinc-800/80">
+            <div class="flex items-center gap-4">
+              <div class="p-3.5 rounded-2xl border transition-colors duration-500 shadow-inner shrink-0 bg-emerald-500/10 border-emerald-500/20 text-emerald-400">
+                <Cpu :size="24" />
+              </div>
+              <div>
+                <h3 class="text-white font-black text-lg tracking-tight">Autopilot Sniper</h3>
+                <p class="text-xs text-zinc-500 font-medium">Disparo Automático con IA</p>
               </div>
             </div>
             
             <label class="relative inline-flex items-center cursor-pointer group/toggle">
               <input type="checkbox" v-model="status.autoTradeEnabled" @change="updateAutoTrade" class="sr-only peer">
-              <div class="w-11 h-6 bg-zinc-800 rounded-full peer peer-focus:ring-2 peer-focus:ring-emerald-500/20 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-zinc-300 after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500 group-hover/toggle:shadow-[0_0_15px_rgba(16,185,129,0.3)]"></div>
+              <div class="w-11 h-6 bg-[#09090b] border border-zinc-700 rounded-full peer peer-focus:ring-2 peer-focus:ring-emerald-500/20 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-zinc-400 after:border-zinc-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500 peer-checked:border-emerald-500 group-hover/toggle:shadow-[0_0_15px_rgba(16,185,129,0.3)]"></div>
             </label>
           </div>
 
-          <div class="relative z-10 flex items-center justify-between bg-black/40 p-3 rounded-2xl border border-zinc-800 focus-within:border-emerald-500/30">
-            <div class="flex flex-col">
-              <span class="text-[9px] text-zinc-500 font-black uppercase tracking-widest pl-2 mb-1">Monto por Disparo</span>
-              <div class="flex items-center gap-2 px-2">
-                <span class="text-emerald-500 font-bold">$</span>
+          <div class="relative z-10 flex flex-col sm:flex-row items-center justify-between bg-[#161619] p-4 rounded-2xl border border-zinc-800/60 focus-within:border-emerald-500/50 transition-colors gap-4">
+            <div class="flex flex-col w-full">
+              <span class="text-[10px] text-zinc-500 font-black uppercase tracking-widest mb-2">Monto por Disparo</span>
+              <div class="flex items-center relative w-full">
+                <span class="absolute left-4 text-emerald-500 font-bold text-lg">$</span>
                 <input 
-                  type="number" 
-                  v-model.number="status.microBetAmount" 
-                  @change="updateAutoTrade"
-                  min="0.5" step="0.5"
-                  class="bg-transparent text-white font-mono text-xl w-24 focus:outline-none placeholder:text-zinc-700 disabled:cursor-not-allowed" 
+                  type="number" v-model.number="status.microBetAmount" @change="updateAutoTrade" min="0.5" step="0.5"
+                  class="w-full h-12 bg-[#09090b] border border-zinc-800/80 rounded-xl pl-9 pr-4 text-white font-mono text-xl font-bold outline-none transition-all placeholder-zinc-700 focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 disabled:opacity-50 disabled:cursor-not-allowed" 
                   :disabled="!status.autoTradeEnabled"
-                  :class="{'opacity-50': !status.autoTradeEnabled}"
                 />
               </div>
             </div>
-            <div class="text-[10px] font-black flex items-center gap-2 uppercase border border-zinc-800 px-3 py-1.5 rounded-lg text-zinc-400 bg-zinc-900 transition-colors" :class="status.autoTradeEnabled ? 'text-emerald-500 bg-emerald-500/10 border-emerald-500/30' : ''">
-              <div v-if="status.autoTradeEnabled" class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></div>
+            <div class="text-[10px] font-black flex justify-center items-center gap-2 uppercase border px-4 py-3 rounded-xl transition-all w-full sm:w-auto mt-2 sm:mt-0" 
+                 :class="status.autoTradeEnabled ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30 shadow-[0_0_15px_rgba(16,185,129,0.1)]' : 'text-zinc-500 bg-[#09090b] border-zinc-800/80'">
+              <div v-if="status.autoTradeEnabled" class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
               <span>{{ status.autoTradeEnabled ? 'ARMADO' : 'SEGURO' }}</span>
             </div>
           </div>
         </div>
 
-        <div class="bg-[#111114] border-2 border-emerald-500/20 hover:border-emerald-500/50 rounded-3xl p-6 transition-all shadow-xl">
-          <div class="flex items-center justify-between mb-4 pb-4 border-b border-zinc-800">
-            <div class="flex items-center gap-3">
-              <div class="p-2 bg-emerald-500/10 rounded-xl border border-emerald-500/20">
-                <ShieldCheck :size="20" class="text-emerald-500" />
+        <div class="bg-[#111114] border border-zinc-800/80 rounded-[2rem] p-6 lg:p-8 transition-all duration-500 relative overflow-hidden group shadow-[0_0_50px_rgba(168,85,247,0.02)] hover:border-purple-500/30">
+          <div class="absolute -top-32 -right-32 w-64 h-64 bg-purple-500 rounded-full blur-[100px] opacity-10 pointer-events-none transition-colors duration-700"></div>
+
+          <div class="flex items-center justify-between mb-8 relative z-10 pb-6 border-b border-zinc-800/80">
+            <div class="flex items-center gap-4">
+              <div class="p-3.5 rounded-2xl border transition-colors duration-500 shadow-inner shrink-0 bg-purple-500/10 border-purple-500/20 text-purple-400">
+                <Target :size="24" />
               </div>
               <div>
-                <h3 class="text-white font-black text-sm tracking-wide">Filtro de Mercados</h3>
-                <p class="text-[10px] text-zinc-500">Apaga sectores con alta volatilidad</p>
-              </div>
-            </div>
-          </div>
-
-          <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            <label v-for="key in filterOrder" :key="key" class="flex items-center justify-between p-3 rounded-xl border cursor-pointer transition-all"
-                  :class="status.marketFilters[key] ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-zinc-900 border-zinc-800 opacity-50 hover:opacity-100'">
-              <span class="text-xs font-bold text-white capitalize">{{ key }}</span>
-              <input type="checkbox" v-model="status.marketFilters[key]" @change="updateFilters" class="sr-only">
-              <div class="w-3 h-3 rounded-full" :class="status.marketFilters[key] ? 'bg-emerald-400 shadow-[0_0_10px_#34d399]' : 'bg-zinc-600'"></div>
-            </label>
-          </div>
-        </div>
-
-        <!-- ==================== COPY TRADING CONTROLS ==================== -->
-        <div class="bg-[#111114] border-2 border-purple-500/20 hover:border-purple-500/50 rounded-3xl p-6 transition-all shadow-xl">
-          <div class="flex items-center justify-between mb-4 pb-4 border-b border-zinc-800">
-            <div class="flex items-center gap-3">
-              <div class="p-2 bg-purple-500/10 rounded-xl border border-purple-500/20">
-                <Target :size="20" class="text-purple-500" />
-              </div>
-              <div>
-                <h3 class="text-white font-black text-sm tracking-wide">Copy Trading</h3>
-                <p class="text-[10px] text-zinc-500">Copiar a las mejores whales</p>
+                <h3 class="text-white font-black text-lg tracking-tight">Copy Trading</h3>
+                <p class="text-xs text-zinc-500 font-medium">Copiar a las mejores whales</p>
               </div>
             </div>
             
-            <!-- Toggle corregido (igual estilo que Autopilot) -->
             <label class="relative inline-flex items-center cursor-pointer group/toggle">
-              <input 
-                type="checkbox" 
-                v-model="status.copyTradingEnabled" 
-                @change="updateCopyTrading"
-                class="sr-only peer"
-              >
-              <div class="w-11 h-6 bg-zinc-800 rounded-full peer peer-focus:ring-2 peer-focus:ring-purple-500/20 
-                          peer-checked:after:translate-x-full peer-checked:after:border-white 
-                          after:content-[''] after:absolute after:top-[2px] after:left-[2px] 
-                          after:bg-zinc-300 after:border-gray-300 after:border after:rounded-full 
-                          after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-500 
-                          group-hover/toggle:shadow-[0_0_15px_rgba(168,85,247,0.3)]"></div>
+              <input type="checkbox" v-model="status.copyTradingEnabled" @change="updateCopyTrading" class="sr-only peer">
+              <div class="w-11 h-6 bg-[#09090b] border border-zinc-700 rounded-full peer peer-focus:ring-2 peer-focus:ring-purple-500/20 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-zinc-400 after:border-zinc-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-500 peer-checked:border-purple-500 group-hover/toggle:shadow-[0_0_15px_rgba(168,85,247,0.3)]"></div>
             </label>
           </div>
 
-          <div v-if="status.copyTradingEnabled" class="space-y-5">
-            
-            <!-- Tamaño máximo por copia -->
-            <div>
-              <div class="flex justify-between text-xs mb-1.5">
-                <span class="text-zinc-400">Tamaño máximo por copia</span>
-                <span class="font-mono text-purple-400">{{ status.maxCopySize }} shares</span>
+          <div v-if="status.copyTradingEnabled" class="relative z-10 space-y-6">
+            <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+              <div class="flex flex-col p-5 rounded-2xl bg-[#161619] border border-zinc-800/60 hover:border-zinc-700/80 transition-colors">
+                <div class="flex justify-between items-start mb-4 gap-2">
+                  <label class="text-[10px] text-zinc-400 font-bold uppercase tracking-widest leading-snug">Tamaño Máximo</label>
+                  <span class="text-[9px] font-black px-2 py-1 rounded-md border text-purple-400 bg-purple-400/10 border-purple-400/20 shrink-0">VOL.</span>
+                </div>
+                <div class="relative w-full mt-auto">
+                  <input type="number" min="10" max="200" step="5" v-model.number="status.maxCopySize" @change="updateCopyTrading" class="w-full h-12 bg-[#09090b] border border-zinc-800/80 rounded-xl pl-4 pr-12 text-white font-mono text-lg font-bold outline-none transition-all placeholder-zinc-700 appearance-none focus:border-purple-500/50 focus:ring-1 focus:ring-purple-500/50" />
+                  <span class="absolute right-4 top-1/2 -translate-y-1/2 text-purple-600/50 font-black pointer-events-none text-xs">SH</span>
+                </div>
               </div>
-              <input 
-                type="range" 
-                min="10" 
-                max="200" 
-                step="5"
-                v-model.number="status.maxCopySize"
-                @change="updateCopyTrading"
-                class="w-full accent-purple-500"
-              >
+
+              <div class="flex flex-col p-5 rounded-2xl bg-[#161619] border border-zinc-800/60 hover:border-zinc-700/80 transition-colors">
+                <div class="flex justify-between items-start mb-4 gap-2">
+                  <label class="text-[10px] text-zinc-400 font-bold uppercase tracking-widest leading-snug">Límite Balance</label>
+                  <span class="text-[9px] font-black px-2 py-1 rounded-md border text-purple-400 bg-purple-400/10 border-purple-400/20 shrink-0">CAP.</span>
+                </div>
+                <div class="relative w-full mt-auto">
+                  <input type="number" min="1" max="15" step="1" v-model.number="status[status.activeProfileName].maxCopyPercentOfBalance" @change="updateCopySettings" class="w-full h-12 bg-[#09090b] border border-zinc-800/80 rounded-xl pl-4 pr-10 text-white font-mono text-lg font-bold outline-none transition-all placeholder-zinc-700 appearance-none focus:border-purple-500/50 focus:ring-1 focus:ring-purple-500/50" />
+                  <span class="absolute right-4 top-1/2 -translate-y-1/2 text-purple-600/50 font-black pointer-events-none">%</span>
+                </div>
+              </div>
+
+              <div class="flex flex-col p-5 rounded-2xl bg-[#161619] border border-zinc-800/60 hover:border-zinc-700/80 transition-colors md:col-span-2 xl:col-span-1">
+                <div class="flex justify-between items-start mb-4 gap-2">
+                  <label class="text-[10px] text-zinc-400 font-bold uppercase tracking-widest leading-snug">Top Whales</label>
+                  <span class="text-[9px] font-black px-2 py-1 rounded-md border text-purple-400 bg-purple-400/10 border-purple-400/20 shrink-0">SEG.</span>
+                </div>
+                <div class="relative w-full mt-auto">
+                  <input type="number" min="1" max="20" step="1" v-model.number="status.maxWhalesToCopy" @change="updateCopyTrading" class="w-full h-12 bg-[#09090b] border border-zinc-800/80 rounded-xl pl-4 pr-16 text-white font-mono text-lg font-bold outline-none transition-all placeholder-zinc-700 appearance-none focus:border-purple-500/50 focus:ring-1 focus:ring-purple-500/50" />
+                  <span class="absolute right-4 top-1/2 -translate-y-1/2 text-purple-600/50 font-black pointer-events-none text-xs">USERS</span>
+                </div>
+              </div>
             </div>
 
-            <!-- % máximo del balance -->
-            <div>
-              <div class="flex justify-between text-xs mb-1.5">
-                <span class="text-zinc-400">% máximo del balance por copia</span>
-                <span class="font-mono text-purple-400">{{ status[status.activeProfileName].maxCopyPercentOfBalance }}%</span>
-              </div>
-              <input 
-                type="range" 
-                min="1" 
-                max="15" 
-                step="1"
-                v-model.number="status[status.activeProfileName].maxCopyPercentOfBalance"
-                @change="updateCopySettings"
-                class="w-full accent-purple-500"
-              >
-            </div>
-
-            <!-- Cantidad de ballenas seleccionadas -->
-             <div>
-              <div class="flex justify-between text-xs mb-1.5">
-                <span class="text-zinc-400">Cantidad de ballenas a copiar</span>
-                <span class="font-mono text-purple-400">{{ status.maxWhalesToCopy || 10 }}</span>
-              </div>
-              <input 
-                type="range" 
-                min="1" 
-                max="20" 
-                step="1"
-                v-model.number="status.maxWhalesToCopy"
-                @change="updateCopyTrading"
-                class="w-full accent-purple-500"
-              >
-            </div>
-
-            <!-- Lista de Whales seleccionadas -->
-            <div>
-              <p class="text-xs text-zinc-400 mb-2">Whales seleccionadas automáticamente</p>
-              <div class="max-h-52 overflow-y-auto custom-scroll space-y-2 text-xs">
-                <div v-for="(whale, i) in status.autoSelectedWhales || []" :key="i"
-                     class="bg-zinc-900/70 border border-zinc-700 rounded-xl p-3">
-                  <div class="font-mono text-purple-400 text-[10px]">{{ whale.address.substring(0,12) }}...</div>
-                  <div class="flex justify-between text-[10px] mt-1 text-zinc-400">
-                    <span>PnL: <span class="text-emerald-400">${{ Number(whale.pnl || 0).toLocaleString() }}</span></span>
-                    <span>Vol: ${{ Number(whale.volume || 0).toLocaleString() }}</span>
+            <div class="pt-2">
+              <p class="text-[11px] text-zinc-500 font-bold uppercase tracking-widest mb-3 px-1">Whales seleccionadas automáticamente</p>
+              <div class="max-h-52 overflow-y-auto custom-scroll space-y-2 pr-2">
+                <div v-for="(whale, i) in status.autoSelectedWhales || []" :key="i" class="bg-[#09090b] border border-zinc-800/80 rounded-xl p-3.5 flex justify-between items-center hover:border-purple-500/30 transition-colors group">
+                  <div class="font-mono text-purple-400/80 text-xs font-medium group-hover:text-purple-400">{{ whale.address.substring(0,12) }}...</div>
+                  <div class="flex gap-4 text-[10px] font-black tracking-wide">
+                    <span class="text-emerald-500/80 bg-emerald-500/10 px-2 py-1 rounded-md border border-emerald-500/20">+${{ Number(whale.pnl || 0).toLocaleString(undefined, {maximumFractionDigits: 0}) }}</span>
+                    <span class="text-zinc-500 bg-zinc-800/50 px-2 py-1 rounded-md border border-zinc-700/50 hidden sm:block">VOL: ${{ Number(whale.volume || 0).toLocaleString(undefined, {maximumFractionDigits: 0}) }}</span>
                   </div>
                 </div>
-                <div v-if="!status.autoSelectedWhales || status.autoSelectedWhales.length === 0" 
-                     class="text-center py-4 text-zinc-500 text-xs">
-                  Esperando selección automática...
-                </div>
+                <div v-if="!status.autoSelectedWhales || status.autoSelectedWhales.length === 0" class="text-center py-6 border border-dashed border-zinc-800 rounded-xl text-zinc-500 text-xs font-medium">Esperando selección automática...</div>
               </div>
             </div>
           </div>
 
-          <div v-else class="text-center py-8 text-zinc-500 text-sm italic">
-            Activa Copy Trading para seguir automáticamente a las mejores ballenas
+          <div v-else class="text-center py-10 bg-[#09090b] rounded-2xl border border-zinc-800/50 relative z-10 mt-6">
+            <Target :size="32" class="text-zinc-700 mx-auto mb-3" />
+            <p class="text-zinc-500 text-sm font-medium">Activa Copy Trading para seguir automáticamente a las mejores ballenas</p>
           </div>
         </div>
-        
-        <div class="bg-[#111114] border-2 border-zinc-800 rounded-3xl p-6 shadow-xl">
-          <h3 class="text-zinc-400 font-black text-xs uppercase tracking-[0.2em] mb-4 flex items-center gap-2">
-            <Activity :size="14" class="text-zinc-500" />
-            Estado del Sistema
+
+        <div class="bg-[#111114] border border-zinc-800/80 rounded-[2rem] p-6 lg:p-8 transition-all shadow-lg hover:border-zinc-700/50">
+          <h3 class="text-zinc-400 font-black text-xs uppercase tracking-[0.2em] mb-5 flex items-center gap-2">
+            <Activity :size="16" class="text-zinc-500" />
+            Telemetría del Sistema
           </h3>
           
           <div class="space-y-3">
-            <div class="flex justify-between items-center bg-zinc-900/50 p-3 rounded-xl border border-zinc-800/50">
+            <div class="flex justify-between items-center bg-[#161619] p-4 rounded-2xl border border-zinc-800/60">
               <span class="text-[10px] text-zinc-500 font-black uppercase tracking-widest">Conexión CLOB</span>
-              <span class="text-xs font-mono font-bold text-emerald-400 flex items-center gap-1.5">
-                <div class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></div> EOA Active
+              <span class="text-xs font-mono font-bold text-emerald-400 flex items-center gap-2">
+                <div class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></div> EOA Active
               </span>
             </div>
             
-            <div class="flex justify-between items-center bg-zinc-900/50 p-3 rounded-xl border border-zinc-800/50">
+            <div class="flex justify-between items-center bg-[#161619] p-4 rounded-2xl border border-zinc-800/60">
               <span class="text-[10px] text-zinc-500 font-black uppercase tracking-widest">Motor IA</span>
               <span class="text-xs font-mono font-bold text-[#D4AF37]">Claude 4.6 Sonnet</span>
             </div>
 
-            <div class="flex justify-between items-center bg-zinc-900/50 p-3 rounded-xl border border-zinc-800/50">
+            <div class="flex justify-between items-center bg-[#161619] p-4 rounded-2xl border border-zinc-800/60">
               <span class="text-[10px] text-zinc-500 font-black uppercase tracking-widest">Último Escaneo</span>
               <span class="text-xs font-mono font-bold text-zinc-300">{{ status.lastCheck || 'Iniciando...' }}</span>
             </div>
