@@ -745,11 +745,44 @@ async function executeSellOnChain(conditionId, tokenId, exactShares, limitPrice,
         console.log(`\n--- 🔴 EJECUCIÓN DE VENTA ON-CHAIN ---`);
         if (!clobClient) throw new Error("clobClient no está inicializado.");
 
-        // 1. Usamos los shares EXACTOS, sin conversiones matemáticas de dólares
-        //const sharesToSell = Number(parseFloat(exactShares).toFixed(2));
-        // AHORA: Truncamos matemáticamente hacia abajo (ej. 8.785 -> 8.78) para NUNCA pasarnos del saldo real
-        const sharesToSell = Math.floor(parseFloat(exactShares) * 100) / 100;
+        // 1. OBTENER SALDO REAL DIRECTO DE LA BLOCKCHAIN
+        let realBalance = 0;
+        try {
+            const userAddress = process.env.POLY_PROXY_ADDRESS || "0x876E00CBF5c4fe22F4FA263F4cb713650cB758d2";
+            const response = await fetch(`https://data-api.polymarket.com/positions?user=${userAddress}&limit=50`);
+            const positions = await response.json();
+            
+            if (Array.isArray(positions)) {
+                const targetPos = positions.find(p => (p.asset === tokenId || p.token_id === tokenId));
+                if (targetPos) {
+                    realBalance = parseFloat(targetPos.size || targetPos['tamaño'] || 0);
+                }
+            }
+        } catch (e) {
+            console.log("⚠️ No se pudo obtener el saldo en tiempo real, usando la memoria del bot.");
+        }
+
+        // 2. CÁLCULO SEGURO DE SHARES
+        let sharesToSell = parseFloat(exactShares);
         
+        // Si la memoria del bot dice que tienes más de lo que realmente tienes en la blockchain, corregimos:
+        if (realBalance > 0 && sharesToSell > realBalance) {
+            sharesToSell = realBalance;
+        }
+
+        // TRUCO QUANT: Restamos un margen microscópico (0.01 shares) para evadir los errores de "Not enough balance"
+        sharesToSell = Math.max(0, sharesToSell - 0.01);
+        
+        // Truncamos a 2 decimales hacia abajo para enviar a la API de Polymarket
+        sharesToSell = Math.floor(sharesToSell * 100) / 100;
+
+        // Si después de todo el cálculo intentamos vender 0, cancelamos para no hacer spam a la red.
+        if (sharesToSell <= 0) {
+           console.log(`⚠️ Venta abortada: Balance de acciones demasiado bajo (0.00).`);
+           return { success: false, reason: "LOW_BALANCE" };
+        }
+
+        // 3. CONFIGURAR TICK SIZE Y PRECIO
         let trueTickSize = marketTickSize;
         let isNegRisk = false;
 
@@ -774,6 +807,7 @@ async function executeSellOnChain(conditionId, tokenId, exactShares, limitPrice,
 
         console.log(`📡 Orden SELL: ${sharesToSell} shares | Target: $${safeLimitPrice} | NegRisk: ${isNegRisk}`);
 
+        // 4. DISPARAR A LA BLOCKCHAIN
         const response = await clobClient.createAndPostOrder(
             {
                 tokenID: tokenId,
