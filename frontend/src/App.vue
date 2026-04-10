@@ -24,7 +24,7 @@ const status = ref({
   autoTradeEnabled: true,
   isPanicStopped: false,
   microBetAmount: 1.00,
-  marketFilters: { crypto: true, politics: true, business: true, sports: true, pop: true },
+  marketFilters: { crypto: true, politics: true, business: true, sports: false, pop: false },
   
   // 2. Variables Generales de Copy Trading (Intactas)
   copyTradingEnabled: false,

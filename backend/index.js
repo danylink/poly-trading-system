@@ -14,6 +14,7 @@ import cors from 'cors';
 import axios from 'axios';
 import https from 'https';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import fs from 'fs';
 
 const agent = new https.Agent({  
     rejectUnauthorized: false 
@@ -160,11 +161,61 @@ let botStatus = {
     marketFilters: {
         crypto: true,
         politics: true,
-        sports: true,
-        pop: true,
-        business: true
+        business: true,
+        sports: false,
+        pop: false,
     }
 };
+
+// ==========================================
+// 🧠 MOTOR DE MEMORIA PERSISTENTE
+// ==========================================
+const CONFIG_FILE = './bot_config.json';
+
+// Función para GUARDAR la configuración en el disco duro
+function saveConfigToDisk() {
+    try {
+        // Solo guardamos lo que nos importa (Riesgo, Filtros y Copy-Trading)
+        const configToSave = {
+            standardConfig: botStatus.standardConfig,
+            volatileConfig: botStatus.volatileConfig,
+            marketFilters: botStatus.marketFilters,
+            copyTradingEnabled: botStatus.copyTradingEnabled,
+            maxCopySize: botStatus.maxCopySize
+        };
+        fs.writeFileSync(CONFIG_FILE, JSON.stringify(configToSave, null, 2), 'utf8');
+        console.log("💾 Configuración guardada en el disco duro.");
+    } catch (err) {
+        console.error("❌ Error guardando configuración:", err.message);
+    }
+}
+
+// Función para CARGAR la configuración al reiniciar el bot
+function loadConfigFromDisk() {
+    try {
+        if (fs.existsSync(CONFIG_FILE)) {
+            const data = fs.readFileSync(CONFIG_FILE, 'utf8');
+            const savedConfig = JSON.parse(data);
+
+            // Inyectamos la memoria guardada en nuestro botStatus
+            if (savedConfig.standardConfig) botStatus.standardConfig = savedConfig.standardConfig;
+            if (savedConfig.volatileConfig) botStatus.volatileConfig = savedConfig.volatileConfig;
+            if (savedConfig.marketFilters) botStatus.marketFilters = savedConfig.marketFilters;
+            if (savedConfig.copyTradingEnabled !== undefined) botStatus.copyTradingEnabled = savedConfig.copyTradingEnabled;
+            if (savedConfig.maxCopySize !== undefined) botStatus.maxCopySize = savedConfig.maxCopySize;
+
+            console.log("📂 Configuración anterior restaurada con éxito.");
+        } else {
+            console.log("📝 No hay archivo de configuración previo. Usando valores por defecto.");
+            saveConfigToDisk(); // Crea el archivo por primera vez
+        }
+    } catch (err) {
+        console.error("❌ Error cargando configuración previa:", err.message);
+    }
+}
+
+// 🔥 DISPARAMOS LA LECTURA INMEDIATAMENTE AL PRENDER EL BOT
+loadConfigFromDisk();
 
 // --- INICIALIZACIONES EXTERNAS ---
 const telegram = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN);
@@ -1682,7 +1733,6 @@ app.post('/api/settings/autotrade', (req, res) => {
     if (enabled !== undefined) botStatus.autoTradeEnabled = !!enabled;
     if (amount !== undefined) botStatus.microBetAmount = parseFloat(amount);
 
-    // Aquí es donde debes mejorar:
     if (profile === 'ESTANDAR') {
         if (predictionThreshold !== undefined) botStatus.standardConfig.predictionThreshold = parseFloat(predictionThreshold);
         if (edgeThreshold !== undefined) botStatus.standardConfig.edgeThreshold = parseFloat(edgeThreshold);
@@ -1698,6 +1748,9 @@ app.post('/api/settings/autotrade', (req, res) => {
         if (maxCopyPercentOfBalance !== undefined) botStatus.volatileConfig.maxCopyPercentOfBalance = parseFloat(maxCopyPercentOfBalance);
     }
 
+    saveConfigToDisk(); // 💾 AUTOGUARDADO
+
+    console.log(`⚖️ Autotrade / Riesgo actualizado y guardado [Perfil: ${profile || 'GENERAL'}]`);
     res.json({ success: true, ...botStatus });
 });
 
@@ -1720,6 +1773,9 @@ app.post('/api/settings/copytrading', (req, res) => {
         botStatus.volatileConfig.maxCopyPercentOfBalance = parseFloat(maxCopyPercent);
     }
     
+    saveConfigToDisk(); // 💾 AUTOGUARDADO
+    
+    console.log(`⚙️ Copy-Trading Actualizado y Guardado.`);
     res.json({ 
         success: true, 
         copyTradingEnabled: botStatus.copyTradingEnabled,
@@ -1730,7 +1786,10 @@ app.post('/api/settings/copytrading', (req, res) => {
 
 app.post('/api/settings/filters', (req, res) => {
     botStatus.marketFilters = { ...botStatus.marketFilters, ...req.body };
-    console.log(`🛡️ Filtros de Mercado Actualizados:`, botStatus.marketFilters);
+    
+    saveConfigToDisk(); // 💾 AUTOGUARDADO
+    
+    console.log(`🛡️ Filtros de Mercado Actualizados y guardados:`, botStatus.marketFilters);
     res.json({ success: true, marketFilters: botStatus.marketFilters });
 });
 
