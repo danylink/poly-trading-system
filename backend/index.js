@@ -959,8 +959,13 @@ async function checkAndCopyWhaleTrades() {
                 // ==================== COPIA DE COMPRA ====================
                 if (side === "BUY") {
                     
-                    // 🛡️ FIX (FUGA DE FILTRO): El bloqueo va AQUÍ ADENTRO.
-                    // Solo bloqueamos compras nuevas. Las ventas de posiciones existentes siempre pasan.
+                    // 🚨 CANDADO DE PÁNICO (MODO SOLO CIERRE)
+                    // Si el bot está en pánico, está PROHIBIDO abrir nuevas posiciones.
+                    if (botStatus.isPanicStopped) {
+                        continue; 
+                    }
+                    
+                    // 🛡️ FIX (FUGA DE FILTRO): Bloqueo por categoría
                     if (!isMarketAllowed(title, slug)) {
                         console.log(`      ⛔ [FILTRO] Ignorando COMPRA en mercado bloqueado por categoría: ${title.substring(0,30)}`);
                         continue; 
@@ -1033,7 +1038,8 @@ async function checkAndCopyWhaleTrades() {
                 // ==================== COPIA DE VENTA ====================
                 else if (side === "SELL") {
                     
-                    // 🔓 AQUÍ NO HAY FILTRO. Si la ballena vende, nosotros siempre vendemos.
+                    // 🔓 AQUÍ NO HAY FILTRO NI CANDADO DE PÁNICO.
+                    // Si la ballena vende, nosotros siempre vendemos para protegernos.
                     const copiedIndex = botStatus.copiedPositions.findIndex(p => p.tokenId === tokenId && p.whale === whale.address);
                     if (copiedIndex === -1) continue;
 
@@ -1120,7 +1126,18 @@ function isMarketAllowed(title = "", slug = "") {
 let watchlistIndex = 0;
 
 async function runBot() {
-    if (botStatus.isPanicStopped) return;
+
+    // 🚨 CANDADO DE PÁNICO (MODO SOLO CIERRE)
+    if (botStatus.isPanicStopped) {
+        console.log("🚨 [MODO PÁNICO] Compras bloqueadas. Ejecutando únicamente motor de ventas (TP/SL)...");
+        // Aseguramos que las ventas sigan ocurriendo aunque haya pánico
+        try {
+            await autoSellManager(); 
+        } catch (e) {
+            console.log("Error en autoSellManager durante pánico:", e);
+        }
+        return; // Detenemos la ejecución aquí para que NO escanee ni compre nada nuevo
+    }
 
     botStatus.lastCheck = new Date().toLocaleTimeString();
 
