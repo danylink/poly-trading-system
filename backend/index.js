@@ -145,7 +145,7 @@ let botStatus = {
     microBetAmount: 1.00,
     suggestedInversion: 0, 
     potentialROI: 0,
-    copyTradingEnabled: true,
+    copyTradingEnabled: false,
     maxCopySize: 50,                    // ← Máximo shares a copiar por trade
     maxCopyPercentOfBalance: 8,         // ← Máximo % del balance por copia (8%)
     dailyLossLimit: 10,                   // ← Nuevo: Stop-loss diario en %
@@ -167,27 +167,32 @@ let botStatus = {
     }
 };
 
+
 // ==========================================
-// 🧠 MOTOR DE MEMORIA PERSISTENTE
+// 🧠 MOTOR DE MEMORIA PERSISTENTE (V2 BLINDADA)
 // ==========================================
-// ==========================================
-// 🧠 MOTOR DE MEMORIA PERSISTENTE
-// ==========================================
-const CONFIG_FILE = './bot_config.json';
+const path = require('path'); // Asegúrate de tener esto arriba en tus imports si no lo tienes
+const CONFIG_FILE = path.join(process.cwd(), 'bot_config.json');
 
 // Función para GUARDAR la configuración en el disco duro
-function saveConfigToDisk() {
+function saveConfigToDisk(origen = "Sistema") {
     try {
         const configToSave = {
             standardConfig: botStatus.standardConfig,
             volatileConfig: botStatus.volatileConfig,
             marketFilters: botStatus.marketFilters,
+            
+            // 🔥 MOTORES PRINCIPALES (Toggles)
+            autoTradeEnabled: botStatus.autoTradeEnabled,
             copyTradingEnabled: botStatus.copyTradingEnabled,
+            
+            // 🔥 SETTINGS ADICIONALES
+            microBetAmount: botStatus.microBetAmount,
             maxCopySize: botStatus.maxCopySize,
-            maxWhalesToCopy: botStatus.maxWhalesToCopy // 🔥 AQUÍ AGREGAMOS LAS BALLENAS
+            maxWhalesToCopy: botStatus.maxWhalesToCopy 
         };
         fs.writeFileSync(CONFIG_FILE, JSON.stringify(configToSave, null, 2), 'utf8');
-        console.log("💾 Configuración guardada en el disco duro.");
+        console.log(`💾 Configuración guardada en el disco duro. (Origen: ${origen})`);
     } catch (err) {
         console.error("❌ Error guardando configuración:", err.message);
     }
@@ -200,25 +205,37 @@ function loadConfigFromDisk() {
             const data = fs.readFileSync(CONFIG_FILE, 'utf8');
             const savedConfig = JSON.parse(data);
 
-            // Inyectamos la memoria guardada en nuestro botStatus
-            if (savedConfig.standardConfig) botStatus.standardConfig = savedConfig.standardConfig;
-            if (savedConfig.volatileConfig) botStatus.volatileConfig = savedConfig.volatileConfig;
-            if (savedConfig.marketFilters) botStatus.marketFilters = savedConfig.marketFilters;
-            if (savedConfig.copyTradingEnabled !== undefined) botStatus.copyTradingEnabled = savedConfig.copyTradingEnabled;
-            if (savedConfig.maxCopySize !== undefined) botStatus.maxCopySize = savedConfig.maxCopySize;
+            // 🛡️ FIX QUANT: Fusión Profunda (Spread Operator)
+            // Esto inyecta los valores uno por uno sin destruir la estructura de memoria original
+            if (savedConfig.standardConfig) {
+                botStatus.standardConfig = { ...botStatus.standardConfig, ...savedConfig.standardConfig };
+            }
+            if (savedConfig.volatileConfig) {
+                botStatus.volatileConfig = { ...botStatus.volatileConfig, ...savedConfig.volatileConfig };
+            }
+            if (savedConfig.marketFilters) {
+                botStatus.marketFilters = { ...botStatus.marketFilters, ...savedConfig.marketFilters };
+            }
             
-            // 🔥 AQUÍ RESTAURAMOS LAS BALLENAS
+            // 🔄 Restauramos el estado de los Motores y Variables Sueltas
+            if (savedConfig.autoTradeEnabled !== undefined) botStatus.autoTradeEnabled = savedConfig.autoTradeEnabled;
+            if (savedConfig.copyTradingEnabled !== undefined) botStatus.copyTradingEnabled = savedConfig.copyTradingEnabled;
+            if (savedConfig.microBetAmount !== undefined) botStatus.microBetAmount = savedConfig.microBetAmount;
+            if (savedConfig.maxCopySize !== undefined) botStatus.maxCopySize = savedConfig.maxCopySize;
             if (savedConfig.maxWhalesToCopy !== undefined) botStatus.maxWhalesToCopy = savedConfig.maxWhalesToCopy;
 
-            console.log("📂 Configuración anterior restaurada con éxito.");
+            console.log("📂 Configuración de motores y perfiles restaurada con éxito desde JSON.");
         } else {
             console.log("📝 No hay archivo de configuración previo. Usando valores por defecto.");
-            saveConfigToDisk(); // Crea el archivo por primera vez
+            saveConfigToDisk("Inicialización"); 
         }
     } catch (err) {
         console.error("❌ Error cargando configuración previa:", err.message);
     }
 }
+
+// 🔥 DISPARAMOS LA LECTURA INMEDIATAMENTE AL PRENDER EL BOT
+loadConfigFromDisk();
 
 // 🔥 DISPARAMOS LA LECTURA INMEDIATAMENTE AL PRENDER EL BOT
 loadConfigFromDisk();
