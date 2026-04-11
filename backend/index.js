@@ -506,7 +506,7 @@ async function analyzeMarketWithGrok(marketQuestion, currentNews, retries = 2) {
     for (let attempt = 1; attempt <= retries; attempt++) {
         try {
             const response = await grokClient.chat.completions.create({
-                model: "grok-2-latest", // Usamos el modelo más rápido y barato de xAI
+                model: "grok-4-1-fast-non-reasoning", // Usamos el modelo más rápido y barato de xAI
                 messages: [
                     {
                         role: "system",
