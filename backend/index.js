@@ -16,6 +16,7 @@ import https from 'https';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import OpenAI from 'openai';
 import fs from 'fs';
+import path from 'path';
 
 const agent = new https.Agent({  
     rejectUnauthorized: false 
@@ -178,7 +179,6 @@ let botStatus = {
 // ==========================================
 // 🧠 MOTOR DE MEMORIA PERSISTENTE (V2 BLINDADA)
 // ==========================================
-const path = require('path'); // Asegúrate de tener esto arriba en tus imports si no lo tienes
 const CONFIG_FILE = path.join(process.cwd(), 'bot_config.json');
 
 // Función para GUARDAR la configuración en el disco duro
