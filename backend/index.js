@@ -110,6 +110,7 @@ const redeemedCache = new Set();
 const profitAlertCache = new Set(); // Memoria para no repetir alertas de toma de ganancias (Spam)
 // 🛡️ NUEVA MEMORIA: Lista negra de mercados ya operados y cerrados hoy
 const closedPositionsCache = new Set();
+const pendingOrdersCache = new Set();
 
 // --- ESTADO GLOBAL DEL SNIPER ---
 let botStatus = {
@@ -1447,13 +1448,16 @@ async function runBot() {
             return;
         }
 
+        // 🔥 AQUÍ INYECTAMOS LA NUEVA MEMORIA DEL CACHÉ
         const alreadyInvested = botStatus.activePositions.some(pos => pos.tokenId === targetTokenId);
         const alreadyClosed = closedPositionsCache.has(targetTokenId);
+        const alreadyPending = pendingOrdersCache.has(targetTokenId); 
+        
         const { config: profile, profileType } = getRiskProfile(marketTitle, marketItem.category || "");
 
-        // Validación de Señal Fuerte
+        // Validación de Señal Fuerte (Añadido !alreadyPending)
         const isStrongSignal = 
-            (!alreadyInvested && !alreadyClosed) && (
+            (!alreadyInvested && !alreadyClosed && !alreadyPending) && (
                 (finalAnalysis.recommendation === "STRONG_BUY" && edge > 0.105) ||
                 (finalAnalysis.recommendation === "BUY" && edge >= profile.edgeThreshold && targetProb >= profile.predictionThreshold) ||
                 (finalAnalysis.urgency >= 9 && edge >= Math.max(0.09, profile.edgeThreshold * 0.85))
@@ -1476,7 +1480,10 @@ async function runBot() {
 
             const result = await executeTradeOnChain(marketItem.conditionId, targetTokenId, dynamicBetAmount, livePrice, marketItem.tickSize || "0.01");
 
+            // 🔥 AQUÍ GUARDAMOS EL REGISTRO DE QUE YA DISPARAMOS
             if (result?.success) {
+                pendingOrdersCache.add(targetTokenId); 
+                
                 await sendSniperAlert({
                     marketName: `${marketTitle} (Apuesta al ${targetSideLabel})`, 
                     probability: targetProb, 
@@ -1507,7 +1514,7 @@ async function runBot() {
             category: marketItem.category,
             side: targetSideLabel,
             profile: profileType,
-            engine: finalAnalysis.engine // 🔥 Etiqueta enviada al frontend
+            engine: finalAnalysis.engine
         };
 
         if (signalIndex === -1) {
