@@ -14,6 +14,7 @@ import cors from 'cors';
 import axios from 'axios';
 import https from 'https';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import OpenAI from 'openai';
 import fs from 'fs';
 
 const agent = new https.Agent({  
@@ -21,6 +22,12 @@ const agent = new https.Agent({
 });
 
 dotenv.config();
+
+// Inicializar Grok (xAI)
+const grokClient = new OpenAI({
+    apiKey: process.env.GROK_API_KEY,
+    baseURL: "https://api.x.ai/v1",
+});
 
 // 👇 INICIALIZAR GEMINI (Global)
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY);
@@ -487,6 +494,66 @@ Analiza si hay ventaja para operar en las próximas 24-48 horas.`;
             edge: 0, 
             recommendation: "WAIT" 
         };
+    }
+}
+
+// ==========================================
+// 3C. MOTOR DE IA 3 (GROK / xAI)
+// ==========================================
+async function analyzeMarketWithGrok(marketQuestion, currentNews, retries = 2) {
+    console.log("🧠 Grok Short-Term Analysis...");
+    
+    for (let attempt = 1; attempt <= retries; attempt++) {
+        try {
+            const response = await grokClient.chat.completions.create({
+                model: "grok-2-latest", // Usamos el modelo más rápido y barato de xAI
+                messages: [
+                    {
+                        role: "system",
+                        content: `Eres un Quant Trader evaluando sentimiento social en tiempo real (X/Twitter).
+Tu objetivo es detectar euforia o pánico rápido en Polymarket.
+Responde ESTRICTAMENTE en JSON:
+{
+  "prob": 0.XX,
+  "strategy": "MOMENTUM" | "NEWS_ARBITRAGE" | "WAIT",
+  "urgency": 1-10,
+  "reason": "Frase corta y clara del sentimiento",
+  "edge": 0.XX,
+  "recommendation": "STRONG_BUY" | "BUY" | "WAIT" | "SELL"
+}
+REGLAS:
+- Si no hay un hype o pánico evidente en redes, responde "WAIT".`
+                    },
+                    {
+                        role: "user",
+                        content: `Mercado: ${marketQuestion}\nNoticias recientes: ${currentNews}\nAnaliza si hay momentum en las próximas 24h.`
+                    }
+                ],
+                response_format: { type: "json_object" } // xAI soporta JSON nativo
+            });
+
+            const data = JSON.parse(response.choices[0].message.content);
+
+            return {
+                isError: false,
+                prob: parseFloat(data.prob) || 0,
+                strategy: data.strategy || "WAIT",
+                urgency: data.urgency || 5,
+                reason: data.reason || "Sin momentum claro",
+                edge: parseFloat(data.edge) || 0,
+                recommendation: data.recommendation || "WAIT"
+            };
+
+        } catch (error) {
+            const isOverloaded = error.status === 429 || error.status >= 500;
+            if (isOverloaded && attempt < retries) {
+                console.log(`⚠️ Grok saturado (Intento ${attempt}/${retries}). Esperando 3s...`);
+                await new Promise(resolve => setTimeout(resolve, 3000));
+                continue; 
+            }
+            console.error("❌ Error en motor Grok:", error.message);
+            return { isError: true, prob: 0, strategy: "WAIT", urgency: 0, reason: "Error Grok API", edge: 0, recommendation: "WAIT" };
+        }
     }
 }
 
@@ -1226,6 +1293,7 @@ let watchlistIndex = 0;
 // ==========================================
 async function runBot() {
 
+    // 🚨 CANDADO DE PÁNICO (MODO SOLO CIERRE)
     if (botStatus.isPanicStopped) {
         console.log("🚨 [MODO PÁNICO] Compras bloqueadas. Ejecutando únicamente motor de ventas (TP/SL)...");
         try { await autoSellManager(); } catch (e) { console.log("Error autoSell:", e); }
@@ -1235,9 +1303,11 @@ async function runBot() {
     botStatus.lastCheck = new Date().toLocaleTimeString();
 
     try {
+        // 1. Actualizaciones principales
         await fetchRealTrades();
         await updateRealBalances();
 
+        // 2. Copy-Trading + Controles de Riesgo
         if (botStatus.copyTradingEnabled) {
             if (!botStatus.lastWhaleSelection || (Date.now() - new Date(botStatus.lastWhaleSelection).getTime()) > 10 * 60 * 1000) {
                 await autoSelectTopWhales();
@@ -1252,6 +1322,7 @@ async function runBot() {
             await autoSellManager();
         }
 
+        // 3. Refresh Watchlist
         if (botStatus.watchlist.length === 0 || watchlistIndex >= botStatus.watchlist.length) {
             await refreshWatchlist();
             watchlistIndex = 0;
@@ -1268,7 +1339,7 @@ async function runBot() {
         botStatus.currentTopic = marketTitle;
 
         // ====================================================
-        // 🧠 EJECUCIÓN MULTI-AGENTE (CLAUDE + GEMINI EN PARALELO)
+        // 🧠 EJECUCIÓN MULTI-AGENTE (CLAUDE + GEMINI + GROK EN PARALELO)
         // ====================================================
         const newsString = await getLatestNews(marketTitle, marketItem.category);
         const cacheKey = `${marketItem.tokenId}-${newsString.substring(0, 60)}`;
@@ -1278,38 +1349,61 @@ async function runBot() {
         if (analysisCache.has(cacheKey)) {
             finalAnalysis = analysisCache.get(cacheKey);
         } else {
-            console.log(`\n🤖 Analizando simultáneamente con Claude y Gemini: ${marketTitle.substring(0,40)}...`);
+            console.log(`\n🤖 Analizando con la Trinidad (Claude, Gemini, Grok): ${marketTitle.substring(0,40)}...`);
             
-            // ⚡ Promise.all ejecuta ambos al mismo tiempo, sin esperar uno tras otro
-            const [claudeResult, geminiResult] = await Promise.all([
+            // ⚡ Promise.all ejecuta los 3 motores al mismo tiempo
+            const [claudeResult, geminiResult, grokResult] = await Promise.all([
                 analyzeMarketWithClaude(marketTitle, newsString),
-                analyzeMarketWithGemini(marketTitle, newsString)
+                analyzeMarketWithGemini(marketTitle, newsString),
+                analyzeMarketWithGrok(marketTitle, newsString)
             ]);
 
-            // === FUSIÓN DE OPINIONES (CONSENSO) ===
+            // === FUSIÓN DE OPINIONES (CONSENSO MAYORITARIO) ===
             const claudeBuy = claudeResult.recommendation.includes("BUY");
             const geminiBuy = geminiResult.recommendation.includes("BUY");
+            const grokBuy = grokResult.recommendation.includes("BUY");
+
+            // Contamos los votos afirmativos
+            const buyVotes = [claudeBuy, geminiBuy, grokBuy].filter(Boolean).length;
 
             finalAnalysis = { prob: 0, edge: 0, recommendation: "WAIT", reason: "", urgency: 5, engine: "None" };
 
-            if (claudeBuy && geminiBuy) {
-                // 🔥 SI AMBOS ESTÁN DE ACUERDO: FUSIONAMOS Y POTENCIAMOS LA SEÑAL (No se duplica)
-                console.log(`🔥 ¡CONSENSO LOGRADO! Ambos motores recomiendan COMPRAR.`);
-                finalAnalysis.prob = (claudeResult.prob + geminiResult.prob) / 2;
-                finalAnalysis.edge = (claudeResult.edge + geminiResult.edge) / 2;
-                finalAnalysis.urgency = Math.max(claudeResult.urgency, geminiResult.urgency);
-                finalAnalysis.recommendation = "STRONG_BUY"; // Se vuelve una señal fortísima
-                finalAnalysis.reason = `[CONSENSO] C: ${claudeResult.reason} | G: ${geminiResult.reason}`;
-                finalAnalysis.engine = "Claude + Gemini";
+            // REGLA QUANT: Necesitamos al menos 2 votos para confirmar la señal
+            if (buyVotes >= 2) {
+                console.log(`🔥 ¡CONSENSO LOGRADO! (${buyVotes}/3 votos para COMPRAR)`);
+                
+                // Extraemos solo los resultados de los modelos que dijeron "BUY"
+                const activeResults = [];
+                let enginesStr = [];
+                if (claudeBuy) { activeResults.push(claudeResult); enginesStr.push("C"); }
+                if (geminiBuy) { activeResults.push(geminiResult); enginesStr.push("G"); }
+                if (grokBuy)   { activeResults.push(grokResult);   enginesStr.push("X"); }
+
+                // Promediamos las matemáticas de la señal
+                finalAnalysis.prob = activeResults.reduce((sum, r) => sum + r.prob, 0) / buyVotes;
+                finalAnalysis.edge = activeResults.reduce((sum, r) => sum + r.edge, 0) / buyVotes;
+                finalAnalysis.urgency = Math.max(...activeResults.map(r => r.urgency));
+                finalAnalysis.recommendation = "STRONG_BUY"; 
+                
+                // Combinamos los razonamientos
+                finalAnalysis.reason = `[CONSENSO] ` + activeResults.map((r, i) => `${enginesStr[i]}: ${r.reason}`).join(" | ");
+                
+                // Etiquetamos para el Dashboard
+                if (buyVotes === 3) finalAnalysis.engine = "Trinity (C+G+X)";
+                else finalAnalysis.engine = `Consenso (${enginesStr.join('+')})`;
+
             } else if (claudeBuy) {
                 finalAnalysis = { ...claudeResult, engine: "Claude" };
             } else if (geminiBuy) {
                 finalAnalysis = { ...geminiResult, engine: "Gemini" };
+            } else if (grokBuy) {
+                finalAnalysis = { ...grokResult, engine: "Grok" };
             } else {
-                finalAnalysis = claudeResult; // Por defecto dejamos el WAIT
+                finalAnalysis = { ...claudeResult, engine: "Claude" }; // Por defecto mostramos la negativa de Claude
             }
 
-            if (!claudeResult.isError || !geminiResult.isError) {
+            // Guardamos en caché solo si no hubo un error catastrófico de red en alguno
+            if (!claudeResult.isError && !geminiResult.isError && !grokResult.isError) {
                 analysisCache.set(cacheKey, finalAnalysis);
                 if (analysisCache.size > 60) analysisCache.delete(analysisCache.keys().next().value);
             }
@@ -1342,6 +1436,7 @@ async function runBot() {
         const livePrice = targetPrice;
         const edge = bestEdge;
 
+        // Filtros de Seguridad
         if (!isMarketAllowed(marketTitle, marketItem.slug || "")) {
             watchlistIndex = (watchlistIndex + 1) % botStatus.watchlist.length;
             return;
@@ -1356,6 +1451,7 @@ async function runBot() {
         const alreadyClosed = closedPositionsCache.has(targetTokenId);
         const { config: profile, profileType } = getRiskProfile(marketTitle, marketItem.category || "");
 
+        // Validación de Señal Fuerte
         const isStrongSignal = 
             (!alreadyInvested && !alreadyClosed) && (
                 (finalAnalysis.recommendation === "STRONG_BUY" && edge > 0.105) ||
@@ -1365,6 +1461,7 @@ async function runBot() {
 
         let autoExecuted = false;
 
+        // Ejecución del Sniper
         if (botStatus.autoTradeEnabled && isStrongSignal) {
             const saldoLibre = parseFloat(botStatus.clobOnlyUSDC || 0);
             let dynamicBetAmount = botStatus.microBetAmount;
@@ -1392,8 +1489,7 @@ async function runBot() {
             }
         }
 
-
-        // === ACTUALIZAR DASHBOARD CON LA SEÑAL FUSIONADA ===
+        // === ACTUALIZAR DASHBOARD CON LA SEÑAL ===
         const signalIndex = botStatus.pendingSignals.findIndex(s => s.tokenId === targetTokenId);
 
         const signalData = {
@@ -1411,7 +1507,7 @@ async function runBot() {
             category: marketItem.category,
             side: targetSideLabel,
             profile: profileType,
-            engine: finalAnalysis.engine // 🔥 AGREGAMOS ESTA LÍNEA PARA EL DASHBOARD
+            engine: finalAnalysis.engine // 🔥 Etiqueta enviada al frontend
         };
 
         if (signalIndex === -1) {

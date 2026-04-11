@@ -720,8 +720,14 @@ onUnmounted(() => {
                 <div class="flex justify-between items-center mb-4">
                   <span class="text-2xl font-black text-[#D4AF37] font-mono">{{ (signal.probability * 100).toFixed(0) }}%</span>
                   
-                  <span v-if="signal.engine === 'Claude + Gemini'" class="text-[9px] bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded-md border border-emerald-500/30 font-black tracking-widest flex items-center gap-1">
+                  <span v-if="signal.engine && signal.engine.includes('Trinity')" class="text-[9px] bg-purple-500/10 text-purple-400 px-2 py-0.5 rounded-md border border-purple-500/30 font-black tracking-widest flex items-center gap-1">
+                    <span class="w-1.5 h-1.5 rounded-full bg-purple-400 animate-pulse"></span> TRINITY
+                  </span>
+                  <span v-else-if="signal.engine && signal.engine.includes('Consenso')" class="text-[9px] bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded-md border border-emerald-500/30 font-black tracking-widest flex items-center gap-1">
                     <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> CONSENSO
+                  </span>
+                  <span v-else-if="signal.engine === 'Grok'" class="text-[9px] bg-red-500/10 text-red-400 px-2 py-0.5 rounded-md border border-red-500/30 font-black tracking-widest flex items-center gap-1">
+                    𝕏 GROK
                   </span>
                   <span v-else-if="signal.engine === 'Gemini'" class="text-[9px] bg-blue-500/10 text-blue-400 px-2 py-0.5 rounded-md border border-blue-500/30 font-black tracking-widest flex items-center gap-1">
                     🔮 GEMINI
@@ -1212,7 +1218,7 @@ onUnmounted(() => {
             
             <div class="flex justify-between items-center bg-[#161619] p-4 rounded-2xl border border-zinc-800/60">
               <span class="text-[10px] text-zinc-500 font-black uppercase tracking-widest">Motor IA</span>
-              <span class="text-[10px] font-mono font-bold text-[#D4AF37]">Claude + Gemini Flash</span>
+              <span class="text-[10px] font-mono font-bold text-[#D4AF37]">Claude + Gemini + Grok</span>
             </div>
 
             <div class="flex justify-between items-center bg-[#161619] p-4 rounded-2xl border border-zinc-800/60">
