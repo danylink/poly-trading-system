@@ -61,22 +61,6 @@ const status = ref({
       uptimeHours: 0,
       cpuLoad: 0
   }
-// VERSION GEMINI     
-/*   standardConfig: {
-    predictionThreshold: 0.70,
-    edgeThreshold: 0.09,
-    takeProfitThreshold: 20,
-    stopLossThreshold: -20,
-    maxCopyPercentOfBalance: 8
-  },
-  
-  volatileConfig: {
-    predictionThreshold: 0.85,
-    edgeThreshold: 0.12,
-    takeProfitThreshold: 10,
-    stopLossThreshold: -10,
-    maxCopyPercentOfBalance: 3
-  } */
 
 });
 
@@ -1093,6 +1077,25 @@ onUnmounted(() => {
           </div>
 
           <div class="grid grid-cols-1 md:grid-cols-2 gap-5 relative z-10">
+
+            <div class="mb-5 p-4 rounded-xl bg-zinc-900/40 border border-zinc-800/80 flex items-center justify-between group hover:border-[#D4AF37]/40 transition-colors">
+              <div>
+                <h4 class="text-[11px] font-black uppercase tracking-widest text-zinc-400 group-hover:text-zinc-300 transition-colors">Tamaño de la Bala</h4>
+                <p class="text-[10px] text-zinc-500 font-medium mt-0.5">Inversión fija por trade (USDC)</p>
+              </div>
+              <div class="relative w-32 shadow-inner rounded-lg">
+                <span class="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 font-black">$</span>
+                <input 
+                  type="number" 
+                  step="0.50" 
+                  min="0.50"
+                  v-model.number="status[status.activeProfileName].microBetAmount"
+                  @change="updateRiskSettings"
+                  class="w-full bg-[#161210] border border-zinc-700 text-zinc-200 text-sm font-mono font-black rounded-lg py-2 pl-7 pr-3 focus:outline-none focus:border-[#D4AF37] focus:ring-1 focus:ring-[#D4AF37]/50 transition-all text-right"
+                />
+              </div>
+            </div>
+
             <div class="flex flex-col p-5 rounded-2xl bg-[#161619] border border-zinc-800/60 hover:border-zinc-700/80 transition-colors">
               <div class="flex justify-between items-center mb-4">
                 <label class="text-[11px] text-zinc-400 font-bold uppercase tracking-widest whitespace-nowrap">Filtro Sens.</label>
