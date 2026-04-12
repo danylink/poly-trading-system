@@ -104,22 +104,58 @@ const loadRecommendedWhales = async () => {
   Swal.fire('Listo', '5 ballenas recomendadas cargadas', 'success');
 };
 
-// Agregar ballena manual
+// Agregar ballena manual - Versión mejorada
 const addCustomWhale = async () => {
-  if (!newWhaleAddress.value.startsWith('0x') || newWhaleAddress.value.length !== 42) {
-    Swal.fire('Error', 'Dirección inválida', 'error');
+  const address = newWhaleAddress.value.trim();
+
+  if (!address || !address.startsWith('0x') || address.length !== 42) {
+    Swal.fire({
+      title: 'Error',
+      text: 'La dirección debe comenzar con 0x y tener exactamente 42 caracteres',
+      icon: 'error',
+      background: '#1c1917',
+      color: '#ef4444'
+    });
     return;
   }
+
   try {
-    await axios.post(`${API_URL}/api/custom-whales`, {
-      address: newWhaleAddress.value,
-      nickname: newWhaleNickname.value
+    const res = await axios.post(`${API_URL}/api/custom-whales`, {
+      address: address,
+      nickname: newWhaleNickname.value.trim()
     });
-    newWhaleAddress.value = '';
-    newWhaleNickname.value = '';
-    await fetchStatus();
+
+    if (res.data.success) {
+      // Limpiar campos
+      newWhaleAddress.value = '';
+      newWhaleNickname.value = '';
+
+      // Refrescar datos
+      await fetchStatus();
+
+      Swal.fire({
+        title: '¡Éxito!',
+        text: 'Ballena agregada correctamente a Copy Trading Custom',
+        icon: 'success',
+        background: '#1c1917',
+        color: '#10b981',
+        confirmButtonColor: '#10b981'
+      });
+    } else {
+      throw new Error(res.data.error || 'Error desconocido del servidor');
+    }
   } catch (e) {
-    Swal.fire('Error', e.response?.data?.error || 'No se pudo agregar', 'error');
+    const errorMessage = e.response?.data?.error || e.message || 'No se pudo agregar la ballena';
+    
+    Swal.fire({
+      title: 'Error',
+      text: errorMessage,
+      icon: 'error',
+      background: '#1c1917',
+      color: '#ef4444'
+    });
+
+    console.error("❌ Error detallado al agregar ballena:", e.response?.data || e.message);
   }
 };
 

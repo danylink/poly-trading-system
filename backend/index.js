@@ -2252,19 +2252,69 @@ async function monitorSystemHealth() {
 app.get('/api/custom-whales', (req, res) => res.json(botStatus.customWhales || []));
 
 app.post('/api/custom-whales', (req, res) => {
-    const { address, nickname } = req.body;
-    if (!address?.startsWith('0x') || address.length !== 42) {
-        return res.status(400).json({ success: false, error: "Dirección inválida" });
-    }
-    if (botStatus.customWhales.length >= 5) {
-        return res.status(400).json({ success: false, error: "Máximo 5 ballenas custom" });
-    }
-    const exists = botStatus.customWhales.some(w => w.address.toLowerCase() === address.toLowerCase());
-    if (exists) return res.status(400).json({ success: false, error: "Ya existe" });
+    try {
+        const { address, nickname } = req.body;
 
-    botStatus.customWhales.push({ address: address.toLowerCase(), nickname: nickname || "", enabled: true });
-    saveConfigToDisk("Custom Whale Agregada");
-    res.json({ success: true, customWhales: botStatus.customWhales });
+        if (!address || typeof address !== 'string') {
+            return res.status(400).json({ 
+                success: false, 
+                error: "Dirección es requerida" 
+            });
+        }
+
+        const trimmedAddress = address.trim();
+
+        if (!trimmedAddress.startsWith('0x') || trimmedAddress.length !== 42) {
+            return res.status(400).json({ 
+                success: false, 
+                error: "Dirección inválida. Debe comenzar con 0x y tener exactamente 42 caracteres." 
+            });
+        }
+
+        const normalizedAddress = trimmedAddress.toLowerCase();
+
+        if (botStatus.customWhales.length >= 5) {
+            return res.status(400).json({ 
+                success: false, 
+                error: "Máximo 5 ballenas custom permitidas" 
+            });
+        }
+
+        const exists = botStatus.customWhales.some(w => 
+            w.address.toLowerCase() === normalizedAddress
+        );
+
+        if (exists) {
+            return res.status(400).json({ 
+                success: false, 
+                error: "Esta ballena ya está agregada" 
+            });
+        }
+
+        // Agregar la ballena
+        botStatus.customWhales.push({ 
+            address: normalizedAddress, 
+            nickname: (nickname || "").trim(), 
+            enabled: true 
+        });
+
+        saveConfigToDisk("Custom Whale Agregada");
+
+        console.log(`✅ Ballena custom agregada correctamente: ${normalizedAddress}`);
+
+        res.json({ 
+            success: true, 
+            message: "Ballena agregada correctamente",
+            customWhales: botStatus.customWhales 
+        });
+
+    } catch (error) {
+        console.error("❌ Error en /api/custom-whales:", error.message);
+        res.status(500).json({ 
+            success: false, 
+            error: "Error interno del servidor al agregar la ballena" 
+        });
+    }
 });
 
 app.post('/api/custom-whales/toggle', (req, res) => {
