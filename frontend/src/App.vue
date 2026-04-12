@@ -12,7 +12,7 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 
 // --- ESTADO REACTIVO UNIFICADO ---
 const status = ref({
-  // 1. Variables Generales del Dashboard (Intactas)
+  // 1. Variables Generales del Dashboard
   lastCheck: null,
   lastProbability: 0,
   currentMarket: { title: 'Cargando radar...' },
@@ -23,45 +23,45 @@ const status = ref({
   pendingSignals: [],
   autoTradeEnabled: true,
   isPanicStopped: false,
-  //microBetAmount: 1.00,
-  microBetAmount: 0.50,
+  // 🗑️ microBetAmount: 0.50, <-- ¡BORRA ESTA LÍNEA GLOBAL!
   marketFilters: { crypto: true, politics: true, business: true, sports: false, pop: false },
   maxActiveSportsMarkets: 2,
   
-  // 2. Variables Generales de Copy Trading (Intactas)
+  // 2. Variables Generales de Copy Trading
   copyTradingEnabled: false,
   maxCopySize: 50,
   autoSelectedWhales: [],
   copiedTrades: [],
 
   // 3. 👇 NUEVA ARQUITECTURA DE PERFILES (Doble Cerebro)
-  activeProfileName: 'standardConfig', // Controla el Switch visual
+  activeProfileName: 'standardConfig', 
   
-  // VERSION GROOK
-    standardConfig: {
-        predictionThreshold: 0.75,      // subido de 0.70
-        edgeThreshold: 0.105,           // subido de 0.09
-        takeProfitThreshold: 20,
-        stopLossThreshold: -18,         // más paciente que -20
-        maxCopyPercentOfBalance: 8
-    },
+  standardConfig: {
+      predictionThreshold: 0.65,      
+      edgeThreshold: 0.05,           
+      takeProfitThreshold: 20,
+      stopLossThreshold: -20,         
+      maxCopyPercentOfBalance: 8,
+      microBetAmount: 5.0             // 🔥 NUEVO: Bala del perfil Estándar
+  },
 
-    volatileConfig: {
-        predictionThreshold: 0.82,
-        edgeThreshold: 0.13,
-        takeProfitThreshold: 12,        // más conservador en take profit
-        stopLossThreshold: -12,         // más conservador que -10
-        maxCopyPercentOfBalance: 4      // menos riesgo en volatile
-    },
-    // 4. 👇 VARIABLES DE TELEMETRIA
-    systemMetrics: {
+  volatileConfig: {
+      predictionThreshold: 0.85,
+      edgeThreshold: 0.12,
+      takeProfitThreshold: 25,        
+      stopLossThreshold: -30,         
+      maxCopyPercentOfBalance: 2,     
+      microBetAmount: 0.5             // 🔥 NUEVO: Bala del perfil Volátil
+  },
+  
+  // 4. Variables de Telemetría
+  systemMetrics: {
       botRamMB: 0,
       serverTotalRamMB: 0,
       serverFreeRamMB: 0,
       uptimeHours: 0,
       cpuLoad: 0
   }
-
 });
 
 // Arreglo maestro para forzar el orden visual de los filtros

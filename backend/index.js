@@ -112,58 +112,70 @@ const profitAlertCache = new Set(); // Memoria para no repetir alertas de toma d
 const closedPositionsCache = new Set();
 const pendingOrdersCache = new Set();
 
-// --- ESTADO REACTIVO UNIFICADO ---
-const status = ref({
-  // 1. Variables Generales del Dashboard
-  lastCheck: null,
-  lastProbability: 0,
-  currentMarket: { title: 'Cargando radar...' },
-  lastNews: [],
-  balanceUSDC: '0.00',
-  balancePOL: '0.00',
-  executions: [],
-  pendingSignals: [],
-  autoTradeEnabled: true,
-  isPanicStopped: false,
-  marketFilters: { crypto: true, politics: true, business: true, sports: false, pop: false },
-  maxActiveSportsMarkets: 2,
-  
-  // 2. Variables Generales de Copy Trading
-  copyTradingEnabled: false,
-  maxCopySize: 50,
-  autoSelectedWhales: [],
-  copiedTrades: [],
+// --- ESTADO GLOBAL DEL SNIPER ---
+let botStatus = {
+    lastCheck: null,
+    lastProbability: 0,
+    currentMarket: { title: "Iniciando escáner...", title_es: "Iniciando escáner..." }, 
+    currentTopic: "Inicializando radares...",
+    watchlist: [],
+    lastNews: [], 
+    balanceUSDC: "0.00",      // Este será el que use el bot para cálculos
+    walletOnlyUSDC: "0.00",   // <--- NUEVO: Solo lo que hay en MetaMask
+    clobOnlyUSDC: "0.00",     // <--- NUEVO: Solo lo que hay en Polymarket
+    balancePOL: "0.00",
+    activePositions: [],
+    executions: [], 
+    pendingSignals: [], 
+    // 👇 NUEVA ARQUITECTURA BIFURCADA
+    standardConfig: {
+        predictionThreshold: 0.65,
+        edgeThreshold: 0.05,
+        takeProfitThreshold: 20,
+        stopLossThreshold: -20,
+        maxCopyPercentOfBalance: 8,
+        microBetAmount: 5.0
+    },
+    volatileConfig: {
+        predictionThreshold: 0.85,
+        edgeThreshold: 0.12,
+        takeProfitThreshold: 25,
+        stopLossThreshold: -30,
+        maxCopyPercentOfBalance: 3,
+        microBetAmount: 0.5
+    },
 
-  // 3. 👇 NUEVA ARQUITECTURA DE PERFILES (Doble Cerebro)
-  activeProfileName: 'standardConfig', 
-  
-  standardConfig: {
-      predictionThreshold: 0.75,      
-      edgeThreshold: 0.105,           
-      takeProfitThreshold: 20,
-      stopLossThreshold: -18,         
-      maxCopyPercentOfBalance: 8,
-      microBetAmount: 5.0             // 🔥 NUEVO: Bala del perfil Estándar
-  },
-
-  volatileConfig: {
-      predictionThreshold: 0.82,
-      edgeThreshold: 0.13,
-      takeProfitThreshold: 12,        
-      stopLossThreshold: -12,         
-      maxCopyPercentOfBalance: 4,     
-      microBetAmount: 0.5             // 🔥 NUEVO: Bala del perfil Volátil
-  },
-  
-  // 4. Variables de Telemetría
-  systemMetrics: {
-      botRamMB: 0,
-      serverTotalRamMB: 0,
-      serverFreeRamMB: 0,
-      uptimeHours: 0,
-      cpuLoad: 0
-  }
-});
+    autoTradeEnabled: true,
+    isPanicStopped: false,
+    predictionThreshold: 0.70,
+    edgeThreshold: 0.09,
+    takeProfitThreshold: 18,
+    stopLossThreshold: -15,
+    autoTradeEnabled: true,
+    suggestedInversion: 0, 
+    potentialROI: 0,
+    copyTradingEnabled: false,
+    maxCopySize: 50,
+    maxActiveSportsMarkets: 2,                    // ← Máximo shares a copiar por trade
+    maxCopyPercentOfBalance: 8,         // ← Máximo % del balance por copia (8%)
+    dailyLossLimit: 15,                   // ← Nuevo: Stop-loss diario en %
+    dailyPnL: 0,                          // ← Nuevo: PnL acumulado del día
+    dailyStartBalance: 0,                 // ← Nuevo: Balance al inicio del día
+    autoRedeemEnabled: true,              // ← Nuevo: Auto-redeem activado
+    autoSelectedWhales: [],        // ← wallets que el bot elige automáticamente
+    maxWhalesToCopy: 5,            // cuántas ballenas copiar (1 a 5)
+    lastWhaleSelection: null,
+    copiedTrades: [],
+    copiedPositions: [],
+    copyTradingStats: { totalCopied: 0, successful: 0 },
+    marketFilters: {
+        crypto: true,
+        politics: true,
+        business: true,
+        sports: false,
+        pop: false,
+    }
+};
 
 
 // ==========================================
