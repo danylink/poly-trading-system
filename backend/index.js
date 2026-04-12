@@ -375,7 +375,8 @@ async function updateRealBalances() {
                         status: "ACTIVO 🟢",
                         currentValue: valorActual.toFixed(2),
                         cashPnl: cashPnl,
-                        percentPnl: percentPnl
+                        percentPnl: percentPnl,
+                        category: getMarketCategoryEnhanced(pos.title || pos.market || pos['título'] || "")
                     });
                 }
             }
