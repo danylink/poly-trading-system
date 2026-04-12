@@ -2,7 +2,7 @@
 import { ref, onMounted, computed, onUnmounted } from 'vue'
 import axios from 'axios'
 import { 
-  Activity, ShieldCheck, Target, Cpu, Bot, Clock3, Power, ArrowUpRight, Lock, LifeBuoy
+  Activity, ShieldCheck, Target, Cpu, Bot, Clock3, Power, ArrowUpRight, Lock, LifeBuoy, Server
 } from 'lucide-vue-next'
 import Swal from 'sweetalert2';
 
@@ -23,8 +23,10 @@ const status = ref({
   pendingSignals: [],
   autoTradeEnabled: true,
   isPanicStopped: false,
-  microBetAmount: 1.00,
+  //microBetAmount: 1.00,
+  microBetAmount: 0.50,
   marketFilters: { crypto: true, politics: true, business: true, sports: false, pop: false },
+  maxActiveSportsMarkets: 2,
   
   // 2. Variables Generales de Copy Trading (Intactas)
   copyTradingEnabled: false,
@@ -50,7 +52,15 @@ const status = ref({
         takeProfitThreshold: 12,        // más conservador en take profit
         stopLossThreshold: -12,         // más conservador que -10
         maxCopyPercentOfBalance: 4      // menos riesgo en volatile
-    }
+    },
+    // 4. 👇 VARIABLES DE TELEMETRIA
+    systemMetrics: {
+      botRamMB: 0,
+      serverTotalRamMB: 0,
+      serverFreeRamMB: 0,
+      uptimeHours: 0,
+      cpuLoad: 0
+  }
 // VERSION GEMINI     
 /*   standardConfig: {
     predictionThreshold: 0.70,
@@ -138,7 +148,8 @@ const updateAutoTrade = async () => {
   try {
     await axios.post(`${API_URL}/settings/autotrade`, {
       enabled: status.value.autoTradeEnabled,
-      amount: status.value.microBetAmount
+      // 🔥 FIX: Leemos el monto dinámicamente según el perfil que esté activo
+      amount: status.value[status.value.activeProfileName].microBetAmount
     });
   } catch (error) {
     console.error("❌ Error actualizando AutoTrade");
@@ -167,10 +178,10 @@ const executeManualTrade = async (signal) => {
   try {
     const res = await axios.post(`${API_URL}/execute-trade`, {
       market: signal.marketName,
-      amount: status.value.microBetAmount,
+      // 🔥 FIX: Dispara usando el monto de la pestaña en la que estás parado
+      amount: status.value[status.value.activeProfileName].microBetAmount,
       conditionId: signal.conditionId,
       tokenId: signal.tokenId,
-      // 🚨 AGREGAMOS EL PRECIO AQUÍ PARA EL BACKEND
       marketPrice: signal.marketPrice 
     });
     
@@ -336,7 +347,8 @@ const updateRiskSettings = async () => {
       takeProfitThreshold: config.takeProfitThreshold,
       stopLossThreshold: config.stopLossThreshold,
       // Opcional: también puedes enviar maxCopyPercent si quieres
-      maxCopyPercentOfBalance: config.maxCopyPercentOfBalance
+      maxCopyPercentOfBalance: config.maxCopyPercentOfBalance,
+      microBetAmount: config.microBetAmount
     });
 
     console.log(`✅ Configuración guardada para perfil ${profileStr}`);
@@ -413,6 +425,18 @@ const updateFilters = async () => {
     await axios.post(`${API_URL}/settings/filters`, status.value.marketFilters);
   } catch (error) {
     console.error("Error actualizando filtros", error);
+  }
+};
+
+// --- ⚙️ ACTUALIZAR CONFIGURACIÓN GENERAL (LIMITES) ---
+const updateConfig = async () => {
+  try {
+    await axios.post(`${API_URL}/settings/config`, {
+      maxActiveSportsMarkets: status.value.maxActiveSportsMarkets
+    });
+    console.log(`✅ Límite de deportes actualizado a: ${status.value.maxActiveSportsMarkets === 0 ? 'ILIMITADO' : status.value.maxActiveSportsMarkets}`);
+  } catch (error) {
+    console.error("❌ Error actualizando límite de deportes", error);
   }
 };
 
@@ -976,6 +1000,64 @@ onUnmounted(() => {
 
       <div class="col-span-12 xl:col-span-4 h-full space-y-6">
 
+        <div class="mb-6 bg-[#1C1612] border border-[#D4AF37]/20 rounded-[2rem] p-6 relative overflow-hidden group shadow-2xl">
+          <div class="absolute -top-24 -right-24 w-48 h-48 bg-[#D4AF37] rounded-full blur-[80px] opacity-5 pointer-events-none"></div>
+          
+          <div class="flex items-center justify-between mb-6 relative z-10">
+            <div class="flex items-center gap-4">
+              <div class="p-3 rounded-xl bg-[#D4AF37]/10 border border-[#D4AF37]/20 text-[#D4AF37]">
+                <Server :size="20" />
+              </div>
+              <div>
+                <h3 class="text-white font-bold text-sm tracking-tight uppercase">Telemetría de Sistema</h3>
+                <p class="text-[10px] text-zinc-500 font-medium"> VPS Toronto Core • Status: <span class="text-emerald-500 text-[9px] animate-pulse">● LIVE</span></p>
+              </div>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-3 relative z-10">
+            <div class="bg-[#161210] border border-[#D4AF37]/10 p-3 rounded-xl hover:border-[#D4AF37]/30 transition-colors">
+              <div class="flex items-center gap-2 mb-1">
+                <Activity :size="12" class="text-[#D4AF37]/60" />
+                <span class="text-[9px] text-zinc-500 font-black uppercase tracking-widest">RAM Bot</span>
+              </div>
+              <p class="text-lg font-mono font-black text-zinc-200">
+                {{ status.systemMetrics?.botRam || '0.00' }}<span class="text-[10px] text-[#D4AF37] ml-1">MB</span>
+              </p>
+            </div>
+
+            <div class="bg-[#161210] border border-[#D4AF37]/10 p-3 rounded-xl">
+              <div class="flex items-center gap-2 mb-1">
+                <Cpu :size="12" class="text-[#D4AF37]/60" />
+                <span class="text-[9px] text-zinc-500 font-black uppercase tracking-widest">Carga CPU</span>
+              </div>
+              <p class="text-lg font-mono font-black text-zinc-200">
+                {{ status.systemMetrics?.cpuLoad || '0.00' }}<span class="text-[10px] text-[#D4AF37] ml-1">AVG</span>
+              </p>
+            </div>
+
+            <div class="bg-[#161210] border border-[#D4AF37]/10 p-3 rounded-xl">
+              <div class="flex items-center gap-2 mb-1">
+                <LifeBuoy :size="12" class="text-[#D4AF37]/60" />
+                <span class="text-[9px] text-zinc-500 font-black uppercase tracking-widest">Libre (OS)</span>
+              </div>
+              <p class="text-lg font-mono font-black text-zinc-200">
+                {{ Math.round(status.systemMetrics?.freeRam) || '0' }}<span class="text-[10px] text-[#D4AF37] ml-1">MB</span>
+              </p>
+            </div>
+
+            <div class="bg-[#161210] border border-[#D4AF37]/10 p-3 rounded-xl">
+              <div class="flex items-center gap-2 mb-1">
+                <Clock3 :size="12" class="text-[#D4AF37]/60" />
+                <span class="text-[9px] text-zinc-500 font-black uppercase tracking-widest">Uptime</span>
+              </div>
+              <p class="text-lg font-mono font-black text-zinc-200">
+                {{ status.systemMetrics?.uptimeHours || '0.00' }}<span class="text-[10px] text-[#D4AF37] ml-1">HRS</span>
+              </p>
+            </div>
+          </div>
+        </div>        
+
         <div class="bg-[#111114] border border-zinc-800/80 rounded-[2rem] p-6 lg:p-8 transition-all duration-500 relative overflow-hidden group shadow-lg"
              :class="status.activeProfileName === 'standardConfig' ? 'shadow-[0_0_50px_rgba(14,165,233,0.03)] hover:border-sky-500/30' : 'shadow-[0_0_50px_rgba(249,115,22,0.03)] hover:border-orange-500/30'">
           
@@ -1084,6 +1166,43 @@ onUnmounted(() => {
               <input type="checkbox" v-model="status.marketFilters[key]" @change="updateFilters" class="sr-only">
             </label>
           </div>
+
+          <div class="mt-6 pt-6 border-t border-zinc-800/80 relative z-10">
+            <div class="flex items-center justify-between mb-4">
+              <h4 class="text-[11px] font-black uppercase tracking-widest text-zinc-400">Límite: Deportes</h4>
+              <span class="text-[10px] font-mono font-bold px-2.5 py-1 rounded-md transition-colors duration-300"
+                    :class="status.maxActiveSportsMarkets === 0 ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30' : 'bg-zinc-800/50 text-zinc-400 border border-zinc-700'">
+                {{ status.maxActiveSportsMarkets === 0 ? 'MODO AUTO' : status.maxActiveSportsMarkets + ' MÁX' }}
+              </span>
+            </div>
+
+            <div class="flex items-center gap-4">
+              <input 
+                type="range" 
+                min="0" 
+                max="20" 
+                v-model.number="status.maxActiveSportsMarkets"
+                @change="updateConfig" 
+                class="flex-1 accent-emerald-500 h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer"
+              />
+              <button 
+                @click="status.maxActiveSportsMarkets = 0; updateConfig()"
+                class="text-[10px] font-black tracking-widest px-4 py-2 rounded-xl transition-all duration-300"
+                :class="status.maxActiveSportsMarkets === 0 ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 shadow-[0_0_10px_rgba(16,185,129,0.1)]' : 'bg-[#161619] text-zinc-500 border border-zinc-800/60 hover:border-zinc-700 hover:text-zinc-300'"
+              >
+                AUTO
+              </button>
+            </div>
+            
+            <p class="text-[10px] text-zinc-500 mt-3 font-medium flex items-center gap-1.5">
+              <span class="text-emerald-500/70 text-xs">*</span> 
+              0 = Ilimitado. Activos ahora: 
+              <strong class="text-zinc-300 font-mono bg-zinc-800/50 px-1.5 rounded">
+                {{ status.activePositions ? status.activePositions.filter(p => p.category === 'SPORTS').length : 0 }}
+              </strong>
+            </p>
+          </div>
+
         </div>
 
         <div class="bg-[#111114] border border-zinc-800/80 rounded-[2rem] p-6 lg:p-8 transition-all duration-500 relative overflow-hidden group shadow-[0_0_50px_rgba(16,185,129,0.02)] hover:border-emerald-500/30">
@@ -1115,7 +1234,7 @@ onUnmounted(() => {
               <div class="flex items-center relative w-full">
                 <span class="absolute left-4 text-emerald-500 font-bold text-lg">$</span>
                 <input 
-                  type="number" v-model.number="status.microBetAmount" @change="updateAutoTrade" min="0.5" step="0.5"
+                  type="number" v-model.number="status[status.activeProfileName].microBetAmount" @change="updateAutoTrade" min="0.5" step="0.5"
                   class="w-full h-12 bg-[#09090b] border border-zinc-800/80 rounded-xl pl-9 pr-4 text-white font-mono text-xl font-bold outline-none transition-all placeholder-zinc-700 focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 disabled:opacity-50 disabled:cursor-not-allowed" 
                   :disabled="!status.autoTradeEnabled"
                 />

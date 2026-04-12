@@ -1,17 +1,19 @@
 {
-  "standardConfig": {
+"standardConfig": {
     "predictionThreshold": 0.7,
-    "edgeThreshold": 0.09,
+    "edgeThreshold": 0.05,
     "takeProfitThreshold": 20,
     "stopLossThreshold": -20,
-    "maxCopyPercentOfBalance": 8
+    "maxCopyPercentOfBalance": 8,
+    "microBetAmount": 5.0
   },
   "volatileConfig": {
     "predictionThreshold": 0.85,
     "edgeThreshold": 0.12,
     "takeProfitThreshold": 25,
     "stopLossThreshold": -30,
-    "maxCopyPercentOfBalance": 2
+    "maxCopyPercentOfBalance": 2,
+    "microBetAmount": 0.5
   },
   "marketFilters": {
     "crypto": true,
@@ -21,5 +23,6 @@
     "pop": false
   },
   "copyTradingEnabled": true,
-  "maxCopySize": 50
+  "maxCopySize": 50,
+  "maxActiveSportsMarkets": 2
 }

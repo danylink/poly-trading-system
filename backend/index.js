@@ -17,6 +17,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import OpenAI from 'openai';
 import fs from 'fs';
 import path from 'path';
+import os from 'os';
 
 const agent = new https.Agent({  
     rejectUnauthorized: false 
@@ -40,7 +41,6 @@ let geminiModel = null;
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const app = express();
 app.use(cors());
-app.use(express.json());
 app.use(express.json());
 
 // ==========================================
@@ -133,31 +133,32 @@ let botStatus = {
         edgeThreshold: 0.09,
         takeProfitThreshold: 20,
         stopLossThreshold: -20,
-        maxCopyPercentOfBalance: 8
+        maxCopyPercentOfBalance: 8,
+        microBetAmount: 5.0
     },
     volatileConfig: {
         predictionThreshold: 0.85,
         edgeThreshold: 0.12,
         takeProfitThreshold: 10,
         stopLossThreshold: -10,
-        maxCopyPercentOfBalance: 3
+        maxCopyPercentOfBalance: 3,
+        microBetAmount: 0.5
     },
 
     autoTradeEnabled: true,
-    microBetAmount: 1.00,
     isPanicStopped: false,
     predictionThreshold: 0.70,
     edgeThreshold: 0.09,
     takeProfitThreshold: 18,
     stopLossThreshold: -15,
     autoTradeEnabled: true,
-    microBetAmount: 1.00,
     suggestedInversion: 0, 
     potentialROI: 0,
     copyTradingEnabled: false,
-    maxCopySize: 50,                    // ← Máximo shares a copiar por trade
+    maxCopySize: 50,
+    maxActiveSportsMarkets: 2,                    // ← Máximo shares a copiar por trade
     maxCopyPercentOfBalance: 8,         // ← Máximo % del balance por copia (8%)
-    dailyLossLimit: 10,                   // ← Nuevo: Stop-loss diario en %
+    dailyLossLimit: 15,                   // ← Nuevo: Stop-loss diario en %
     dailyPnL: 0,                          // ← Nuevo: PnL acumulado del día
     dailyStartBalance: 0,                 // ← Nuevo: Balance al inicio del día
     autoRedeemEnabled: true,              // ← Nuevo: Auto-redeem activado
@@ -195,9 +196,9 @@ function saveConfigToDisk(origen = "Sistema") {
             copyTradingEnabled: botStatus.copyTradingEnabled,
             
             // 🔥 SETTINGS ADICIONALES
-            microBetAmount: botStatus.microBetAmount,
             maxCopySize: botStatus.maxCopySize,
-            maxWhalesToCopy: botStatus.maxWhalesToCopy 
+            maxWhalesToCopy: botStatus.maxWhalesToCopy,
+            maxActiveSportsMarkets: botStatus.maxActiveSportsMarkets
         };
         fs.writeFileSync(CONFIG_FILE, JSON.stringify(configToSave, null, 2), 'utf8');
         console.log(`💾 Configuración guardada en el disco duro. (Origen: ${origen})`);
@@ -214,7 +215,6 @@ function loadConfigFromDisk() {
             const savedConfig = JSON.parse(data);
 
             // 🛡️ FIX QUANT: Fusión Profunda (Spread Operator)
-            // Esto inyecta los valores uno por uno sin destruir la estructura de memoria original
             if (savedConfig.standardConfig) {
                 botStatus.standardConfig = { ...botStatus.standardConfig, ...savedConfig.standardConfig };
             }
@@ -228,9 +228,9 @@ function loadConfigFromDisk() {
             // 🔄 Restauramos el estado de los Motores y Variables Sueltas
             if (savedConfig.autoTradeEnabled !== undefined) botStatus.autoTradeEnabled = savedConfig.autoTradeEnabled;
             if (savedConfig.copyTradingEnabled !== undefined) botStatus.copyTradingEnabled = savedConfig.copyTradingEnabled;
-            if (savedConfig.microBetAmount !== undefined) botStatus.microBetAmount = savedConfig.microBetAmount;
             if (savedConfig.maxCopySize !== undefined) botStatus.maxCopySize = savedConfig.maxCopySize;
             if (savedConfig.maxWhalesToCopy !== undefined) botStatus.maxWhalesToCopy = savedConfig.maxWhalesToCopy;
+            if (savedConfig.maxActiveSportsMarkets !== undefined) botStatus.maxActiveSportsMarkets = savedConfig.maxActiveSportsMarkets;
 
             console.log("📂 Configuración de motores y perfiles restaurada con éxito desde JSON.");
         } else {
@@ -241,9 +241,6 @@ function loadConfigFromDisk() {
         console.error("❌ Error cargando configuración previa:", err.message);
     }
 }
-
-// 🔥 DISPARAMOS LA LECTURA INMEDIATAMENTE AL PRENDER EL BOT
-loadConfigFromDisk();
 
 // 🔥 DISPARAMOS LA LECTURA INMEDIATAMENTE AL PRENDER EL BOT
 loadConfigFromDisk();
@@ -634,7 +631,7 @@ function getMarketCategory(title) {
 function getMarketCategoryEnhanced(title) {
     const lower = title.toLowerCase();
 
-    // Mercados de alta frecuencia (los que dan dinero rápido)
+    // Mercados de alta frecuencia
     if (lower.includes("5m") || lower.includes("15m") || lower.includes("up or down") || 
         lower.includes("bitcoin") || lower.includes("btc") || lower.includes("eth") || 
         lower.includes("sol") || lower.includes("up/down")) {
@@ -653,6 +650,10 @@ function getMarketCategoryEnhanced(title) {
     if (lower.includes("bitcoin") || lower.includes("btc") || lower.includes("eth") || lower.includes("crypto")) return 'CRYPTO';
     if (lower.includes("israel") || lower.includes("ukraine") || lower.includes("russia") || lower.includes("trump") || lower.includes("biden") || lower.includes("war")) return 'GEOPOLITICS';
     if (lower.includes("elon") || lower.includes("musk") || lower.includes("tweet")) return 'SOCIAL';
+
+    // 🔥 EL FIX QUANT: Etiquetar correctamente los deportes
+    if (lower.match(/nba|nfl|mlb|nhl|soccer|tennis|f1|ufc|league|champions|madrid|lakers|sports|yankees|fc|atp|wta|match|inning/i)) return 'SPORTS';
+    if (lower.includes(" vs ")) return 'SPORTS'; // El clásico formato "Equipo A vs Equipo B"
 
     return null;
 }
@@ -1087,150 +1088,161 @@ async function autoSelectTopWhales() {
 }
 
 
+// ==========================================
+// CHECK AND COPY WHALE TRADES - VERSIÓN ULTRA-RÁPIDA (CON CANDADO, EXIT-ONLY Y SLIPPAGE)
+// ==========================================
+let isScanningWhales = false; // 🔥 CANDADO ANTI-COLISIONES
+
 async function checkAndCopyWhaleTrades() {
-    // 🔓 FIX: Se eliminó el candado principal de copyTradingEnabled para poder monitorear ventas
-    if (botStatus.autoSelectedWhales.length === 0) return;
+    if (isScanningWhales) return; 
 
-    console.log(`🔄 [COPY-TRADING] Revisando trades de ${botStatus.autoSelectedWhales.length} whales...`);
+    // 🛡️ LÓGICA DE "MODO SOLO SALIDA" (EXIT-ONLY)
+    const hasActiveCopiedPositions = botStatus.copiedPositions && botStatus.copiedPositions.length > 0;
 
-    let totalDetected = 0;
+    // Si apagaste el Copy Trading Y ADEMÁS no tienes operaciones pendientes por vender... entonces sí salimos.
+    if (!botStatus.copyTradingEnabled && !hasActiveCopiedPositions) return;
+    
+    // Si no hay ballenas en la mira, salimos.
+    if (!botStatus.autoSelectedWhales || botStatus.autoSelectedWhales.length === 0) return;
 
-    for (const whale of botStatus.autoSelectedWhales) {
-        try {
-            const response = await axios.get(
-                `https://data-api.polymarket.com/trades?user=${whale.address}&limit=15`,
-                { httpsAgent: agent, timeout: 10000 }
-            );
+    isScanningWhales = true; // 🔒 Ponemos el candado
 
-            const recentTrades = Array.isArray(response.data) ? response.data : (response.data.data || response.data.trades || []);
-
-            for (const trade of recentTrades) {
-                if (!trade) continue;
-
-                const side = (trade.side || "").toUpperCase();
-                const tokenId = trade.asset;
-                const conditionId = trade.conditionId; // <--- Llave para mercados NegRisk
-                const whaleSize = parseFloat(trade.size || 0); 
-                const price = parseFloat(trade.price || 0);
+    try {
+        for (const whale of botStatus.autoSelectedWhales) {
+            try {
+                const response = await axios.get(
+                    `https://data-api.polymarket.com/trades?user=${whale.address}&limit=12`,
+                    { httpsAgent: agent, timeout: 8000 }
+                );
                 
-                const timestamp = String(trade.timestamp).length === 10 ? parseInt(trade.timestamp) * 1000 : parseInt(trade.timestamp);
-                const title = trade.title || "Mercado desconocido";
-                const slug = trade.slug || "";
+                const recentTrades = Array.isArray(response.data) 
+                    ? response.data 
+                    : (response.data.data || response.data.trades || []);
 
-                // Filtros de tamaño y tiempo generales
-                if (!tokenId || whaleSize < 100) continue; 
-                if (Date.now() - timestamp > 20 * 60 * 1000) continue; 
+                for (const trade of recentTrades) {
+                    if (!trade) continue;
 
-                // ==================== COPIA DE COMPRA ====================
-                if (side === "BUY") {
+                    const side = (trade.side || "").toUpperCase();
+                    const tokenId = trade.asset || trade.token_id;
+                    const conditionId = trade.conditionId;
+                    const whaleSize = parseFloat(trade.size || 0);
+                    const price = parseFloat(trade.price || 0);
+                    const txHash = trade.transactionHash || trade.id || '';
                     
-                    // 🔒 FIX NUEVO: Si apagaste el Copy Trading desde el panel, evitamos hacer NUEVAS compras.
-                    if (!botStatus.copyTradingEnabled) {
-                        continue;
-                    }
+                    const timestamp = String(trade.timestamp).length === 10 
+                        ? parseInt(trade.timestamp) * 1000 
+                        : parseInt(trade.timestamp);
+                        
+                    const title = trade.title || "Mercado desconocido";
 
-                    // 🚨 CANDADO DE PÁNICO (MODO SOLO CIERRE)
-                    // Si el bot está en pánico, está PROHIBIDO abrir nuevas posiciones.
-                    if (botStatus.isPanicStopped) {
-                        continue; 
-                    }
-                    
-                    // 🛡️ FIX (FUGA DE FILTRO): Bloqueo por categoría
-                    if (!isMarketAllowed(title, slug)) {
-                        console.log(`      ⛔ [FILTRO] Ignorando COMPRA en mercado bloqueado por categoría: ${title.substring(0,30)}`);
-                        continue; 
-                    }
+                    // Filtros básicos de Calidad (Mínimo $500 de la ballena y últimos 15 min)
+                    if (!tokenId || whaleSize < 500) continue;
+                    if (Date.now() - timestamp > 15 * 60 * 1000) continue; 
 
-                    const alreadyHavePosition = botStatus.activePositions.some(p => p.tokenId === tokenId);
-                    const alreadyCopiedRecently = botStatus.copiedTrades.some(t => 
-                        t.tokenId === tokenId && (Date.now() - t.id) < 10 * 60 * 1000
-                    );
+                    // ==================== COPIA DE COMPRA ====================
+                    if (side === "BUY") {
+                        if (!botStatus.copyTradingEnabled || botStatus.isPanicStopped) continue;
+                        if (!isMarketAllowed(title)) continue;
 
-                    if (alreadyHavePosition || alreadyCopiedRecently) continue;
+                        // 🔥 FRENO QUANT: Límite estricto de 2 mercados copiados al mismo tiempo
+                        if (botStatus.copiedPositions.length >= 2) continue;
 
-                    // 🎯 FIX: Obtenemos el perfil de riesgo según la categoría del mercado
-                    const { config: riskConfig, profileType } = getRiskProfile(title);
+                        const alreadyHavePosition = botStatus.activePositions.some(p => p.tokenId === tokenId);
+                        const alreadyCopied = botStatus.copiedTrades.some(t => t.txHash === txHash);
+                        const alreadyPending = pendingOrdersCache.has(tokenId); 
 
-                    const currentBalance = parseFloat(botStatus.clobOnlyUSDC || 0);
-                    // Usamos el % asignado a su perfil específico (ej. 8% o 3%)
-                    const maxAllowedPercent = currentBalance * (riskConfig.maxCopyPercentOfBalance / 100);
-                    
-                    let montoInversion = Math.min(botStatus.maxCopySize, maxAllowedPercent);
-                    if (montoInversion < 1) montoInversion = 1;
+                        if (alreadyHavePosition || alreadyCopied || alreadyPending) continue;
 
-                    if (currentBalance < montoInversion) {
-                        console.log(`      ⏭️ Sin saldo suficiente para copiar a la ballena.`);
-                        continue;
-                    }
+                        const { config: riskConfig } = getRiskProfile(title);
+                        const currentBalance = parseFloat(botStatus.clobOnlyUSDC || 0);
+                        
+                        // 🔥 AHORA LEEMOS LA INVERSIÓN DESDE EL PERFIL
+                        let montoInversion = riskConfig.microBetAmount || 0.50;
+                        if (currentBalance < montoInversion) continue;
 
-                    console.log(`      🔥 [COPY BUY] Whale compró ${whaleSize.toFixed(1)} @ $${price.toFixed(3)} → ${title.substring(0,55)}...`);
+                        // 📈 PARCHE QUANT: Tolerancia de Slippage (+4%)
+                        let limitPrice = price * 1.04;
+                        if (limitPrice > 0.99) limitPrice = 0.99; // Límite de seguridad matemático
 
-                    const result = await executeTradeOnChain(conditionId, tokenId, montoInversion, price, "0.01");
+                        console.log(`🔥 [COPY BUY] Whale compró ${whaleSize.toFixed(1)} @ $${price.toFixed(3)} -> Intentando comprar a máx $${limitPrice.toFixed(3)} → ${title.substring(0,40)}...`);
+                        
+                        const result = await executeTradeOnChain(conditionId, tokenId, montoInversion, limitPrice, "0.01");
 
-                    if (result?.success) {
-                        botStatus.copiedTrades.unshift({
-                            id: Date.now(),
-                            whale: whale.address.substring(0,10) + "...",
-                            tokenId,
-                            size: montoInversion,
-                            price,
-                            time: new Date().toLocaleTimeString(),
-                            market: title
-                        });
+                        if (result?.success) {
+                            pendingOrdersCache.add(tokenId); 
+                            
+                            botStatus.copiedTrades.unshift({
+                                id: Date.now(),
+                                txHash: txHash,
+                                whale: whale.address.substring(0,10) + "...",
+                                tokenId,
+                                size: montoInversion,
+                                price: limitPrice, // Guardamos el precio límite que autorizamos
+                                time: new Date().toLocaleTimeString(),
+                                market: title
+                            });
+                            
+                            if (botStatus.copiedTrades.length > 20) botStatus.copiedTrades.pop();
+                            
+                            botStatus.copiedPositions.push({
+                                tokenId,
+                                whale: whale.address,
+                                sizeCopied: montoInversion,
+                                priceEntry: limitPrice,
+                                marketName: title
+                            });
 
-                        if (botStatus.copiedTrades.length > 12) {
-                            botStatus.copiedTrades.pop();
+                            botStatus.copyTradingStats.totalCopied++;
+                            botStatus.copyTradingStats.successful++;
+                            
+                            await sendSniperAlert({ 
+                                marketName: `[COPY WHALE] ${title}`, 
+                                probability: 0, 
+                                marketPrice: limitPrice,
+                                edge: 0,
+                                suggestedInversion: montoInversion, 
+                                reasoning: `Copiando a la ballena ${whale.address.substring(0,6)}...`
+                            });
                         }
+                    }
 
-                        botStatus.copiedPositions.push({
-                            tokenId,
-                            whale: whale.address,
-                            sizeCopied: montoInversion,
-                            priceEntry: price,
-                            marketName: title
-                        });
+                    // ==================== COPIA DE VENTA ====================
+                    else if (side === "SELL") {
+                        const copiedIndex = botStatus.copiedPositions.findIndex(p => p.tokenId === tokenId && p.whale === whale.address);
+                        if (copiedIndex === -1) continue;
+                        
+                        const position = botStatus.copiedPositions[copiedIndex];
+                        console.log(`🔥 [COPY SELL] Whale vendió → Cerrando nuestra copia de ${title.substring(0,30)}...`);
+                        
+                        // 📉 Al vender también le damos un ligero margen (-3%) hacia abajo para asegurar la ejecución
+                        let limitSellPrice = price * 0.97;
+                        if (limitSellPrice < 0.01) limitSellPrice = 0.01;
 
-                        botStatus.copyTradingStats.totalCopied++;
-                        botStatus.copyTradingStats.successful++;
-                        totalDetected++;
-
-                        await sendAlert(
-                            `🐋 *COPY TRADING EJECUTADO*\n\n` +
-                            `📋 *Mercado:* ${title.substring(0, 50)}...\n` +
-                            `👤 *Whale:* \`${whale.address.substring(0, 8)}...\`\n` +
-                            `💰 *Nuestra Inversión:* $${montoInversion.toFixed(2)} USDC\n` +
-                            `📊 *Precio Entrada:* $${price.toFixed(3)}\n` +
-                            `⏳ *Hora:* ${new Date().toLocaleTimeString()}`
-                        );
+                        const sellResult = await executeSellOnChain(conditionId, tokenId, position.sizeCopied, limitSellPrice, "0.01");
+                        
+                        if (sellResult?.success) {
+                            botStatus.copiedPositions.splice(copiedIndex, 1);
+                            
+                            // 🔥 AQUÍ INYECTAMOS LA ALERTA DE TELEGRAM PARA LA VENTA
+                            const rescateEst = (position.sizeCopied * limitSellPrice).toFixed(2);
+                            await sendAlert(
+                                `🛑 *COPY SELL (Ballena Salió)*\n` +
+                                `Mercado: ${title.substring(0,40)}...\n` +
+                                `Whale: \`${whale.address.substring(0,6)}\`\n` +
+                                `Rescatado ≈ $${rescateEst} USDC`
+                            );
+                        }
                     }
                 }
-
-                // ==================== COPIA DE VENTA ====================
-                else if (side === "SELL") {
-                    
-                    // 🔓 AQUÍ NO HAY FILTRO NI CANDADO DE PÁNICO NI DE COPY TRADING.
-                    // Si la ballena vende, nosotros siempre vendemos para protegernos.
-                    const copiedIndex = botStatus.copiedPositions.findIndex(p => p.tokenId === tokenId && p.whale === whale.address);
-                    if (copiedIndex === -1) continue;
-
-                    const position = botStatus.copiedPositions[copiedIndex];
-
-                    console.log(`      🔥 [COPY SELL] Whale vendió → Vendiendo nuestra posición ignorando filtros`);
-
-                    const sellResult = await executeSellOnChain(conditionId, tokenId, position.sizeCopied, price * 0.97, "0.01");
-
-                    if (sellResult?.success) {
-                        console.log(`      ✅ COPY SELL ejecutado`);
-                        botStatus.copiedPositions.splice(copiedIndex, 1);
-                        botStatus.copyTradingStats.totalSold++;
-                        
-                        await sendAlert(`🛑 *VENTA COPY TRADING*\nLa ballena vendió su posición. Hemos cerrado nuestra copia en el mercado: ${title.substring(0, 45)}...`);
-                    }
+            } catch (err) {
+                // Silenciamos 429 para no ensuciar la consola
+                if (!err.message.includes('429') && !err.message.includes('timeout')) {
+                    console.error(`❌ Error whale ${whale.address.substring(0,8)}:`, err.message);
                 }
             }
-        } catch (err) {
-            console.error(`      ❌ Error leyendo trades de whale ${whale.address.substring(0,8)}...:`, err.message);
         }
+    } finally {
+        isScanningWhales = false; // 🔓 Quitamos el candado SIEMPRE, incluso si hubo un error fatal
     }
 }
 
@@ -1468,25 +1480,38 @@ async function runBot() {
         
         const { config: profile, profileType } = getRiskProfile(marketTitle, marketItem.category || "");
 
+        // --- LÓGICA DE LÍMITE DE MERCADOS DEPORTIVOS ---
+        const activeSportsCount = botStatus.activePositions.filter(p => p.category === 'SPORTS').length;
+        const sportsLimit = botStatus.maxActiveSportsMarkets;
+        
+        // Si el límite es > 0 (no es Auto) y ya llegamos al tope, bloqueamos nuevas compras de deportes
+        const isSportsLimitReached = (marketItem.category === 'SPORTS' && sportsLimit > 0 && activeSportsCount >= sportsLimit);
+
         // Validación de Señal Fuerte (Añadido !alreadyPending)
         const isStrongSignal = 
-            (!alreadyInvested && !alreadyClosed && !alreadyPending) && (
+            (!alreadyInvested && !alreadyClosed && !alreadyPending && !isSportsLimitReached) && (
                 (finalAnalysis.recommendation === "STRONG_BUY" && edge > 0.105) ||
                 (finalAnalysis.recommendation === "BUY" && edge >= profile.edgeThreshold && targetProb >= profile.predictionThreshold) ||
                 (finalAnalysis.urgency >= 9 && edge >= Math.max(0.09, profile.edgeThreshold * 0.85))
             );
+
+        if (isSportsLimitReached) {
+            console.log(`⚠️ [LIMITE] Omitiendo ${marketTitle} porque ya tienes ${activeSportsCount} mercados de deportes abiertos.`);
+        }
 
         let autoExecuted = false;
 
         // Ejecución del Sniper
         if (botStatus.autoTradeEnabled && isStrongSignal) {
             const saldoLibre = parseFloat(botStatus.clobOnlyUSDC || 0);
-            let dynamicBetAmount = botStatus.microBetAmount;
+            
+            // 🔥 AHORA LEEMOS EL MONTO DESDE EL PERFIL DE RIESGO
+            let dynamicBetAmount = profile.microBetAmount || 1.0; 
 
             if (edge > 0 && livePrice > 0 && livePrice < 1) {
                 const kellyFraction = edge / (1 - livePrice);
-                dynamicBetAmount = Math.min(saldoLibre * kellyFraction * 0.25, saldoLibre * 0.15, botStatus.microBetAmount * 3);
-                dynamicBetAmount = Math.max(dynamicBetAmount, botStatus.microBetAmount);
+                dynamicBetAmount = Math.min(saldoLibre * kellyFraction * 0.25, saldoLibre * 0.15, profile.microBetAmount * 3);
+                dynamicBetAmount = Math.max(dynamicBetAmount, profile.microBetAmount);
             }
 
             console.log(`🎯 SNIPER DISPARO [${finalAnalysis.engine}] → [${targetSideLabel}] | Edge: ${(edge*100).toFixed(1)}%`);
@@ -1520,7 +1545,8 @@ async function runBot() {
             probability: targetProb || 0,
             reasoning: finalAnalysis.reason || "Evaluado por IA",
             marketPrice: livePrice,
-            suggestedInversion: botStatus.microBetAmount,
+            // 🔥 AHORA LA SEÑAL DEL DASHBOARD LEE EL MONTO CORRECTO SEGÚN EL PERFIL
+            suggestedInversion: profile.microBetAmount || 1.0, 
             edge: edge,
             urgency: finalAnalysis.urgency || 5,
             recommendation: finalAnalysis.recommendation || "WAIT",
@@ -1830,7 +1856,23 @@ async function checkDailyLossLimit() {
 
 // 1. Envía el estado completo, saldos e historial al Frontend (Se llama cada 2 seg)
 app.get('/api/status', (req, res) => {
-    res.json(botStatus);
+    // Calculamos métricas en tiempo real
+    const systemMetrics = {
+        // RAM exclusiva que está consumiendo tu bot (RSS)
+        botRamMB: (process.memoryUsage().rss / 1024 / 1024).toFixed(2),
+        // RAM total del servidor de Toronto
+        serverTotalRamMB: (os.totalmem() / 1024 / 1024).toFixed(2),
+        // RAM libre restante
+        serverFreeRamMB: (os.freemem() / 1024 / 1024).toFixed(2),
+        // Horas que lleva el bot sin apagarse
+        uptimeHours: (process.uptime() / 3600).toFixed(2),
+        // Carga promedio del CPU en el último minuto
+        cpuLoad: os.loadavg()[0].toFixed(2) 
+    };
+    res.json({
+        ...botStatus,
+        systemMetrics // 🔥 Inyectamos la telemetría al JSON de respuesta
+    });
 });
 
 app.post('/api/settings/threshold', async (req, res) => {
@@ -1909,6 +1951,30 @@ app.post('/api/settings/filters', (req, res) => {
     
     console.log(`🛡️ Filtros de Mercado Actualizados y guardados:`, botStatus.marketFilters);
     res.json({ success: true, marketFilters: botStatus.marketFilters });
+});
+
+// ==========================================
+// RUTA: ACTUALIZAR CONFIGURACIÓN GENERAL (LÍMITES)
+// ==========================================
+app.post('/api/settings/config', (req, res) => {
+    try {
+        const { maxActiveSportsMarkets } = req.body;
+        
+        if (maxActiveSportsMarkets !== undefined) {
+            // Actualizamos la memoria RAM del bot
+            botStatus.maxActiveSportsMarkets = parseInt(maxActiveSportsMarkets);
+            
+            // Guardamos permanentemente en el bot_config.json
+            saveConfigToDisk("API Configuración Límite Deportes");
+            
+            res.json({ success: true, message: "Límite de deportes actualizado" });
+        } else {
+            res.status(400).json({ success: false, error: "Parámetros incompletos" });
+        }
+    } catch (error) {
+        console.error("❌ Error en /api/settings/config:", error);
+        res.status(500).json({ success: false, error: "Error interno del servidor" });
+    }
 });
 
 app.post('/api/execute-trade', async (req, res) => {
@@ -2116,6 +2182,66 @@ async function initGemini() {
     }
 }
 
+// ==========================================
+// 🛡️ GUARDIÁN DE SALUD DEL SERVIDOR (AUTO-HEALING)
+// ==========================================
+let lastHealthAlertTime = 0; 
+
+async function monitorSystemHealth() {
+    try {
+        const now = Date.now();
+        const botRamMB = process.memoryUsage().rss / 1024 / 1024;
+        const cpuLoad = os.loadavg()[0];
+
+        // Umbrales de Peligro
+        const RAM_LIMIT = 700; // Alerta y reinicio si pasa de 700 MB
+        const CPU_LIMIT = 1.5; // Alerta si la carga promedio pasa de 1.5
+
+        let alertMsg = "";
+        let shouldAutoRestart = false;
+
+        // 1. Verificación de RAM (Disparador de Auto-Healing)
+        if (botRamMB > RAM_LIMIT) {
+            alertMsg += `⚠️ *Fuga de Memoria Detectada*\nEl Poly-Bot está consumiendo \`${botRamMB.toFixed(0)} MB\` de RAM.\n\n`;
+            shouldAutoRestart = true; 
+        }
+
+        // 2. Verificación de CPU (Solo Alerta)
+        if (cpuLoad > CPU_LIMIT) {
+            alertMsg += `🔥 *Sobrecarga de Procesador*\nEl CPU de Toronto está al \`${cpuLoad.toFixed(2)}\` (Riesgo de Lag).\n\n`;
+        }
+
+        // 3. Ejecución de Acciones
+        if (alertMsg !== "") {
+            // Evitamos saturar Telegram si no es un reinicio inminente
+            if (now - lastHealthAlertTime < 3600000 && !shouldAutoRestart) return;
+
+            const actionText = shouldAutoRestart 
+                ? `*Acción:* Ejecutando Auto-Reinicio (Auto-Healing) ahora mismo 🔄` 
+                : `*Acción recomendada:* Monitorear o reiniciar manualmente si persiste.`;
+
+            await sendAlert(
+                `🚨 *ALERTA DE INFRAESTRUCTURA* 🚨\n\n` + 
+                `${alertMsg}` +
+                `${actionText}`
+            );
+
+            lastHealthAlertTime = now;
+            console.log(shouldAutoRestart ? "🔄 [SISTEMA] Iniciando Auto-Healing..." : "🚨 [SISTEMA] Alerta de salud enviada.");
+
+            // 🔥 EL CORAZÓN DEL AUTO-HEALING
+            if (shouldAutoRestart) {
+                // Esperamos 3 segundos para asegurar que el mensaje de Telegram se envíe correctamente
+                setTimeout(() => {
+                    console.log("💀 Matando proceso para reinicio limpio por PM2...");
+                    process.exit(1); 
+                }, 3000);
+            }
+        }
+    } catch (error) {
+        console.error("❌ Error en monitorSystemHealth:", error.message);
+    }
+}
 
 // ==========================================
 // 11. INICIO DEL MOTOR DEL SNIPER
@@ -2128,10 +2254,16 @@ app.listen(PORT, async () => {
     // 🔥 DISPARAMOS EL AUTO-SELECTOR ANTES DE ARRANCAR EL BOT
     await initGemini();
 
-    // 🟢 UN SOLO RELOJ MAESTRO
-    setInterval(runBot, 60000);            // Escanear y disparar cada 1 minuto
+    // 🟢 RELOJES MAESTROS DE IA Y PORTAFOLIO
+    setInterval(runBot, 60000);            // Escanear IA cada 1 minuto
     setInterval(monitorPortfolio, 180000); // Vigilar ganancias cada 3 minutos
     
+    // 🔥 RELOJ ULTRA-RÁPIDO INDEPENDIENTE (COPY TRADING)
+    setInterval(checkAndCopyWhaleTrades, 10000); 
+
+    // 🛡️ NUEVO: RELOJ GUARDIÁN DEL SERVIDOR
+    setInterval(monitorSystemHealth, 60000); // Revisa RAM y CPU cada 1 minuto
+
     // Arranque inicial controlado
     updateRealBalances().then(() => {
         runBot();
