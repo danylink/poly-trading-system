@@ -1,11 +1,11 @@
 {
-"standardConfig": {
-    "predictionThreshold": 0.7,
+  "standardConfig": {
+    "predictionThreshold": 0.65,
     "edgeThreshold": 0.05,
     "takeProfitThreshold": 20,
     "stopLossThreshold": -20,
     "maxCopyPercentOfBalance": 8,
-    "microBetAmount": 5.0
+    "microBetAmount": 5
   },
   "volatileConfig": {
     "predictionThreshold": 0.85,
@@ -22,7 +22,9 @@
     "sports": false,
     "pop": false
   },
+  "autoTradeEnabled": true,
   "copyTradingEnabled": true,
   "maxCopySize": 50,
+  "maxWhalesToCopy": 5,
   "maxActiveSportsMarkets": 2
 }
