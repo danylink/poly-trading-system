@@ -1088,7 +1088,8 @@ async function autoSelectTopWhales() {
 
 
 async function checkAndCopyWhaleTrades() {
-    if (!botStatus.copyTradingEnabled || botStatus.autoSelectedWhales.length === 0) return;
+    // 🔓 FIX: Se eliminó el candado principal de copyTradingEnabled para poder monitorear ventas
+    if (botStatus.autoSelectedWhales.length === 0) return;
 
     console.log(`🔄 [COPY-TRADING] Revisando trades de ${botStatus.autoSelectedWhales.length} whales...`);
 
@@ -1123,6 +1124,11 @@ async function checkAndCopyWhaleTrades() {
                 // ==================== COPIA DE COMPRA ====================
                 if (side === "BUY") {
                     
+                    // 🔒 FIX NUEVO: Si apagaste el Copy Trading desde el panel, evitamos hacer NUEVAS compras.
+                    if (!botStatus.copyTradingEnabled) {
+                        continue;
+                    }
+
                     // 🚨 CANDADO DE PÁNICO (MODO SOLO CIERRE)
                     // Si el bot está en pánico, está PROHIBIDO abrir nuevas posiciones.
                     if (botStatus.isPanicStopped) {
@@ -1202,7 +1208,7 @@ async function checkAndCopyWhaleTrades() {
                 // ==================== COPIA DE VENTA ====================
                 else if (side === "SELL") {
                     
-                    // 🔓 AQUÍ NO HAY FILTRO NI CANDADO DE PÁNICO.
+                    // 🔓 AQUÍ NO HAY FILTRO NI CANDADO DE PÁNICO NI DE COPY TRADING.
                     // Si la ballena vende, nosotros siempre vendemos para protegernos.
                     const copiedIndex = botStatus.copiedPositions.findIndex(p => p.tokenId === tokenId && p.whale === whale.address);
                     if (copiedIndex === -1) continue;
@@ -1309,10 +1315,17 @@ async function runBot() {
         await updateRealBalances();
 
         // 2. Copy-Trading + Controles de Riesgo
-        if (botStatus.copyTradingEnabled) {
-            if (!botStatus.lastWhaleSelection || (Date.now() - new Date(botStatus.lastWhaleSelection).getTime()) > 10 * 60 * 1000) {
-                await autoSelectTopWhales();
+        // 🔓 FIX: Evaluamos si el switch está encendido OR si tenemos posiciones copiadas activas que necesitamos vigilar para vender
+        if (botStatus.copyTradingEnabled || (botStatus.copiedPositions && botStatus.copiedPositions.length > 0)) {
+            
+            // Solo buscamos ballenas NUEVAS si el switch está encendido
+            if (botStatus.copyTradingEnabled) {
+                if (!botStatus.lastWhaleSelection || (Date.now() - new Date(botStatus.lastWhaleSelection).getTime()) > 10 * 60 * 1000) {
+                    await autoSelectTopWhales();
+                }
             }
+            
+            // Siempre revisamos los trades de las ballenas (para poder vender si es necesario)
             await checkAndCopyWhaleTrades();
         }
 
