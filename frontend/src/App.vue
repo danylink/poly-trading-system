@@ -1015,14 +1015,14 @@ onUnmounted(() => {
             </div>
           </div>
 
-          <div class="grid grid-cols-2 gap-3 relative z-10">
+            <div class="grid grid-cols-2 gap-3 relative z-10">
             <div class="bg-[#161210] border border-[#D4AF37]/10 p-3 rounded-xl hover:border-[#D4AF37]/30 transition-colors">
               <div class="flex items-center gap-2 mb-1">
                 <Activity :size="12" class="text-[#D4AF37]/60" />
                 <span class="text-[9px] text-zinc-500 font-black uppercase tracking-widest">RAM Bot</span>
               </div>
               <p class="text-lg font-mono font-black text-zinc-200">
-                {{ status.systemMetrics?.botRam || '0.00' }}<span class="text-[10px] text-[#D4AF37] ml-1">MB</span>
+                {{ status.systemMetrics?.botRamMB || '0.00' }}<span class="text-[10px] text-[#D4AF37] ml-1">MB</span>
               </p>
             </div>
 
@@ -1042,7 +1042,7 @@ onUnmounted(() => {
                 <span class="text-[9px] text-zinc-500 font-black uppercase tracking-widest">Libre (OS)</span>
               </div>
               <p class="text-lg font-mono font-black text-zinc-200">
-                {{ Math.round(status.systemMetrics?.freeRam) || '0' }}<span class="text-[10px] text-[#D4AF37] ml-1">MB</span>
+                {{ Math.round(status.systemMetrics?.serverFreeRamMB) || '0' }}<span class="text-[10px] text-[#D4AF37] ml-1">MB</span>
               </p>
             </div>
 
