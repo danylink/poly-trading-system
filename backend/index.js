@@ -174,7 +174,9 @@ let botStatus = {
         business: true,
         sports: false,
         pop: false,
-    }
+    },
+    customWhales: [],           // ← [{ address: "0x...", nickname: "...", enabled: true }]
+    useAutoWhales: true,        // ← Toggle global para ballenas automáticas
 };
 
 
@@ -198,7 +200,9 @@ function saveConfigToDisk(origen = "Sistema") {
             // 🔥 SETTINGS ADICIONALES
             maxCopySize: botStatus.maxCopySize,
             maxWhalesToCopy: botStatus.maxWhalesToCopy,
-            maxActiveSportsMarkets: botStatus.maxActiveSportsMarkets
+            maxActiveSportsMarkets: botStatus.maxActiveSportsMarkets,
+            customWhales: botStatus.customWhales,
+            useAutoWhales: botStatus.useAutoWhales,
         };
         fs.writeFileSync(CONFIG_FILE, JSON.stringify(configToSave, null, 2), 'utf8');
         console.log(`💾 Configuración guardada en el disco duro. (Origen: ${origen})`);
@@ -231,6 +235,8 @@ function loadConfigFromDisk() {
             if (savedConfig.maxCopySize !== undefined) botStatus.maxCopySize = savedConfig.maxCopySize;
             if (savedConfig.maxWhalesToCopy !== undefined) botStatus.maxWhalesToCopy = savedConfig.maxWhalesToCopy;
             if (savedConfig.maxActiveSportsMarkets !== undefined) botStatus.maxActiveSportsMarkets = savedConfig.maxActiveSportsMarkets;
+            if (savedConfig.customWhales !== undefined) botStatus.customWhales = savedConfig.customWhales;
+            if (savedConfig.useAutoWhales !== undefined) botStatus.useAutoWhales = savedConfig.useAutoWhales;
 
             console.log("📂 Configuración de motores y perfiles restaurada con éxito desde JSON.");
         } else {
@@ -1090,32 +1096,50 @@ async function autoSelectTopWhales() {
 
 
 // ==========================================
-// CHECK AND COPY WHALE TRADES - VERSIÓN ULTRA-RÁPIDA (CON CANDADO, EXIT-ONLY Y SLIPPAGE)
+// CHECK AND COPY WHALE TRADES - VERSIÓN FINAL (Auto + Custom con toggles)
 // ==========================================
-let isScanningWhales = false; // 🔥 CANDADO ANTI-COLISIONES
+let isScanningWhales = false;
 
 async function checkAndCopyWhaleTrades() {
-    if (isScanningWhales) return; 
+    if (isScanningWhales) return;
 
-    // 🛡️ LÓGICA DE "MODO SOLO SALIDA" (EXIT-ONLY)
-    const hasActiveCopiedPositions = botStatus.copiedPositions && botStatus.copiedPositions.length > 0;
+    const hasActiveCopiedPositions = (botStatus.copiedPositions || []).length > 0;
 
-    // Si apagaste el Copy Trading Y ADEMÁS no tienes operaciones pendientes por vender... entonces sí salimos.
+    // Si todo está apagado y no hay posiciones pendientes → salimos
     if (!botStatus.copyTradingEnabled && !hasActiveCopiedPositions) return;
-    
-    // Si no hay ballenas en la mira, salimos.
-    if (!botStatus.autoSelectedWhales || botStatus.autoSelectedWhales.length === 0) return;
 
-    isScanningWhales = true; // 🔒 Ponemos el candado
+    isScanningWhales = true;
 
     try {
-        for (const whale of botStatus.autoSelectedWhales) {
+        // 1. Ballenas automáticas (solo si el usuario no las apagó)
+        let allWhales = [];
+
+        if (botStatus.copyTradingEnabled) {
+            allWhales = [...(botStatus.autoSelectedWhales || [])];
+        }
+
+        // 2. Ballenas custom (solo las que tengan enabled: true)
+        const enabledCustom = (botStatus.customWhales || []).filter(w => w.enabled === true);
+        allWhales = allWhales.concat(enabledCustom);
+
+        // Evitar duplicados por address
+        const seen = new Set();
+        allWhales = allWhales.filter(whale => {
+            const addr = whale.address.toLowerCase();
+            if (seen.has(addr)) return false;
+            seen.add(addr);
+            return true;
+        });
+
+        if (allWhales.length === 0) return;
+
+        for (const whale of allWhales) {
             try {
                 const response = await axios.get(
                     `https://data-api.polymarket.com/trades?user=${whale.address}&limit=12`,
                     { httpsAgent: agent, timeout: 8000 }
                 );
-                
+
                 const recentTrades = Array.isArray(response.data) 
                     ? response.data 
                     : (response.data.data || response.data.trades || []);
@@ -1129,62 +1153,61 @@ async function checkAndCopyWhaleTrades() {
                     const whaleSize = parseFloat(trade.size || 0);
                     const price = parseFloat(trade.price || 0);
                     const txHash = trade.transactionHash || trade.id || '';
-                    
+
                     const timestamp = String(trade.timestamp).length === 10 
                         ? parseInt(trade.timestamp) * 1000 
                         : parseInt(trade.timestamp);
-                        
+
                     const title = trade.title || "Mercado desconocido";
 
-                    // Filtros básicos de Calidad (Mínimo $500 de la ballena y últimos 15 min)
+                    // Filtros de calidad
                     if (!tokenId || whaleSize < 500) continue;
-                    if (Date.now() - timestamp > 15 * 60 * 1000) continue; 
+                    if (Date.now() - timestamp > 15 * 60 * 1000) continue;
 
                     // ==================== COPIA DE COMPRA ====================
                     if (side === "BUY") {
-                        if (!botStatus.copyTradingEnabled || botStatus.isPanicStopped) continue;
+                        if (!botStatus.copyTradingEnabled && !hasActiveCopiedPositions) continue;
+                        if (botStatus.isPanicStopped) continue;
                         if (!isMarketAllowed(title)) continue;
 
-                        // 🔥 FRENO QUANT: Límite estricto de 2 mercados copiados al mismo tiempo
-                        if (botStatus.copiedPositions.length >= 2) continue;
+                        // Límite de deportes
+                        if (botStatus.maxActiveSportsMarkets > 0 && botStatus.copiedPositions.length >= botStatus.maxActiveSportsMarkets) continue;
 
                         const alreadyHavePosition = botStatus.activePositions.some(p => p.tokenId === tokenId);
                         const alreadyCopied = botStatus.copiedTrades.some(t => t.txHash === txHash);
-                        const alreadyPending = pendingOrdersCache.has(tokenId); 
+                        const alreadyPending = pendingOrdersCache.has(tokenId);
 
                         if (alreadyHavePosition || alreadyCopied || alreadyPending) continue;
 
                         const { config: riskConfig } = getRiskProfile(title);
                         const currentBalance = parseFloat(botStatus.clobOnlyUSDC || 0);
-                        
-                        // 🔥 AHORA LEEMOS LA INVERSIÓN DESDE EL PERFIL
+
                         let montoInversion = riskConfig.microBetAmount || 0.50;
                         if (currentBalance < montoInversion) continue;
 
-                        // 📈 PARCHE QUANT: Tolerancia de Slippage (+4%)
                         let limitPrice = price * 1.04;
-                        if (limitPrice > 0.99) limitPrice = 0.99; // Límite de seguridad matemático
+                        if (limitPrice > 0.99) limitPrice = 0.99;
 
-                        console.log(`🔥 [COPY BUY] Whale compró ${whaleSize.toFixed(1)} @ $${price.toFixed(3)} -> Intentando comprar a máx $${limitPrice.toFixed(3)} → ${title.substring(0,40)}...`);
-                        
+                        console.log(`🔥 [COPY BUY] ${whale.address.substring(0,8)}... compró ${whaleSize.toFixed(1)} → ${title.substring(0,40)}...`);
+
                         const result = await executeTradeOnChain(conditionId, tokenId, montoInversion, limitPrice, "0.01");
 
                         if (result?.success) {
-                            pendingOrdersCache.add(tokenId); 
-                            
+                            pendingOrdersCache.add(tokenId);
+
                             botStatus.copiedTrades.unshift({
                                 id: Date.now(),
-                                txHash: txHash,
+                                txHash,
                                 whale: whale.address.substring(0,10) + "...",
                                 tokenId,
                                 size: montoInversion,
-                                price: limitPrice, // Guardamos el precio límite que autorizamos
+                                price: limitPrice,
                                 time: new Date().toLocaleTimeString(),
                                 market: title
                             });
-                            
+
                             if (botStatus.copiedTrades.length > 20) botStatus.copiedTrades.pop();
-                            
+
                             botStatus.copiedPositions.push({
                                 tokenId,
                                 whale: whale.address,
@@ -1195,15 +1218,8 @@ async function checkAndCopyWhaleTrades() {
 
                             botStatus.copyTradingStats.totalCopied++;
                             botStatus.copyTradingStats.successful++;
-                            
-                            await sendSniperAlert({ 
-                                marketName: `[COPY WHALE] ${title}`, 
-                                probability: 0, 
-                                marketPrice: limitPrice,
-                                edge: 0,
-                                suggestedInversion: montoInversion, 
-                                reasoning: `Copiando a la ballena ${whale.address.substring(0,6)}...`
-                            });
+
+                            await sendAlert(`🐋 *COPY BUY*\nMercado: ${title.substring(0,45)}...\nInversión: $${montoInversion.toFixed(2)}`);
                         }
                     }
 
@@ -1211,39 +1227,30 @@ async function checkAndCopyWhaleTrades() {
                     else if (side === "SELL") {
                         const copiedIndex = botStatus.copiedPositions.findIndex(p => p.tokenId === tokenId && p.whale === whale.address);
                         if (copiedIndex === -1) continue;
-                        
+
                         const position = botStatus.copiedPositions[copiedIndex];
-                        console.log(`🔥 [COPY SELL] Whale vendió → Cerrando nuestra copia de ${title.substring(0,30)}...`);
-                        
-                        // 📉 Al vender también le damos un ligero margen (-3%) hacia abajo para asegurar la ejecución
+                        console.log(`🔥 [COPY SELL] Ballena vendió → Cerrando copia`);
+
                         let limitSellPrice = price * 0.97;
                         if (limitSellPrice < 0.01) limitSellPrice = 0.01;
 
                         const sellResult = await executeSellOnChain(conditionId, tokenId, position.sizeCopied, limitSellPrice, "0.01");
-                        
+
                         if (sellResult?.success) {
                             botStatus.copiedPositions.splice(copiedIndex, 1);
-                            
-                            // 🔥 AQUÍ INYECTAMOS LA ALERTA DE TELEGRAM PARA LA VENTA
                             const rescateEst = (position.sizeCopied * limitSellPrice).toFixed(2);
-                            await sendAlert(
-                                `🛑 *COPY SELL (Ballena Salió)*\n` +
-                                `Mercado: ${title.substring(0,40)}...\n` +
-                                `Whale: \`${whale.address.substring(0,6)}\`\n` +
-                                `Rescatado ≈ $${rescateEst} USDC`
-                            );
+                            await sendAlert(`🛑 *COPY SELL*\nMercado: ${title.substring(0,40)}...\nRescatado ≈ $${rescateEst} USDC`);
                         }
                     }
                 }
             } catch (err) {
-                // Silenciamos 429 para no ensuciar la consola
                 if (!err.message.includes('429') && !err.message.includes('timeout')) {
                     console.error(`❌ Error whale ${whale.address.substring(0,8)}:`, err.message);
                 }
             }
         }
     } finally {
-        isScanningWhales = false; // 🔓 Quitamos el candado SIEMPRE, incluso si hubo un error fatal
+        isScanningWhales = false;
     }
 }
 
@@ -2243,6 +2250,48 @@ async function monitorSystemHealth() {
         console.error("❌ Error en monitorSystemHealth:", error.message);
     }
 }
+
+// ====================== CUSTOM WHALES + AUTO TOGGLE ======================
+app.get('/api/custom-whales', (req, res) => res.json(botStatus.customWhales || []));
+
+app.post('/api/custom-whales', (req, res) => {
+    const { address, nickname } = req.body;
+    if (!address?.startsWith('0x') || address.length !== 42) {
+        return res.status(400).json({ success: false, error: "Dirección inválida" });
+    }
+    if (botStatus.customWhales.length >= 5) {
+        return res.status(400).json({ success: false, error: "Máximo 5 ballenas custom" });
+    }
+    const exists = botStatus.customWhales.some(w => w.address.toLowerCase() === address.toLowerCase());
+    if (exists) return res.status(400).json({ success: false, error: "Ya existe" });
+
+    botStatus.customWhales.push({ address: address.toLowerCase(), nickname: nickname || "", enabled: true });
+    saveConfigToDisk("Custom Whale Agregada");
+    res.json({ success: true, customWhales: botStatus.customWhales });
+});
+
+app.post('/api/custom-whales/toggle', (req, res) => {
+    const { address, enabled } = req.body;
+    const whale = botStatus.customWhales.find(w => w.address.toLowerCase() === address.toLowerCase());
+    if (whale) {
+        whale.enabled = !!enabled;
+        saveConfigToDisk("Custom Whale Toggle");
+        res.json({ success: true });
+    } else res.status(404).json({ success: false });
+});
+
+app.delete('/api/custom-whales', (req, res) => {
+    const { address } = req.body;
+    botStatus.customWhales = botStatus.customWhales.filter(w => w.address.toLowerCase() !== address.toLowerCase());
+    saveConfigToDisk("Custom Whale Eliminada");
+    res.json({ success: true, customWhales: botStatus.customWhales });
+});
+
+app.post('/api/auto-whales/toggle', (req, res) => {
+    botStatus.useAutoWhales = !!req.body.enabled;
+    saveConfigToDisk("Auto Whales Toggle");
+    res.json({ success: true, useAutoWhales: botStatus.useAutoWhales });
+});
 
 // ==========================================
 // 11. INICIO DEL MOTOR DEL SNIPER

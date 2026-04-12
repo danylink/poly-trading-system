@@ -23,8 +23,14 @@
     "pop": false
   },
   "autoTradeEnabled": true,
-  "copyTradingEnabled": true,
+  "copyTradingEnabled": false,
+  "useAutoWhales": true,
   "maxCopySize": 50,
   "maxWhalesToCopy": 5,
-  "maxActiveSportsMarkets": 2
+  "maxActiveSportsMarkets": 2,
+  "customWhales": [],
+  "copyTradingStats": {
+    "totalCopied": 0,
+    "successful": 0
+  }
 }

@@ -21,51 +21,133 @@ const status = ref({
   balancePOL: '0.00',
   executions: [],
   pendingSignals: [],
+  activePositions: [],
   autoTradeEnabled: true,
   isPanicStopped: false,
-  // 🗑️ microBetAmount: 0.50, <-- ¡BORRA ESTA LÍNEA GLOBAL!
-  marketFilters: { crypto: true, politics: true, business: true, sports: false, pop: false },
+
+  marketFilters: { 
+    crypto: true, 
+    politics: true, 
+    business: true, 
+    sports: false, 
+    pop: false 
+  },
   maxActiveSportsMarkets: 2,
-  
-  // 2. Variables Generales de Copy Trading
+
+  // 2. Copy Trading (Auto + Custom) ← ESTO ES LO QUE FALTABA
   copyTradingEnabled: false,
+  useAutoWhales: true,                    // ← Controla el botón "Ballenas Automáticas"
   maxCopySize: 50,
   autoSelectedWhales: [],
+  customWhales: [],                       // ← Tus ballenas manuales
   copiedTrades: [],
+  copiedPositions: [],
+  copyTradingStats: { 
+    totalCopied: 0, 
+    successful: 0 
+  },
 
-  // 3. 👇 NUEVA ARQUITECTURA DE PERFILES (Doble Cerebro)
+  // 3. Perfiles de Riesgo
   activeProfileName: 'standardConfig', 
   
   standardConfig: {
-      predictionThreshold: 0.65,      
-      edgeThreshold: 0.05,           
-      takeProfitThreshold: 20,
-      stopLossThreshold: -20,         
-      maxCopyPercentOfBalance: 8,
-      microBetAmount: 5.0             // 🔥 NUEVO: Bala del perfil Estándar
+    predictionThreshold: 0.65,      
+    edgeThreshold: 0.05,           
+    takeProfitThreshold: 20,
+    stopLossThreshold: -20,         
+    maxCopyPercentOfBalance: 8,
+    microBetAmount: 5.0
   },
 
   volatileConfig: {
-      predictionThreshold: 0.85,
-      edgeThreshold: 0.12,
-      takeProfitThreshold: 25,        
-      stopLossThreshold: -30,         
-      maxCopyPercentOfBalance: 2,     
-      microBetAmount: 0.5             // 🔥 NUEVO: Bala del perfil Volátil
+    predictionThreshold: 0.85,
+    edgeThreshold: 0.12,
+    takeProfitThreshold: 25,        
+    stopLossThreshold: -30,         
+    maxCopyPercentOfBalance: 2,     
+    microBetAmount: 0.5
   },
-  
-  // 4. Variables de Telemetría
+
+  // 4. Telemetría
   systemMetrics: {
-      botRamMB: 0,
-      serverTotalRamMB: 0,
-      serverFreeRamMB: 0,
-      uptimeHours: 0,
-      cpuLoad: 0
+    botRamMB: 0,
+    serverTotalRamMB: 0,
+    serverFreeRamMB: 0,
+    uptimeHours: 0,
+    cpuLoad: 0
   }
 });
 
 // Arreglo maestro para forzar el orden visual de los filtros
 const filterOrder = ['crypto', 'politics', 'business', 'sports', 'pop'];
+
+// ==================== COPY TRADING - CUSTOM WHALES ====================
+const newWhaleAddress = ref('');
+const newWhaleNickname = ref('');
+
+// Cargar ballenas recomendadas (las que te recomendé antes)
+const loadRecommendedWhales = async () => {
+  const recommended = [
+    { address: "0x492442eab586f242b53bda933fd5de859c8a3782", nickname: "Multicolored" },
+    { address: "0xc2e7800b5af46e6093872b177b7a5e7f0563be51", nickname: "BeachBoy4" },
+    { address: "0x2a2c53bd278c04da9962fcf96490e17f3dfb9bc1", nickname: "Horizon" },
+    { address: "0xbddf61af533ff524d27154e589d2d7a81510c684", nickname: "Countryside" },
+    { address: "0x2005d16a84ceefa912d4e3b5e8f5e8f5e8f5e8f5", nickname: "TopWhale5" }  // reemplaza con una real si quieres
+  ];
+
+  for (const whale of recommended) {
+    try {
+      await axios.post(`${API_URL}/api/custom-whales`, whale);
+    } catch (e) {}
+  }
+  await fetchStatus();
+  Swal.fire('Listo', '5 ballenas recomendadas cargadas', 'success');
+};
+
+// Agregar ballena manual
+const addCustomWhale = async () => {
+  if (!newWhaleAddress.value.startsWith('0x') || newWhaleAddress.value.length !== 42) {
+    Swal.fire('Error', 'Dirección inválida', 'error');
+    return;
+  }
+  try {
+    await axios.post(`${API_URL}/api/custom-whales`, {
+      address: newWhaleAddress.value,
+      nickname: newWhaleNickname.value
+    });
+    newWhaleAddress.value = '';
+    newWhaleNickname.value = '';
+    await fetchStatus();
+  } catch (e) {
+    Swal.fire('Error', e.response?.data?.error || 'No se pudo agregar', 'error');
+  }
+};
+
+// Toggle ballena custom
+const toggleCustomWhale = async (address) => {
+  const whale = status.value.customWhales.find(w => w.address.toLowerCase() === address.toLowerCase());
+  if (whale) {
+    await axios.post(`${API_URL}/api/custom-whales/toggle`, {
+      address,
+      enabled: whale.enabled
+    });
+  }
+};
+
+// Eliminar ballena custom
+const deleteCustomWhale = async (address) => {
+  if (!confirm('¿Eliminar esta ballena?')) return;
+  await axios.delete(`${API_URL}/api/custom-whales`, { data: { address } });
+  await fetchStatus();
+};
+
+// Toggle ballenas automáticas
+const toggleAutoWhales = async () => {
+  await axios.post(`${API_URL}/api/auto-whales/toggle`, {
+    enabled: !status.value.useAutoWhales
+  });
+  await fetchStatus();
+};
 
 // --- 🔒 SISTEMA DE LOGIN PREMIUM ---
 const isAuthenticated = ref(!!localStorage.getItem('poly_auth'));
@@ -1266,91 +1348,118 @@ onUnmounted(() => {
           </div>
         </div>
 
-        <div class="bg-[#111114] border border-zinc-800/80 rounded-[2rem] p-6 lg:p-8 transition-all duration-500 relative overflow-hidden group shadow-[0_0_50px_rgba(168,85,247,0.02)] hover:border-purple-500/30">
-          <div class="absolute -top-32 -right-32 w-64 h-64 bg-purple-500 rounded-full blur-[100px] opacity-10 pointer-events-none transition-colors duration-700"></div>
-
-          <div class="flex items-center justify-between mb-8 relative z-10 pb-6 border-b border-zinc-800/80">
-            <div class="flex items-center gap-4">
-              <div class="p-3.5 rounded-2xl border transition-colors duration-500 shadow-inner shrink-0 bg-purple-500/10 border-purple-500/20 text-purple-400">
-                <Target :size="24" />
+        <!-- ====================== COPY TRADING SECTION ====================== -->
+        <div class="bg-[#111114] border border-zinc-800/80 rounded-3xl p-6 lg:p-8 transition-all duration-500">
+          <div class="flex items-center justify-between mb-6">
+            <div class="flex items-center gap-3">
+              <div class="p-3 rounded-2xl bg-purple-500/10 border border-purple-500/20">
+                <Target class="w-6 h-6 text-purple-400" />
               </div>
               <div>
-                <h3 class="text-white font-black text-lg tracking-tight">Copy Trading</h3>
-                <p class="text-xs text-zinc-500 font-medium">Copiar a las mejores whales</p>
+                <h3 class="text-white font-black text-xl tracking-tight">Copy Trading</h3>
+                <p class="text-xs text-zinc-500">Sigue ballenas automáticamente + manual</p>
               </div>
             </div>
-            
-            <label class="relative inline-flex items-center cursor-pointer group/toggle">
-              <input type="checkbox" v-model="status.copyTradingEnabled" @change="updateCopyTrading" class="sr-only peer">
-              <div class="w-11 h-6 bg-[#09090b] border border-zinc-700 rounded-full peer peer-focus:ring-2 peer-focus:ring-purple-500/20 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-zinc-400 after:border-zinc-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-500 peer-checked:border-purple-500 group-hover/toggle:shadow-[0_0_15px_rgba(168,85,247,0.3)]"></div>
+            <label class="relative inline-flex items-center cursor-pointer">
+              <input 
+                type="checkbox" 
+                v-model="status.copyTradingEnabled" 
+                @change="updateCopyTrading"
+                class="sr-only peer"
+              />
+              <div class="w-11 h-6 bg-zinc-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-purple-500 rounded-full peer peer-checked:bg-purple-600"></div>
+              <div class="dot absolute left-0.5 top-0.5 bg-white w-5 h-5 rounded-full transition"></div>
             </label>
           </div>
 
-          <div v-if="status.copyTradingEnabled" class="relative z-10 space-y-6">
-            <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
-              
-              <div class="flex flex-col p-5 rounded-2xl bg-[#161619] border border-zinc-800/60 hover:border-zinc-700/80 transition-colors">
-                <div class="flex justify-between items-start mb-4 gap-2">
-                  <label class="text-[10px] text-zinc-400 font-bold uppercase tracking-widest leading-snug">Tamaño Máximo</label>
-                  <span class="text-[9px] font-black px-2 py-1 rounded-md border text-purple-400 bg-purple-400/10 border-purple-400/20 shrink-0">VOL.</span>
-                </div>
-                <div class="relative w-full mt-auto">
-                  <input type="number" min="10" max="200" step="1" v-model.number="status.maxCopySize" @change="updateCopyTrading" class="w-full h-12 bg-[#09090b] border border-zinc-800/80 rounded-xl pl-4 pr-12 text-white font-mono text-lg font-bold outline-none transition-all placeholder-zinc-700 appearance-none focus:border-purple-500/50 focus:ring-1 focus:ring-purple-500/50" />
-                  <span class="absolute right-4 top-1/2 -translate-y-1/2 text-purple-600/50 font-black pointer-events-none text-xs">SH</span>
-                </div>
-                <input type="range" min="10" max="200" step="1" v-model.number="status.maxCopySize" @change="updateCopyTrading" class="w-full h-1 mt-4 bg-zinc-800/80 rounded-lg appearance-none cursor-pointer accent-purple-500" />
-              </div>
+          <!-- Toggle Ballenas Automáticas -->
+          <div class="flex items-center justify-between bg-zinc-900/50 border border-zinc-700 rounded-2xl p-4 mb-6">
+            <div class="flex items-center gap-3">
+              <span class="text-sm font-medium text-zinc-300">Ballenas Automáticas (Leaderboard)</span>
+            </div>
+            <button 
+              @click="toggleAutoWhales"
+              :class="status.useAutoWhales ? 'bg-emerald-600 hover:bg-emerald-500' : 'bg-zinc-700 hover:bg-zinc-600'"
+              class="px-5 py-2 rounded-xl text-xs font-bold uppercase tracking-widest transition-all">
+              {{ status.useAutoWhales ? '✅ ACTIVAS' : '❌ APAGADAS' }}
+            </button>
+          </div>
 
-              <div class="flex flex-col p-5 rounded-2xl bg-[#161619] border border-zinc-800/60 hover:border-zinc-700/80 transition-colors">
-                <div class="flex justify-between items-start mb-4 gap-2">
-                  <label class="text-[10px] text-zinc-400 font-bold uppercase tracking-widest leading-snug">Límite Balance</label>
-                  <span class="text-[9px] font-black px-2 py-1 rounded-md border text-purple-400 bg-purple-400/10 border-purple-400/20 shrink-0">CAP.</span>
-                </div>
-                <div class="relative w-full mt-auto">
-                  <input type="number" min="1" max="15" step="1" v-model.number="status[status.activeProfileName].maxCopyPercentOfBalance" @change="updateCopySettings" class="w-full h-12 bg-[#09090b] border border-zinc-800/80 rounded-xl pl-4 pr-10 text-white font-mono text-lg font-bold outline-none transition-all placeholder-zinc-700 appearance-none focus:border-purple-500/50 focus:ring-1 focus:ring-purple-500/50" />
-                  <span class="absolute right-4 top-1/2 -translate-y-1/2 text-purple-600/50 font-black pointer-events-none">%</span>
-                </div>
-                <input type="range" min="1" max="15" step="1" v-model.number="status[status.activeProfileName].maxCopyPercentOfBalance" @change="updateCopySettings" class="w-full h-1 mt-4 bg-zinc-800/80 rounded-lg appearance-none cursor-pointer accent-purple-500" />
-              </div>
-
-              <div class="flex flex-col p-5 rounded-2xl bg-[#161619] border border-zinc-800/60 hover:border-zinc-700/80 transition-colors md:col-span-2 xl:col-span-1">
-                <div class="flex justify-between items-start mb-4 gap-2">
-                  <label class="text-[10px] text-zinc-400 font-bold uppercase tracking-widest leading-snug">Top Whales</label>
-                  <span class="text-[9px] font-black px-2 py-1 rounded-md border text-purple-400 bg-purple-400/10 border-purple-400/20 shrink-0">SEG.</span>
-                </div>
-                <div class="relative w-full mt-auto">
-                  <input type="number" min="1" max="20" step="1" v-model.number="status.maxWhalesToCopy" @change="updateCopyTrading" class="w-full h-12 bg-[#09090b] border border-zinc-800/80 rounded-xl pl-4 pr-16 text-white font-mono text-lg font-bold outline-none transition-all placeholder-zinc-700 appearance-none focus:border-purple-500/50 focus:ring-1 focus:ring-purple-500/50" />
-                  <span class="absolute right-4 top-1/2 -translate-y-1/2 text-purple-600/50 font-black pointer-events-none text-xs">USERS</span>
-                </div>
-                <input type="range" min="1" max="20" step="1" v-model.number="status.maxWhalesToCopy" @change="updateCopyTrading" class="w-full h-1 mt-4 bg-zinc-800/80 rounded-lg appearance-none cursor-pointer accent-purple-500" />
-              </div>
+          <!-- Ballenas Personalizadas (Custom) -->
+          <div class="mb-6">
+            <div class="flex items-center justify-between mb-4">
+              <h4 class="text-sm font-bold text-zinc-400 uppercase tracking-widest">Ballenas Personalizadas (máx 5)</h4>
+              <button 
+                @click="loadRecommendedWhales"
+                class="text-xs px-4 py-1.5 bg-purple-600/20 hover:bg-purple-600/30 text-purple-400 rounded-xl font-medium transition">
+                Cargar 5 Recomendadas
+              </button>
             </div>
 
-            <div class="pt-2">
-              <p class="text-[11px] text-zinc-500 font-bold uppercase tracking-widest mb-3 px-1">Whales seleccionadas automáticamente</p>
-              <div class="max-h-52 overflow-y-auto custom-scroll space-y-2 pr-2">
-                <div v-for="(whale, i) in status.autoSelectedWhales || []" :key="i" class="bg-[#09090b] border border-zinc-800/80 rounded-xl p-3.5 flex justify-between items-center hover:border-purple-500/30 transition-colors group">
-                  <div class="font-mono text-purple-400/80 text-xs font-medium group-hover:text-purple-400">{{ whale.address.substring(0,12) }}...</div>
-                  <div class="flex gap-4 text-[10px] font-black tracking-wide">
-                    <span class="text-emerald-500/80 bg-emerald-500/10 px-2 py-1 rounded-md border border-emerald-500/20">+${{ Number(whale.pnl || 0).toLocaleString(undefined, {maximumFractionDigits: 0}) }}</span>
-                    <span class="text-zinc-500 bg-zinc-800/50 px-2 py-1 rounded-md border border-zinc-700/50 hidden sm:block">VOL: ${{ Number(whale.volume || 0).toLocaleString(undefined, {maximumFractionDigits: 0}) }}</span>
+            <!-- Input para agregar nueva ballena -->
+            <div class="flex gap-3 mb-4">
+              <input 
+                v-model="newWhaleAddress"
+                placeholder="0x1234...abcd"
+                class="flex-1 bg-[#09090b] border border-zinc-700 rounded-2xl px-4 py-3 text-sm font-mono focus:outline-none focus:border-purple-500"
+              />
+              <input 
+                v-model="newWhaleNickname"
+                placeholder="Nickname (opcional)"
+                class="w-40 bg-[#09090b] border border-zinc-700 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-purple-500"
+              />
+              <button 
+                @click="addCustomWhale"
+                class="px-6 bg-purple-600 hover:bg-purple-500 rounded-2xl font-bold text-sm transition">
+                Agregar
+              </button>
+            </div>
+
+            <!-- Lista de ballenas custom -->
+            <div v-if="status.customWhales && status.customWhales.length > 0" class="space-y-2 max-h-80 overflow-y-auto custom-scroll">
+              <div v-for="(whale, index) in status.customWhales" :key="index"
+                  class="flex items-center justify-between bg-zinc-900/70 border border-zinc-700 rounded-2xl px-5 py-3">
+                <div class="flex items-center gap-3">
+                  <input 
+                    type="checkbox" 
+                    v-model="whale.enabled"
+                    @change="toggleCustomWhale(whale.address)"
+                    class="w-4 h-4 accent-purple-500"
+                  />
+                  <div>
+                    <div class="font-mono text-sm text-white">{{ whale.address.substring(0,8) }}...{{ whale.address.slice(-6) }}</div>
+                    <div v-if="whale.nickname" class="text-xs text-zinc-500">{{ whale.nickname }}</div>
                   </div>
                 </div>
-                <div v-if="!status.autoSelectedWhales || status.autoSelectedWhales.length === 0" class="text-center py-6 border border-dashed border-zinc-800 rounded-xl text-zinc-500 text-xs font-medium">Esperando selección automática...</div>
+                <button 
+                  @click="deleteCustomWhale(whale.address)"
+                  class="text-rose-400 hover:text-rose-500 text-xs font-medium px-3 py-1">
+                  Eliminar
+                </button>
               </div>
+            </div>
+            <div v-else class="text-center py-8 text-zinc-500 text-sm border border-dashed border-zinc-700 rounded-2xl">
+              No hay ballenas personalizadas aún
             </div>
           </div>
 
-          <div v-else class="text-center py-10 bg-[#09090b] rounded-2xl border border-zinc-800/50 relative z-10 mt-6">
-            <Target :size="32" class="text-zinc-700 mx-auto mb-3" />
-            <p class="text-zinc-500 text-sm font-medium">Activa Copy Trading para seguir automáticamente a las mejores ballenas</p>
+          <!-- Stats -->
+          <div class="grid grid-cols-2 gap-4 text-xs">
+            <div class="bg-zinc-900/50 rounded-2xl p-4 border border-zinc-700">
+              <div class="text-zinc-500">Copias Totales</div>
+              <div class="text-2xl font-bold text-emerald-400">{{ status.copyTradingStats?.totalCopied || 0 }}</div>
+            </div>
+            <div class="bg-zinc-900/50 rounded-2xl p-4 border border-zinc-700">
+              <div class="text-zinc-500">Éxito</div>
+              <div class="text-2xl font-bold text-emerald-400">{{ status.copyTradingStats?.successful || 0 }}</div>
+            </div>
           </div>
         </div>
 
         <div class="bg-[#111114] border border-zinc-800/80 rounded-[2rem] p-6 lg:p-8 transition-all shadow-lg hover:border-zinc-700/50">
           <h3 class="text-zinc-400 font-black text-xs uppercase tracking-[0.2em] mb-5 flex items-center gap-2">
             <Activity :size="16" class="text-zinc-500" />
-            Telemetría del Sistema
+            Datos del Sistema
           </h3>
           
           <div class="space-y-3">
