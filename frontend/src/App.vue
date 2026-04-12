@@ -804,9 +804,9 @@ onUnmounted(() => {
           
           <div class="grid grid-cols-1 gap-4 relative z-10">
             <div v-for="pos in status.activePositions" :key="pos.tokenId" 
-                 class="bg-[#09090b] border border-zinc-800/80 rounded-2xl p-5 flex flex-col md:flex-row justify-between items-start md:items-center shadow-inner hover:border-[#D4AF37]/50 transition-all">
+                 class="bg-[#09090b] border border-zinc-800/80 rounded-2xl p-4 sm:p-5 flex flex-col md:flex-row justify-between items-start md:items-center shadow-inner hover:border-[#D4AF37]/50 transition-all">
               
-              <div class="flex flex-col mb-4 md:mb-0 w-full md:w-1/2">
+              <div class="flex flex-col w-full md:w-1/2 pr-0 md:pr-4">
                 <div class="flex items-center gap-2 mb-2">
                   <span class="text-[9px] text-zinc-400 font-black uppercase tracking-widest px-2 py-0.5 bg-zinc-800/80 rounded-md border border-zinc-700/80">
                     {{ pos.category || 'MERCADO' }}
@@ -816,7 +816,8 @@ onUnmounted(() => {
                 <span class="text-[#D4AF37] font-mono text-[10px] mt-1">{{ pos.size }} Acciones</span>
               </div>
 
-              <div class="flex items-center gap-6 w-full md:w-auto justify-between md:justify-end">
+              <div class="flex items-center w-full md:w-auto justify-between md:justify-end gap-4 mt-4 md:mt-0 pt-4 md:pt-0 border-t border-zinc-800/50 md:border-0">
+                
                 <div class="text-left md:text-right hidden lg:block">
                   <span class="text-[9px] text-zinc-500 block uppercase font-black tracking-widest mb-0.5">Estado</span>
                   <span class="font-mono font-bold text-[10px]" :class="pos.status.includes('CANJEAR') ? 'text-zinc-500' : 'text-emerald-400'">
@@ -842,7 +843,7 @@ onUnmounted(() => {
                 <button @click="sellPosition(pos.tokenId, pos.exactSize)" 
                         :disabled="isSelling[pos.tokenId]"
                         translate="no"
-                        class="px-5 py-2.5 rounded-xl text-[10px] font-black tracking-widest uppercase transition-all flex items-center justify-center gap-2 disabled:opacity-50 border w-full sm:w-auto shrink-0"
+                        class="px-4 py-2.5 rounded-xl text-[10px] font-black tracking-widest uppercase transition-all flex items-center justify-center gap-2 disabled:opacity-50 border shrink-0"
                         :class="pos.status.includes('CANJEAR') 
                           ? 'bg-zinc-800 text-zinc-400 border-zinc-700 hover:bg-zinc-700 hover:text-white' 
                           : ((pos.cashPnl || 0) >= 0 

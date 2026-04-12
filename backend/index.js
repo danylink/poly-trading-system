@@ -1577,7 +1577,6 @@ async function runBot() {
 
 
 // === FUNCIÓN AUXILIAR ===
-// === FUNCIÓN AUXILIAR ===
 function getRiskProfile(marketName = "", category = "") {
     const text = (marketName + " " + (category || "")).toLowerCase();
 
