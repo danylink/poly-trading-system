@@ -1096,8 +1096,7 @@ async function autoSelectTopWhales() {
 
 
 // ==========================================
-// CHECK AND COPY WHALE TRADES - VERSIÓN FINAL (Auto + Custom con toggles)
-// ==========================================
+// CHECK AND COPY WHALE TRADES - VERSIÓN FINAL CORREGIDA (Auto + Custom)
 let isScanningWhales = false;
 
 async function checkAndCopyWhaleTrades() {
@@ -1105,20 +1104,27 @@ async function checkAndCopyWhaleTrades() {
 
     const hasActiveCopiedPositions = (botStatus.copiedPositions || []).length > 0;
 
-    // Si todo está apagado y no hay posiciones pendientes → salimos
-    if (!botStatus.copyTradingEnabled && !hasActiveCopiedPositions) return;
+    // Solo continuar si hay algo activo (Auto o Custom)
+    if (!botStatus.useAutoWhales && !botStatus.copyTradingEnabled && !hasActiveCopiedPositions) return;
 
     isScanningWhales = true;
 
     try {
-        // 1. Ballenas automáticas (solo si el usuario no las apagó)
+        // 1. Ballenas Automáticas (solo si el toggle "Copy Trading Auto" está encendido)
         let allWhales = [];
 
-        if (botStatus.copyTradingEnabled) {
+        if (botStatus.useAutoWhales) {
+            // Forzar selección automática si no hay ballenas o ya pasaron 10 minutos
+            if (!botStatus.autoSelectedWhales || botStatus.autoSelectedWhales.length === 0 ||
+                !botStatus.lastWhaleSelection || 
+                (Date.now() - new Date(botStatus.lastWhaleSelection).getTime()) > 10 * 60 * 1000) {
+                
+                await autoSelectTopWhales();
+            }
             allWhales = [...(botStatus.autoSelectedWhales || [])];
         }
 
-        // 2. Ballenas custom (solo las que tengan enabled: true)
+        // 2. Ballenas Custom (solo las que el usuario habilitó)
         const enabledCustom = (botStatus.customWhales || []).filter(w => w.enabled === true);
         allWhales = allWhales.concat(enabledCustom);
 
@@ -1131,7 +1137,12 @@ async function checkAndCopyWhaleTrades() {
             return true;
         });
 
-        if (allWhales.length === 0) return;
+        if (allWhales.length === 0) {
+            isScanningWhales = false;
+            return;
+        }
+
+        console.log(`🔄 [COPY-TRADING] Revisando trades de ${allWhales.length} ballenas (Auto + Custom)...`);
 
         for (const whale of allWhales) {
             try {
@@ -1166,7 +1177,6 @@ async function checkAndCopyWhaleTrades() {
 
                     // ==================== COPIA DE COMPRA ====================
                     if (side === "BUY") {
-                        if (!botStatus.copyTradingEnabled && !hasActiveCopiedPositions) continue;
                         if (botStatus.isPanicStopped) continue;
                         if (!isMarketAllowed(title)) continue;
 
@@ -1188,7 +1198,7 @@ async function checkAndCopyWhaleTrades() {
                         let limitPrice = price * 1.04;
                         if (limitPrice > 0.99) limitPrice = 0.99;
 
-                        console.log(`🔥 [COPY BUY] ${whale.address.substring(0,8)}... compró ${whaleSize.toFixed(1)} → ${title.substring(0,40)}...`);
+                        console.log(`🔥 [COPY BUY] ${whale.address.substring(0,8)}... → ${title.substring(0,45)}...`);
 
                         const result = await executeTradeOnChain(conditionId, tokenId, montoInversion, limitPrice, "0.01");
 
@@ -1216,8 +1226,8 @@ async function checkAndCopyWhaleTrades() {
                                 marketName: title
                             });
 
-                            botStatus.copyTradingStats.totalCopied++;
-                            botStatus.copyTradingStats.successful++;
+                            botStatus.copyTradingStats.totalCopied = (botStatus.copyTradingStats.totalCopied || 0) + 1;
+                            botStatus.copyTradingStats.successful = (botStatus.copyTradingStats.successful || 0) + 1;
 
                             await sendAlert(`🐋 *COPY BUY*\nMercado: ${title.substring(0,45)}...\nInversión: $${montoInversion.toFixed(2)}`);
                         }
@@ -1225,7 +1235,9 @@ async function checkAndCopyWhaleTrades() {
 
                     // ==================== COPIA DE VENTA ====================
                     else if (side === "SELL") {
-                        const copiedIndex = botStatus.copiedPositions.findIndex(p => p.tokenId === tokenId && p.whale === whale.address);
+                        const copiedIndex = botStatus.copiedPositions.findIndex(p => 
+                            p.tokenId === tokenId && p.whale === whale.address
+                        );
                         if (copiedIndex === -1) continue;
 
                         const position = botStatus.copiedPositions[copiedIndex];
@@ -1334,18 +1346,20 @@ async function runBot() {
         await fetchRealTrades();
         await updateRealBalances();
 
-        // 2. Copy-Trading + Controles de Riesgo
-        // 🔓 FIX: Evaluamos si el switch está encendido OR si tenemos posiciones copiadas activas que necesitamos vigilar para vender
-        if (botStatus.copyTradingEnabled || (botStatus.copiedPositions && botStatus.copiedPositions.length > 0)) {
+        // 2. Copy-Trading (Auto + Custom)
+        // Ahora usamos useAutoWhales para las ballenas automáticas y copyTradingEnabled para las custom
+        if (botStatus.useAutoWhales || botStatus.copyTradingEnabled || 
+            (botStatus.copiedPositions && botStatus.copiedPositions.length > 0)) {
             
-            // Solo buscamos ballenas NUEVAS si el switch está encendido
-            if (botStatus.copyTradingEnabled) {
-                if (!botStatus.lastWhaleSelection || (Date.now() - new Date(botStatus.lastWhaleSelection).getTime()) > 10 * 60 * 1000) {
+            // Solo seleccionamos nuevas ballenas automáticas si el toggle Auto está activo
+            if (botStatus.useAutoWhales) {
+                if (!botStatus.lastWhaleSelection || 
+                    (Date.now() - new Date(botStatus.lastWhaleSelection).getTime()) > 10 * 60 * 1000) {
                     await autoSelectTopWhales();
                 }
             }
             
-            // Siempre revisamos los trades de las ballenas (para poder vender si es necesario)
+            // Siempre revisamos trades (para poder copiar compras y ventas)
             await checkAndCopyWhaleTrades();
         }
 
@@ -1397,32 +1411,25 @@ async function runBot() {
             const geminiBuy = geminiResult.recommendation.includes("BUY");
             const grokBuy = grokResult.recommendation.includes("BUY");
 
-            // Contamos los votos afirmativos
             const buyVotes = [claudeBuy, geminiBuy, grokBuy].filter(Boolean).length;
 
             finalAnalysis = { prob: 0, edge: 0, recommendation: "WAIT", reason: "", urgency: 5, engine: "None" };
 
-            // REGLA QUANT: Necesitamos al menos 2 votos para confirmar la señal
             if (buyVotes >= 2) {
                 console.log(`🔥 ¡CONSENSO LOGRADO! (${buyVotes}/3 votos para COMPRAR)`);
                 
-                // Extraemos solo los resultados de los modelos que dijeron "BUY"
                 const activeResults = [];
                 let enginesStr = [];
                 if (claudeBuy) { activeResults.push(claudeResult); enginesStr.push("C"); }
                 if (geminiBuy) { activeResults.push(geminiResult); enginesStr.push("G"); }
                 if (grokBuy)   { activeResults.push(grokResult);   enginesStr.push("X"); }
 
-                // Promediamos las matemáticas de la señal
                 finalAnalysis.prob = activeResults.reduce((sum, r) => sum + r.prob, 0) / buyVotes;
                 finalAnalysis.edge = activeResults.reduce((sum, r) => sum + r.edge, 0) / buyVotes;
                 finalAnalysis.urgency = Math.max(...activeResults.map(r => r.urgency));
                 finalAnalysis.recommendation = "STRONG_BUY"; 
-                
-                // Combinamos los razonamientos
                 finalAnalysis.reason = `[CONSENSO] ` + activeResults.map((r, i) => `${enginesStr[i]}: ${r.reason}`).join(" | ");
                 
-                // Etiquetamos para el Dashboard
                 if (buyVotes === 3) finalAnalysis.engine = "Trinity (C+G+X)";
                 else finalAnalysis.engine = `Consenso (${enginesStr.join('+')})`;
 
@@ -1433,10 +1440,9 @@ async function runBot() {
             } else if (grokBuy) {
                 finalAnalysis = { ...grokResult, engine: "Grok" };
             } else {
-                finalAnalysis = { ...claudeResult, engine: "Claude" }; // Por defecto mostramos la negativa de Claude
+                finalAnalysis = { ...claudeResult, engine: "Claude" };
             }
 
-            // Guardamos en caché solo si no hubo un error catastrófico de red en alguno
             if (!claudeResult.isError && !geminiResult.isError && !grokResult.isError) {
                 analysisCache.set(cacheKey, finalAnalysis);
                 if (analysisCache.size > 60) analysisCache.delete(analysisCache.keys().next().value);
@@ -1481,21 +1487,16 @@ async function runBot() {
             return;
         }
 
-        // 🔥 AQUÍ INYECTAMOS LA NUEVA MEMORIA DEL CACHÉ
         const alreadyInvested = botStatus.activePositions.some(pos => pos.tokenId === targetTokenId);
         const alreadyClosed = closedPositionsCache.has(targetTokenId);
         const alreadyPending = pendingOrdersCache.has(targetTokenId); 
         
         const { config: profile, profileType } = getRiskProfile(marketTitle, marketItem.category || "");
 
-        // --- LÓGICA DE LÍMITE DE MERCADOS DEPORTIVOS ---
         const activeSportsCount = botStatus.activePositions.filter(p => p.category === 'SPORTS').length;
         const sportsLimit = botStatus.maxActiveSportsMarkets;
-        
-        // Si el límite es > 0 (no es Auto) y ya llegamos al tope, bloqueamos nuevas compras de deportes
         const isSportsLimitReached = (marketItem.category === 'SPORTS' && sportsLimit > 0 && activeSportsCount >= sportsLimit);
 
-        // Validación de Señal Fuerte (Añadido !alreadyPending)
         const isStrongSignal = 
             (!alreadyInvested && !alreadyClosed && !alreadyPending && !isSportsLimitReached) && (
                 (finalAnalysis.recommendation === "STRONG_BUY" && edge > 0.105) ||
@@ -1509,11 +1510,9 @@ async function runBot() {
 
         let autoExecuted = false;
 
-        // Ejecución del Sniper
+        // Ejecución del Sniper (IA principal)
         if (botStatus.autoTradeEnabled && isStrongSignal) {
             const saldoLibre = parseFloat(botStatus.clobOnlyUSDC || 0);
-            
-            // 🔥 AHORA LEEMOS EL MONTO DESDE EL PERFIL DE RIESGO
             let dynamicBetAmount = profile.microBetAmount || 1.0; 
 
             if (edge > 0 && livePrice > 0 && livePrice < 1) {
@@ -1526,7 +1525,6 @@ async function runBot() {
 
             const result = await executeTradeOnChain(marketItem.conditionId, targetTokenId, dynamicBetAmount, livePrice, marketItem.tickSize || "0.01");
 
-            // 🔥 AQUÍ GUARDAMOS EL REGISTRO DE QUE YA DISPARAMOS
             if (result?.success) {
                 pendingOrdersCache.add(targetTokenId); 
                 
@@ -1553,7 +1551,6 @@ async function runBot() {
             probability: targetProb || 0,
             reasoning: finalAnalysis.reason || "Evaluado por IA",
             marketPrice: livePrice,
-            // 🔥 AHORA LA SEÑAL DEL DASHBOARD LEE EL MONTO CORRECTO SEGÚN EL PERFIL
             suggestedInversion: profile.microBetAmount || 1.0, 
             edge: edge,
             urgency: finalAnalysis.urgency || 5,
