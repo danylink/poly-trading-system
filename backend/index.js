@@ -1576,14 +1576,15 @@ async function runBot() {
 }
 
 
-// === FUNCIÓN AUXILIAR (agrega esto arriba de autoSellManager) ===
+// === FUNCIÓN AUXILIAR ===
 function getRiskProfile(marketName = "", category = "") {
     const text = (marketName + " " + (category || "")).toLowerCase();
 
-    // Mercados claramente volátiles
+    // Mercados claramente volátiles por nombre
     const isVolatileMarket = /vs|spread|o\/u|temperature|temperatura|win on|match|game|set|inning|quarter|half/i.test(text);
 
-    if (isVolatileMarket) {
+    // 🔥 FIX: Obligamos a que cualquier mercado con la etiqueta SPORTS o POP sea VOLÁTIL
+    if (isVolatileMarket || category === 'SPORTS' || category === 'POP') {
         return { 
             config: botStatus.volatileConfig, 
             profileType: 'VOLATIL' 

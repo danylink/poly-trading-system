@@ -85,104 +85,107 @@ const filterOrder = ['crypto', 'politics', 'business', 'sports', 'pop'];
 const newWhaleAddress = ref('');
 const newWhaleNickname = ref('');
 
-// Cargar ballenas recomendadas (las que te recomendé antes)
+// Cargar ballenas recomendadas
 const loadRecommendedWhales = async () => {
   const recommended = [
     { address: "0x492442eab586f242b53bda933fd5de859c8a3782", nickname: "Multicolored" },
     { address: "0xc2e7800b5af46e6093872b177b7a5e7f0563be51", nickname: "BeachBoy4" },
     { address: "0x2a2c53bd278c04da9962fcf96490e17f3dfb9bc1", nickname: "Horizon" },
     { address: "0xbddf61af533ff524d27154e589d2d7a81510c684", nickname: "Countryside" },
-    { address: "0x2005d16a84ceefa912d4e3b5e8f5e8f5e8f5e8f5", nickname: "TopWhale5" }  // reemplaza con una real si quieres
+    { address: "0x2005d16a84ceefa912d4e3b5e8f5e8f5e8f5e8f5", nickname: "TopWhale5" }
   ];
 
   for (const whale of recommended) {
     try {
-      await axios.post(`${API_URL}/api/custom-whales`, whale);
-    } catch (e) {}
+      await axios.post(`${API_URL}/custom-whales`, whale, {
+        headers: { 
+          'Authorization': authPassword.value || localStorage.getItem('poly_auth') 
+        }
+      });
+    } catch (e) {
+      console.error("Error cargando whale recomendada:", e.response?.data || e.message);
+    }
   }
   await fetchStatus();
   Swal.fire('Listo', '5 ballenas recomendadas cargadas', 'success');
 };
 
-// Agregar ballena manual - Versión mejorada
+// Agregar ballena manual
 const addCustomWhale = async () => {
-  const address = newWhaleAddress.value.trim();
-
-  if (!address || !address.startsWith('0x') || address.length !== 42) {
-    Swal.fire({
-      title: 'Error',
-      text: 'La dirección debe comenzar con 0x y tener exactamente 42 caracteres',
-      icon: 'error',
-      background: '#1c1917',
-      color: '#ef4444'
-    });
+  if (!newWhaleAddress.value.startsWith('0x') || newWhaleAddress.value.length !== 42) {
+    Swal.fire('Error', 'Dirección inválida', 'error');
     return;
   }
 
   try {
-    const res = await axios.post(`${API_URL}/api/custom-whales`, {
-      address: address,
-      nickname: newWhaleNickname.value.trim()
+    await axios.post(`${API_URL}/custom-whales`, {
+      address: newWhaleAddress.value,
+      nickname: newWhaleNickname.value
+    }, {
+      headers: { 
+        'Authorization': authPassword.value || localStorage.getItem('poly_auth') 
+      }
     });
 
-    if (res.data.success) {
-      // Limpiar campos
-      newWhaleAddress.value = '';
-      newWhaleNickname.value = '';
-
-      // Refrescar datos
-      await fetchStatus();
-
-      Swal.fire({
-        title: '¡Éxito!',
-        text: 'Ballena agregada correctamente a Copy Trading Custom',
-        icon: 'success',
-        background: '#1c1917',
-        color: '#10b981',
-        confirmButtonColor: '#10b981'
-      });
-    } else {
-      throw new Error(res.data.error || 'Error desconocido del servidor');
-    }
+    newWhaleAddress.value = '';
+    newWhaleNickname.value = '';
+    await fetchStatus();
+    Swal.fire('Éxito', 'Ballena agregada correctamente', 'success');
   } catch (e) {
-    const errorMessage = e.response?.data?.error || e.message || 'No se pudo agregar la ballena';
-    
-    Swal.fire({
-      title: 'Error',
-      text: errorMessage,
-      icon: 'error',
-      background: '#1c1917',
-      color: '#ef4444'
-    });
-
-    console.error("❌ Error detallado al agregar ballena:", e.response?.data || e.message);
+    Swal.fire('Error', e.response?.data?.error || 'No se pudo agregar la ballena', 'error');
   }
 };
 
 // Toggle ballena custom
 const toggleCustomWhale = async (address) => {
   const whale = status.value.customWhales.find(w => w.address.toLowerCase() === address.toLowerCase());
-  if (whale) {
-    await axios.post(`${API_URL}/api/custom-whales/toggle`, {
+  if (!whale) return;
+
+  try {
+    await axios.post(`${API_URL}/custom-whales/toggle`, {
       address,
       enabled: whale.enabled
+    }, {
+      headers: { 
+        'Authorization': authPassword.value || localStorage.getItem('poly_auth') 
+      }
     });
+  } catch (e) {
+    console.error("Error al cambiar toggle:", e.response?.data || e.message);
   }
 };
 
 // Eliminar ballena custom
 const deleteCustomWhale = async (address) => {
   if (!confirm('¿Eliminar esta ballena?')) return;
-  await axios.delete(`${API_URL}/api/custom-whales`, { data: { address } });
-  await fetchStatus();
+
+  try {
+    await axios.delete(`${API_URL}/custom-whales`, {
+      data: { address },
+      headers: { 
+        'Authorization': authPassword.value || localStorage.getItem('poly_auth') 
+      }
+    });
+    await fetchStatus();
+  } catch (e) {
+    Swal.fire('Error', e.response?.data?.error || 'No se pudo eliminar', 'error');
+  }
 };
 
 // Toggle ballenas automáticas
 const toggleAutoWhales = async () => {
-  await axios.post(`${API_URL}/api/auto-whales/toggle`, {
-    enabled: !status.value.useAutoWhales
-  });
-  await fetchStatus();
+  try {
+    await axios.post(`${API_URL}/auto-whales/toggle`, {
+      enabled: !status.value.useAutoWhales
+    }, {
+      headers: { 
+        'Authorization': authPassword.value || localStorage.getItem('poly_auth') 
+      }
+    });
+    await fetchStatus();
+  } catch (e) {
+    console.error("Error toggle auto whales:", e);
+  }
 };
 
 // --- 🔒 SISTEMA DE LOGIN PREMIUM ---
@@ -698,101 +701,131 @@ onUnmounted(() => {
       
       <div class="col-span-12 xl:col-span-8 space-y-8">
         
-<div class="grid grid-cols-1 md:grid-cols-3 gap-5"> 
+        <div class="bg-[#111114] border border-zinc-800/80 rounded-[2rem] p-6 lg:p-8 mb-8 transition-all duration-500 relative overflow-hidden shadow-lg hover:border-[#D4AF37]/30 group">
+          <div class="absolute -top-32 -left-32 w-64 h-64 bg-[#D4AF37] rounded-full blur-[120px] opacity-5 pointer-events-none group-hover:opacity-10 transition-opacity duration-700"></div>
           
-          <div class="bg-[#1c1917] border-2 border-[#D4AF37] p-5 rounded-3xl shadow-[0_0_20px_rgba(212,175,55,0.2)] relative overflow-hidden group flex flex-col justify-center">
-            <div class="absolute -right-6 -top-6 opacity-10"><Target :size="80" class="text-[#D4AF37]" /></div>
-            <p class="text-[10px] uppercase font-black text-[#D4AF37] tracking-widest mb-1">Cartera</p>
-            <div class="flex items-baseline gap-1">
-              <h3 class="text-4xl font-extrabold text-white font-mono">${{ totalCartera }}</h3>
+          <div class="flex items-center justify-between mb-8 pb-4 border-b border-zinc-800/50 relative z-10">
+            <div class="flex items-center gap-4">
+              <div class="p-3.5 rounded-2xl border bg-[#D4AF37]/10 border-[#D4AF37]/20 text-[#D4AF37] shadow-inner shrink-0">
+                <Activity :size="24" />
+              </div>
+              <div>
+                <h2 class="text-xl font-black text-white tracking-tight">Estado de Cuenta</h2>
+                <p class="text-xs text-zinc-500 font-medium">Balance global y métricas de rendimiento</p>
+              </div>
             </div>
-            <p class="text-[9px] text-zinc-400 mt-2 font-bold uppercase tracking-tighter flex items-center gap-1">
-              <span class="w-1.5 h-1.5 rounded-full bg-[#D4AF37] animate-pulse"></span> Valor total de la cuenta
-            </p>
           </div>
 
-          <div class="bg-[#111114] border border-zinc-800 p-5 rounded-3xl flex flex-col justify-center hover:border-zinc-700 transition-all">
-            <p class="text-[10px] uppercase font-black text-zinc-500 tracking-widest mb-1">Disponible para operar</p>
-            <div class="flex items-baseline gap-1">
-              <h3 class="text-3xl font-bold text-zinc-200 font-mono">${{ status.clobOnlyUSDC || status.balanceUSDC }}</h3>
-              <span class="text-[10px] text-zinc-600 font-bold">USDC</span>
-            </div>
-            <p class="text-[9px] text-zinc-500 mt-2 font-bold uppercase tracking-tighter">
-              Efectivo libre en Polymarket
-            </p>
-          </div>
-
-          <div class="bg-[#111114] border border-zinc-800 p-5 rounded-3xl relative overflow-hidden flex flex-col justify-center">
-            <p class="text-[10px] uppercase font-black tracking-widest mb-1 flex items-center gap-1"
-               :class="floatingPnL >= 0 ? 'text-emerald-500/70' : 'text-rose-500/70'">
-               <Activity :size="12" /> Beneficio / Pérdida
-            </p>
-            <div class="flex items-baseline gap-2">
-              <h3 class="text-3xl font-bold font-mono" :class="floatingPnL >= 0 ? 'text-emerald-500' : 'text-rose-500'">
-                {{ floatingPnL >= 0 ? '+' : '-' }}${{ Math.abs(floatingPnL).toFixed(2) }}
-              </h3>
-              <span class="text-xs font-bold font-mono" :class="floatingPnL >= 0 ? 'text-emerald-500/80' : 'text-rose-500/80'">
-                ({{ floatingPnL >= 0 ? '+' : '' }}{{ floatingPnLPct }}%)
-              </span>
-            </div>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-5 relative z-10"> 
             
-            <div class="absolute bottom-0 left-0 w-full h-1" 
-                 :class="floatingPnL >= 0 ? 'bg-gradient-to-r from-emerald-900 to-emerald-500' : 'bg-gradient-to-r from-rose-900 to-rose-500'">
+            <div class="bg-[#1c1917] border-2 border-[#D4AF37] p-5 rounded-2xl shadow-[0_0_20px_rgba(212,175,55,0.15)] relative overflow-hidden flex flex-col justify-center transition-all hover:scale-[1.02]">
+              <div class="absolute -right-4 -top-4 opacity-10"><Target :size="80" class="text-[#D4AF37]" /></div>
+              <p class="text-[10px] uppercase font-black text-[#D4AF37] tracking-widest mb-1">Cartera Total</p>
+              <div class="flex items-baseline gap-1">
+                <h3 class="text-4xl font-extrabold text-white font-mono">${{ totalCartera }}</h3>
+              </div>
+              <p class="text-[9px] text-zinc-400 mt-2 font-bold uppercase tracking-tighter flex items-center gap-1">
+                <span class="w-1.5 h-1.5 rounded-full bg-[#D4AF37] animate-pulse"></span> Valor global de la cuenta
+              </p>
             </div>
-          </div>
 
-          <div class="bg-[#111114] border border-zinc-800 p-5 rounded-3xl hover:border-blue-900/50 transition-all flex flex-col justify-center">
-            <p class="text-[9px] uppercase font-black text-zinc-500 tracking-widest mb-1">MetaMask Wallet</p>
-            <div class="flex items-baseline gap-1">
-              <h3 class="text-2xl font-bold text-zinc-200 font-mono">${{ status.walletOnlyUSDC }}</h3>
-              <span class="text-[10px] text-zinc-600 font-bold">USDC</span>
+            <div class="bg-[#09090b] border border-zinc-800/80 p-5 rounded-2xl flex flex-col justify-center hover:border-zinc-700 transition-all">
+              <p class="text-[10px] uppercase font-black text-zinc-500 tracking-widest mb-1">Disponible (Polymarket)</p>
+              <div class="flex items-baseline gap-1">
+                <h3 class="text-3xl font-bold text-zinc-200 font-mono">${{ status.clobOnlyUSDC || status.balanceUSDC }}</h3>
+                <span class="text-[10px] text-zinc-600 font-bold">USDC</span>
+              </div>
+              <p class="text-[9px] text-zinc-500 mt-2 font-bold uppercase tracking-tighter">Efectivo libre operativo</p>
             </div>
-            <div class="mt-2 flex items-center gap-1 text-[8px] text-blue-500/70 font-bold uppercase">
-              <ArrowUpRight :size="10" /> Fondos en reserva
+
+            <div class="bg-[#09090b] border border-zinc-800/80 p-5 rounded-2xl relative overflow-hidden flex flex-col justify-center hover:border-zinc-700 transition-all">
+              <p class="text-[10px] uppercase font-black tracking-widest mb-1 flex items-center gap-1"
+                 :class="floatingPnL >= 0 ? 'text-emerald-500/70' : 'text-rose-500/70'">
+                 <Activity :size="12" /> PnL Flotante
+              </p>
+              <div class="flex items-baseline gap-2">
+                <h3 class="text-3xl font-bold font-mono" :class="floatingPnL >= 0 ? 'text-emerald-500' : 'text-rose-500'">
+                  {{ floatingPnL >= 0 ? '+' : '-' }}${{ Math.abs(floatingPnL).toFixed(2) }}
+                </h3>
+                <span class="text-xs font-bold font-mono" :class="floatingPnL >= 0 ? 'text-emerald-500/80' : 'text-rose-500/80'">
+                  ({{ floatingPnL >= 0 ? '+' : '' }}{{ floatingPnLPct }}%)
+                </span>
+              </div>
+              <div class="absolute bottom-0 left-0 w-full h-1" 
+                   :class="floatingPnL >= 0 ? 'bg-gradient-to-r from-emerald-900 to-emerald-500' : 'bg-gradient-to-r from-rose-900 to-rose-500'">
+              </div>
             </div>
-          </div>
 
-          <div class="bg-[#111114] border border-zinc-800 p-5 rounded-3xl flex flex-col justify-center">
-            <p class="text-[9px] uppercase font-black text-zinc-500 tracking-widest mb-1">Gas Network</p>
-            <div class="flex items-baseline gap-1">
-              <h3 class="text-2xl font-bold text-zinc-200 font-mono">{{ status.balancePOL }}</h3>
-              <span class="text-[10px] text-zinc-600 font-bold">POL</span>
+            <div class="bg-[#09090b] border border-zinc-800/80 p-5 rounded-2xl hover:border-blue-900/50 transition-all flex flex-col justify-center">
+              <p class="text-[9px] uppercase font-black text-zinc-500 tracking-widest mb-1">MetaMask Wallet</p>
+              <div class="flex items-baseline gap-1">
+                <h3 class="text-2xl font-bold text-zinc-200 font-mono">${{ status.walletOnlyUSDC }}</h3>
+                <span class="text-[10px] text-zinc-600 font-bold">USDC</span>
+              </div>
+              <p class="text-[9px] text-blue-500/70 mt-2 font-bold uppercase tracking-tighter flex items-center gap-1"><ArrowUpRight :size="10" /> Fondos en reserva</p>
             </div>
-          </div>
 
-          <div class="bg-[#111114] border border-zinc-800 p-5 rounded-3xl flex flex-col justify-center">
-            <p class="text-[9px] uppercase font-black text-zinc-500 tracking-widest mb-1">IA Confidence</p>
-            <h3 class="text-2xl font-bold font-mono" :class="probColor">{{ (status.lastProbability * 100).toFixed(1) }}%</h3>
-          </div>
+            <div class="bg-[#09090b] border border-zinc-800/80 p-5 rounded-2xl flex flex-col justify-center hover:border-zinc-700 transition-all">
+              <p class="text-[9px] uppercase font-black text-zinc-500 tracking-widest mb-1">Gas Network</p>
+              <div class="flex items-baseline gap-1">
+                <h3 class="text-2xl font-bold text-zinc-200 font-mono">{{ status.balancePOL }}</h3>
+                <span class="text-[10px] text-zinc-600 font-bold">POL</span>
+              </div>
+            </div>
 
+            <div class="bg-[#09090b] border border-zinc-800/80 p-5 rounded-2xl flex flex-col justify-center hover:border-[#D4AF37]/30 transition-all">
+              <p class="text-[9px] uppercase font-black text-zinc-500 tracking-widest mb-1">IA Confidence</p>
+              <h3 class="text-2xl font-bold font-mono" :class="probColor">{{ (status.lastProbability * 100).toFixed(1) }}%</h3>
+            </div>
+
+          </div>
         </div>
 
-        <div class="mt-8 mb-6">
-          <h2 class="text-[#D4AF37] font-black tracking-widest text-xs mb-4 flex items-center gap-2">
-            <span class="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
-            POSICIONES EN VIVO
-          </h2>
+
+        <div class="bg-[#111114] border border-zinc-800/80 rounded-[2rem] p-6 lg:p-8 mb-8 transition-all duration-500 relative overflow-hidden shadow-lg hover:border-emerald-500/30 group">
+          <div class="absolute -bottom-32 -right-32 w-64 h-64 bg-emerald-500 rounded-full blur-[120px] opacity-5 pointer-events-none group-hover:opacity-10 transition-opacity duration-700"></div>
+
+          <div class="flex items-center justify-between mb-8 pb-6 border-b border-zinc-800/50 relative z-10">
+            <div class="flex items-center gap-4">
+              <div class="p-3.5 rounded-2xl border bg-emerald-500/10 border-emerald-500/20 text-emerald-400 shadow-inner relative shrink-0">
+                <div class="absolute -top-1 -right-1 w-2.5 h-2.5 bg-emerald-500 rounded-full animate-ping"></div>
+                <div class="absolute -top-1 -right-1 w-2.5 h-2.5 bg-emerald-500 rounded-full"></div>
+                <Activity :size="24" />
+              </div>
+              <div>
+                <h2 class="text-xl font-black text-white tracking-tight">Posiciones en Vivo</h2>
+                <p class="text-xs text-zinc-500 font-medium">Mercados operados on-chain</p>
+              </div>
+            </div>
+            <div class="hidden sm:block text-[10px] font-black uppercase tracking-widest bg-emerald-500/10 text-emerald-400 px-3 py-1.5 rounded-lg border border-emerald-500/20">
+              {{ status.activePositions ? status.activePositions.length : 0 }} Activas
+            </div>
+          </div>
           
-          <div class="grid grid-cols-1 gap-4">
+          <div class="grid grid-cols-1 gap-4 relative z-10">
             <div v-for="pos in status.activePositions" :key="pos.tokenId" 
-                 class="bg-[#1c1917] border border-[#D4AF37]/40 rounded-2xl p-5 flex flex-col md:flex-row justify-between items-start md:items-center shadow-[0_0_15px_rgba(212,175,55,0.1)] hover:border-[#D4AF37]/80 transition-all">
+                 class="bg-[#09090b] border border-zinc-800/80 rounded-2xl p-5 flex flex-col md:flex-row justify-between items-start md:items-center shadow-inner hover:border-[#D4AF37]/50 transition-all">
               
               <div class="flex flex-col mb-4 md:mb-0 w-full md:w-1/2">
-                <span class="text-[10px] text-zinc-500 font-bold uppercase tracking-tighter mb-1">Mercado</span>
-                <span class="text-zinc-200 font-bold text-sm line-clamp-1" :title="pos.marketName">{{ pos.marketName }}</span>
+                <div class="flex items-center gap-2 mb-2">
+                  <span class="text-[9px] text-zinc-400 font-black uppercase tracking-widest px-2 py-0.5 bg-zinc-800/80 rounded-md border border-zinc-700/80">
+                    {{ pos.category || 'MERCADO' }}
+                  </span>
+                </div>
+                <span class="text-zinc-200 font-bold text-sm line-clamp-2" :title="pos.marketName">{{ pos.marketName }}</span>
                 <span class="text-[#D4AF37] font-mono text-[10px] mt-1">{{ pos.size }} Acciones</span>
               </div>
 
               <div class="flex items-center gap-6 w-full md:w-auto justify-between md:justify-end">
-                <div class="text-left md:text-right hidden sm:block">
-                  <span class="text-[10px] text-zinc-500 block uppercase font-bold mb-0.5">Estado</span>
+                <div class="text-left md:text-right hidden lg:block">
+                  <span class="text-[9px] text-zinc-500 block uppercase font-black tracking-widest mb-0.5">Estado</span>
                   <span class="font-mono font-bold text-[10px]" :class="pos.status.includes('CANJEAR') ? 'text-zinc-500' : 'text-emerald-400'">
                     {{ pos.status }}
                   </span>
                 </div>
 
-                <div class="text-left md:text-right flex flex-col justify-center">
-                  <span class="text-[10px] text-zinc-500 block uppercase font-bold mb-0.5">Valor</span>
+                <div class="text-left md:text-right flex flex-col justify-center min-w-[80px]">
+                  <span class="text-[9px] text-zinc-500 block uppercase font-black tracking-widest mb-0.5">Valor</span>
                   <span class="text-white font-mono font-bold text-sm">
                     ${{ pos.currentValue }}
                   </span>
@@ -809,12 +842,12 @@ onUnmounted(() => {
                 <button @click="sellPosition(pos.tokenId, pos.exactSize)" 
                         :disabled="isSelling[pos.tokenId]"
                         translate="no"
-                        class="px-5 py-2.5 rounded-xl text-[10px] font-black transition-all flex items-center gap-2 disabled:opacity-50 border"
+                        class="px-5 py-2.5 rounded-xl text-[10px] font-black tracking-widest uppercase transition-all flex items-center justify-center gap-2 disabled:opacity-50 border w-full sm:w-auto shrink-0"
                         :class="pos.status.includes('CANJEAR') 
                           ? 'bg-zinc-800 text-zinc-400 border-zinc-700 hover:bg-zinc-700 hover:text-white' 
                           : ((pos.cashPnl || 0) >= 0 
-                              ? 'bg-emerald-500/10 hover:bg-emerald-500 text-emerald-500 hover:text-white border-emerald-500/30' 
-                              : 'bg-rose-500/10 hover:bg-rose-500 text-rose-500 hover:text-white border-rose-500/30')">
+                              ? 'bg-emerald-500/10 hover:bg-emerald-500 text-emerald-500 hover:text-white border-emerald-500/30 shadow-[0_0_15px_rgba(16,185,129,0.1)]' 
+                              : 'bg-rose-500/10 hover:bg-rose-500 text-rose-500 hover:text-white border-rose-500/30 shadow-[0_0_15px_rgba(244,63,94,0.1)]')">
                   
                   <span v-if="isSelling[pos.tokenId]" class="w-2 h-2 rounded-full animate-ping" 
                         :class="pos.status.includes('CANJEAR') ? 'bg-zinc-400' : ((pos.cashPnl || 0) >= 0 ? 'bg-emerald-400' : 'bg-rose-400')"></span>
@@ -825,9 +858,9 @@ onUnmounted(() => {
             </div>
 
             <div v-if="!status.activePositions || status.activePositions.length === 0" 
-                 class="bg-[#1c1917]/50 border border-zinc-800 border-dashed rounded-2xl p-8 text-center flex flex-col items-center justify-center">
-                 <Target :size="24" class="text-zinc-600 mb-2" />
-                 <p class="text-zinc-500 text-xs font-medium italic">No hay posiciones activas en este momento.</p>
+                 class="bg-[#09090b]/50 border border-zinc-800/80 border-dashed rounded-2xl p-10 text-center flex flex-col items-center justify-center">
+                 <Target :size="32" class="text-zinc-700 mb-3" />
+                 <p class="text-zinc-500 text-sm font-medium">El escáner de red está activo. No hay posiciones operando.</p>
             </div>
           </div>
         </div>
@@ -1471,59 +1504,58 @@ onUnmounted(() => {
           </div>
 
           <div v-if="status.copyTradingEnabled" class="relative z-10 space-y-6">
-            <!-- Input para agregar ballena -->
-            <div class="flex gap-3">
+            <div class="flex flex-col sm:flex-row gap-3">
               <input 
                 v-model="newWhaleAddress"
                 placeholder="0x1234...abcd"
-                class="flex-1 bg-[#09090b] border border-zinc-700 rounded-2xl px-4 py-3 text-sm font-mono focus:outline-none focus:border-purple-500"
+                class="w-full sm:flex-1 bg-[#09090b] border border-zinc-700 rounded-2xl px-4 py-3 text-sm font-mono focus:outline-none focus:border-purple-500 transition-colors"
               />
-              <input 
-                v-model="newWhaleNickname"
-                placeholder="Nickname (opcional)"
-                class="w-40 bg-[#09090b] border border-zinc-700 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-purple-500"
-              />
-              <button 
-                @click="addCustomWhale"
-                class="px-6 bg-purple-600 hover:bg-purple-500 rounded-2xl font-bold text-sm transition">
-                Agregar
-              </button>
+              <div class="flex gap-3 w-full sm:w-auto">
+                <input 
+                  v-model="newWhaleNickname"
+                  placeholder="Nickname (opc)"
+                  class="flex-1 sm:w-36 bg-[#09090b] border border-zinc-700 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-purple-500 transition-colors"
+                />
+                <button 
+                  @click="addCustomWhale"
+                  class="px-6 py-3 bg-purple-600 hover:bg-purple-500 rounded-2xl font-bold text-sm transition-colors whitespace-nowrap shrink-0 shadow-lg">
+                  Agregar
+                </button>
+              </div>
             </div>
 
-            <!-- Botón cargar recomendadas -->
             <button 
               @click="loadRecommendedWhales"
-              class="w-full py-3 text-xs px-4 bg-purple-600/20 hover:bg-purple-600/30 text-purple-400 rounded-xl font-medium transition flex items-center justify-center gap-2">
+              class="w-full py-3 text-xs px-4 bg-purple-600/20 hover:bg-purple-600/30 text-purple-400 rounded-xl font-medium transition flex items-center justify-center gap-2 border border-purple-500/20">
               📥 Cargar 5 Ballenas Recomendadas
             </button>
 
-            <!-- Lista de ballenas custom -->
             <div v-if="status.customWhales && status.customWhales.length > 0" class="max-h-52 overflow-y-auto custom-scroll space-y-2 pr-2">
               <div v-for="(whale, index) in status.customWhales" :key="index"
                   class="bg-[#09090b] border border-zinc-800/80 rounded-xl p-3.5 flex justify-between items-center hover:border-purple-500/30 transition-colors group">
-                <div class="flex items-center gap-3">
+                <div class="flex items-center gap-3 truncate pr-2">
                   <input 
                     type="checkbox" 
                     v-model="whale.enabled"
                     @change="toggleCustomWhale(whale.address)"
-                    class="w-4 h-4 accent-purple-500"
+                    class="w-4 h-4 accent-purple-500 shrink-0"
                   />
-                  <div>
-                    <div class="font-mono text-purple-400/80 text-xs font-medium group-hover:text-purple-400">
-                      {{ whale.address.substring(0,12) }}...
+                  <div class="truncate">
+                    <div class="font-mono text-purple-400/80 text-xs font-medium group-hover:text-purple-400 truncate">
+                      {{ whale.address.substring(0,8) }}...{{ whale.address.slice(-6) }}
                     </div>
-                    <div v-if="whale.nickname" class="text-[10px] text-zinc-500">{{ whale.nickname }}</div>
+                    <div v-if="whale.nickname" class="text-[10px] text-zinc-500 truncate">{{ whale.nickname }}</div>
                   </div>
                 </div>
                 <button 
                   @click="deleteCustomWhale(whale.address)"
-                  class="text-rose-400 hover:text-rose-500 text-xs font-medium px-3 py-1">
+                  class="text-rose-400 hover:text-rose-500 text-xs font-medium px-3 py-1 shrink-0 bg-rose-500/10 rounded-lg">
                   Eliminar
                 </button>
               </div>
             </div>
             
-            <div v-else class="text-center py-8 text-zinc-500 text-sm border border-dashed border-zinc-700 rounded-2xl">
+            <div v-else class="text-center py-8 text-zinc-500 text-sm border border-dashed border-zinc-700 rounded-2xl bg-[#09090b]/50">
               No hay ballenas personalizadas aún
             </div>
           </div>
