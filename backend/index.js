@@ -1577,10 +1577,11 @@ async function runBot() {
 
 
 // === FUNCIÓN AUXILIAR ===
+// === FUNCIÓN AUXILIAR ===
 function getRiskProfile(marketName = "", category = "") {
     const text = (marketName + " " + (category || "")).toLowerCase();
 
-    // Mercados claramente volátiles por nombre
+    // Mercados claramente volátiles
     const isVolatileMarket = /vs|spread|o\/u|temperature|temperatura|win on|match|game|set|inning|quarter|half/i.test(text);
 
     // 🔥 FIX: Obligamos a que cualquier mercado con la etiqueta SPORTS o POP sea VOLÁTIL
@@ -1830,26 +1831,33 @@ async function checkDailyLossLimit() {
     if (!botStatus.copyTradingEnabled && !botStatus.autoTradeEnabled) return;
 
     try {
-        // Guardamos el balance inicial del día si es el primer chequeo
-        if (botStatus.dailyStartBalance === 0) {
-            botStatus.dailyStartBalance = parseFloat(botStatus.clobOnlyUSDC || 0);
+        // 🔥 FIX QUANT: Calcular valor real de la cartera (Efectivo + Posiciones vivas)
+        let activePortfolioValue = 0;
+        if (botStatus.activePositions && botStatus.activePositions.length > 0) {
+            activePortfolioValue = botStatus.activePositions.reduce((acc, pos) => {
+                return !pos.status.includes('CANJEAR') ? acc + parseFloat(pos.currentValue || 0) : acc;
+            }, 0);
         }
 
-        const currentBalance = parseFloat(botStatus.clobOnlyUSDC || 0);
-        const dailyPnL = currentBalance - botStatus.dailyStartBalance;
+        const totalCurrentValue = parseFloat(botStatus.clobOnlyUSDC || 0) + activePortfolioValue;
+
+        // Guardamos el balance inicial del día si es el primer chequeo (o si se reseteó a 0)
+        if (botStatus.dailyStartBalance === 0) {
+            botStatus.dailyStartBalance = totalCurrentValue;
+        }
+
+        const dailyPnL = totalCurrentValue - botStatus.dailyStartBalance;
         botStatus.dailyPnL = dailyPnL;
 
         const lossPercent = botStatus.dailyStartBalance > 0 
             ? (dailyPnL / botStatus.dailyStartBalance) * 100 
             : 0;
 
-        console.log(`📉 [DAILY LIMIT] PnL del día: $${dailyPnL.toFixed(2)} (${lossPercent.toFixed(1)}%)`);
-
-        // Si se supera el límite de pérdida → Panic Stop
-        if (lossPercent <= -botStatus.dailyLossLimit) {
+        // Si se supera el límite de pérdida real -> Panic Stop
+        if (lossPercent <= -botStatus.dailyLossLimit && !botStatus.isPanicStopped) {
             console.log(`🚨 [DAILY LIMIT] Stop-loss diario activado (${lossPercent.toFixed(1)}%). Deteniendo bot...`);
             botStatus.isPanicStopped = true;
-            await sendAlert(`🚨 *STOP-LOSS DIARIO ACTIVADO*\nPérdida del día: ${lossPercent.toFixed(1)}%\nBot detenido automáticamente.`);
+            await sendAlert(`🚨 *STOP-LOSS DIARIO ACTIVADO*\nPérdida del día real: ${lossPercent.toFixed(1)}%\nBot bloqueó nuevas compras.`);
         }
     } catch (e) {
         console.error("Error en checkDailyLossLimit:", e.message);
@@ -2124,8 +2132,8 @@ app.post('/api/panic', (req, res) => {
         console.log("🚨 [EMERGENCIA] Bot detenido manualmente desde el panel.");
     } else if (action === 'resume') {
         botStatus.isPanicStopped = false;
-        // Reiniciamos el balance base para que el límite del 10% empiece a contar desde los $119 actuales
-        botStatus.dailyStartBalance = parseFloat(botStatus.clobOnlyUSDC || 0); 
+        // 🔥 FIX: Reseteamos el balance inicial a 0 para que en el próximo ciclo tome el valor de tu cartera entera actual
+        botStatus.dailyStartBalance = 0; 
         console.log("✅ [EMERGENCIA] Candado liberado. Bot reactivado.");
     }
     
