@@ -1020,6 +1020,7 @@ onUnmounted(() => {
                 <input type="number" min="10" max="95" step="1" :value="Math.round((status[status.activeProfileName].predictionThreshold || 0.70) * 100)" @change="status[status.activeProfileName].predictionThreshold = $event.target.value / 100; updateRiskSettings();" class="w-full h-12 bg-[#09090b] border border-zinc-800/80 rounded-xl pl-4 pr-10 text-white font-mono text-lg font-bold outline-none transition-all placeholder-zinc-700 appearance-none" :class="status.activeProfileName === 'standardConfig' ? 'focus:border-sky-500/50 focus:ring-1 focus:ring-sky-500/50' : 'focus:border-orange-500/50 focus:ring-1 focus:ring-orange-500/50'" />
                 <span class="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-500 font-black pointer-events-none">%</span>
               </div>
+              <input type="range" min="10" max="95" step="1" :value="Math.round((status[status.activeProfileName].predictionThreshold || 0.70) * 100)" @input="status[status.activeProfileName].predictionThreshold = $event.target.value / 100" @change="updateRiskSettings()" class="w-full h-1 mt-4 bg-zinc-800/80 rounded-lg appearance-none cursor-pointer" :class="status.activeProfileName === 'standardConfig' ? 'accent-sky-500' : 'accent-orange-500'" />
             </div>
 
             <div class="flex flex-col p-5 rounded-2xl bg-[#161619] border border-zinc-800/60 hover:border-zinc-700/80 transition-colors">
@@ -1031,6 +1032,7 @@ onUnmounted(() => {
                 <input type="number" min="2" max="30" step="1" :value="Math.round((status[status.activeProfileName].edgeThreshold || 0.08) * 100)" @change="status[status.activeProfileName].edgeThreshold = $event.target.value / 100; updateRiskSettings();" class="w-full h-12 bg-[#09090b] border border-zinc-800/80 rounded-xl pl-4 pr-10 text-white font-mono text-lg font-bold outline-none transition-all placeholder-zinc-700 appearance-none" :class="status.activeProfileName === 'standardConfig' ? 'focus:border-sky-500/50 focus:ring-1 focus:ring-sky-500/50' : 'focus:border-orange-500/50 focus:ring-1 focus:ring-orange-500/50'" />
                 <span class="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-500 font-black pointer-events-none">%</span>
               </div>
+              <input type="range" min="2" max="30" step="1" :value="Math.round((status[status.activeProfileName].edgeThreshold || 0.08) * 100)" @input="status[status.activeProfileName].edgeThreshold = $event.target.value / 100" @change="updateRiskSettings()" class="w-full h-1 mt-4 bg-zinc-800/80 rounded-lg appearance-none cursor-pointer" :class="status.activeProfileName === 'standardConfig' ? 'accent-sky-500' : 'accent-orange-500'" />
             </div>
 
             <div class="flex flex-col p-5 rounded-2xl bg-[#161619] border border-zinc-800/60 hover:border-zinc-700/80 transition-colors">
@@ -1042,6 +1044,7 @@ onUnmounted(() => {
                 <input type="number" min="5" max="100" step="1" v-model.number="status[status.activeProfileName].takeProfitThreshold" @change="updateRiskSettings" class="w-full h-12 bg-[#09090b] border border-zinc-800/80 rounded-xl pl-4 pr-10 text-white font-mono text-lg font-bold outline-none transition-all placeholder-zinc-700 appearance-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50" />
                 <span class="absolute right-4 top-1/2 -translate-y-1/2 text-emerald-600 font-black pointer-events-none">%</span>
               </div>
+              <input type="range" min="5" max="100" step="1" v-model.number="status[status.activeProfileName].takeProfitThreshold" @change="updateRiskSettings" class="w-full h-1 mt-4 bg-zinc-800/80 rounded-lg appearance-none cursor-pointer accent-emerald-500" />
             </div>
 
             <div class="flex flex-col p-5 rounded-2xl bg-[#161619] border border-zinc-800/60 hover:border-zinc-700/80 transition-colors">
@@ -1053,6 +1056,7 @@ onUnmounted(() => {
                 <input type="number" min="-90" max="-5" step="1" v-model.number="status[status.activeProfileName].stopLossThreshold" @change="updateRiskSettings" class="w-full h-12 bg-[#09090b] border border-zinc-800/80 rounded-xl pl-4 pr-10 text-white font-mono text-lg font-bold outline-none transition-all placeholder-zinc-700 appearance-none focus:border-rose-500/50 focus:ring-1 focus:ring-rose-500/50" />
                 <span class="absolute right-4 top-1/2 -translate-y-1/2 text-rose-600 font-black pointer-events-none">%</span>
               </div>
+              <input type="range" min="-90" max="-5" step="1" v-model.number="status[status.activeProfileName].stopLossThreshold" @change="updateRiskSettings" class="w-full h-1 mt-4 bg-zinc-800/80 rounded-lg appearance-none cursor-pointer accent-rose-500" />
             </div>
           </div>
         </div>
@@ -1147,15 +1151,17 @@ onUnmounted(() => {
 
           <div v-if="status.copyTradingEnabled" class="relative z-10 space-y-6">
             <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+              
               <div class="flex flex-col p-5 rounded-2xl bg-[#161619] border border-zinc-800/60 hover:border-zinc-700/80 transition-colors">
                 <div class="flex justify-between items-start mb-4 gap-2">
                   <label class="text-[10px] text-zinc-400 font-bold uppercase tracking-widest leading-snug">Tamaño Máximo</label>
                   <span class="text-[9px] font-black px-2 py-1 rounded-md border text-purple-400 bg-purple-400/10 border-purple-400/20 shrink-0">VOL.</span>
                 </div>
                 <div class="relative w-full mt-auto">
-                  <input type="number" min="10" max="200" step="5" v-model.number="status.maxCopySize" @change="updateCopyTrading" class="w-full h-12 bg-[#09090b] border border-zinc-800/80 rounded-xl pl-4 pr-12 text-white font-mono text-lg font-bold outline-none transition-all placeholder-zinc-700 appearance-none focus:border-purple-500/50 focus:ring-1 focus:ring-purple-500/50" />
+                  <input type="number" min="10" max="200" step="1" v-model.number="status.maxCopySize" @change="updateCopyTrading" class="w-full h-12 bg-[#09090b] border border-zinc-800/80 rounded-xl pl-4 pr-12 text-white font-mono text-lg font-bold outline-none transition-all placeholder-zinc-700 appearance-none focus:border-purple-500/50 focus:ring-1 focus:ring-purple-500/50" />
                   <span class="absolute right-4 top-1/2 -translate-y-1/2 text-purple-600/50 font-black pointer-events-none text-xs">SH</span>
                 </div>
+                <input type="range" min="10" max="200" step="1" v-model.number="status.maxCopySize" @change="updateCopyTrading" class="w-full h-1 mt-4 bg-zinc-800/80 rounded-lg appearance-none cursor-pointer accent-purple-500" />
               </div>
 
               <div class="flex flex-col p-5 rounded-2xl bg-[#161619] border border-zinc-800/60 hover:border-zinc-700/80 transition-colors">
@@ -1167,6 +1173,7 @@ onUnmounted(() => {
                   <input type="number" min="1" max="15" step="1" v-model.number="status[status.activeProfileName].maxCopyPercentOfBalance" @change="updateCopySettings" class="w-full h-12 bg-[#09090b] border border-zinc-800/80 rounded-xl pl-4 pr-10 text-white font-mono text-lg font-bold outline-none transition-all placeholder-zinc-700 appearance-none focus:border-purple-500/50 focus:ring-1 focus:ring-purple-500/50" />
                   <span class="absolute right-4 top-1/2 -translate-y-1/2 text-purple-600/50 font-black pointer-events-none">%</span>
                 </div>
+                <input type="range" min="1" max="15" step="1" v-model.number="status[status.activeProfileName].maxCopyPercentOfBalance" @change="updateCopySettings" class="w-full h-1 mt-4 bg-zinc-800/80 rounded-lg appearance-none cursor-pointer accent-purple-500" />
               </div>
 
               <div class="flex flex-col p-5 rounded-2xl bg-[#161619] border border-zinc-800/60 hover:border-zinc-700/80 transition-colors md:col-span-2 xl:col-span-1">
@@ -1178,6 +1185,7 @@ onUnmounted(() => {
                   <input type="number" min="1" max="20" step="1" v-model.number="status.maxWhalesToCopy" @change="updateCopyTrading" class="w-full h-12 bg-[#09090b] border border-zinc-800/80 rounded-xl pl-4 pr-16 text-white font-mono text-lg font-bold outline-none transition-all placeholder-zinc-700 appearance-none focus:border-purple-500/50 focus:ring-1 focus:ring-purple-500/50" />
                   <span class="absolute right-4 top-1/2 -translate-y-1/2 text-purple-600/50 font-black pointer-events-none text-xs">USERS</span>
                 </div>
+                <input type="range" min="1" max="20" step="1" v-model.number="status.maxWhalesToCopy" @change="updateCopyTrading" class="w-full h-1 mt-4 bg-zinc-800/80 rounded-lg appearance-none cursor-pointer accent-purple-500" />
               </div>
             </div>
 
