@@ -177,7 +177,8 @@ const deleteCustomWhale = async (address) => {
 const toggleAutoWhales = async () => {
   try {
     await axios.post(`${API_URL}/auto-whales/toggle`, {
-      enabled: !status.value.useAutoWhales
+      // 🔥 FIX: Quitamos el "!" porque v-model ya actualizó la variable al estado correcto
+      enabled: status.value.useAutoWhales 
     }, {
       headers: { 
         'Authorization': authPassword.value || localStorage.getItem('poly_auth') 
@@ -1454,6 +1455,46 @@ onUnmounted(() => {
           </div>
 
           <div v-if="status.useAutoWhales" class="relative z-10 space-y-6">
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+              
+              <div class="flex flex-col p-5 rounded-2xl bg-[#161619] border border-zinc-800/60 hover:border-zinc-700/80 transition-colors">
+                <div class="flex justify-between items-start mb-4 gap-2">
+                  <label class="text-[10px] text-zinc-400 font-bold uppercase tracking-widest leading-snug">Tamaño Máximo</label>
+                  <span class="text-[9px] font-black px-2 py-1 rounded-md border text-emerald-400 bg-emerald-400/10 border-emerald-400/20 shrink-0">VOL.</span>
+                </div>
+                <div class="relative w-full mt-auto">
+                  <input type="number" min="10" max="200" step="1" v-model.number="status.maxCopySize" @change="updateCopyTrading" class="w-full h-12 bg-[#09090b] border border-zinc-800/80 rounded-xl pl-4 pr-12 text-white font-mono text-lg font-bold outline-none transition-all placeholder-zinc-700 appearance-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50" />
+                  <span class="absolute right-4 top-1/2 -translate-y-1/2 text-emerald-600/50 font-black pointer-events-none text-xs">SH</span>
+                </div>
+                <input type="range" min="10" max="200" step="1" v-model.number="status.maxCopySize" @change="updateCopyTrading" class="w-full h-1 mt-4 bg-zinc-800/80 rounded-lg appearance-none cursor-pointer accent-emerald-500" />
+              </div>
+
+              <div class="flex flex-col p-5 rounded-2xl bg-[#161619] border border-zinc-800/60 hover:border-zinc-700/80 transition-colors">
+                <div class="flex justify-between items-start mb-4 gap-2">
+                  <label class="text-[10px] text-zinc-400 font-bold uppercase tracking-widest leading-snug">Límite Balance</label>
+                  <span class="text-[9px] font-black px-2 py-1 rounded-md border text-emerald-400 bg-emerald-400/10 border-emerald-400/20 shrink-0">CAP.</span>
+                </div>
+                <div class="relative w-full mt-auto">
+                  <input type="number" min="1" max="15" step="1" v-model.number="status[status.activeProfileName].maxCopyPercentOfBalance" @change="updateCopySettings" class="w-full h-12 bg-[#09090b] border border-zinc-800/80 rounded-xl pl-4 pr-10 text-white font-mono text-lg font-bold outline-none transition-all placeholder-zinc-700 appearance-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50" />
+                  <span class="absolute right-4 top-1/2 -translate-y-1/2 text-emerald-600/50 font-black pointer-events-none">%</span>
+                </div>
+                <input type="range" min="1" max="15" step="1" v-model.number="status[status.activeProfileName].maxCopyPercentOfBalance" @change="updateCopySettings" class="w-full h-1 mt-4 bg-zinc-800/80 rounded-lg appearance-none cursor-pointer accent-emerald-500" />
+              </div>
+
+              <div class="flex flex-col p-5 rounded-2xl bg-[#161619] border border-zinc-800/60 hover:border-zinc-700/80 transition-colors md:col-span-2 xl:col-span-1">
+                <div class="flex justify-between items-start mb-4 gap-2">
+                  <label class="text-[10px] text-zinc-400 font-bold uppercase tracking-widest leading-snug">Top Whales</label>
+                  <span class="text-[9px] font-black px-2 py-1 rounded-md border text-emerald-400 bg-emerald-400/10 border-emerald-400/20 shrink-0">SEG.</span>
+                </div>
+                <div class="relative w-full mt-auto">
+                  <input type="number" min="1" max="20" step="1" v-model.number="status.maxWhalesToCopy" @change="updateCopyTrading" class="w-full h-12 bg-[#09090b] border border-zinc-800/80 rounded-xl pl-4 pr-16 text-white font-mono text-lg font-bold outline-none transition-all placeholder-zinc-700 appearance-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50" />
+                  <span class="absolute right-4 top-1/2 -translate-y-1/2 text-emerald-600/50 font-black pointer-events-none text-xs">USERS</span>
+                </div>
+                <input type="range" min="1" max="20" step="1" v-model.number="status.maxWhalesToCopy" @change="updateCopyTrading" class="w-full h-1 mt-4 bg-zinc-800/80 rounded-lg appearance-none cursor-pointer accent-emerald-500" />
+              </div>
+              
+            </div>
             <div class="pt-2">
               <p class="text-[11px] text-zinc-500 font-bold uppercase tracking-widest mb-3 px-1">Whales seleccionadas automáticamente</p>
               <div class="max-h-52 overflow-y-auto custom-scroll space-y-2 pr-2">
@@ -1512,6 +1553,34 @@ onUnmounted(() => {
           </div>
 
           <div v-if="status.copyTradingEnabled" class="relative z-10 space-y-6">
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+              
+              <div class="flex flex-col p-5 rounded-2xl bg-[#161619] border border-zinc-800/60 hover:border-zinc-700/80 transition-colors">
+                <div class="flex justify-between items-start mb-4 gap-2">
+                  <label class="text-[10px] text-zinc-400 font-bold uppercase tracking-widest leading-snug">Tamaño Máximo</label>
+                  <span class="text-[9px] font-black px-2 py-1 rounded-md border text-purple-400 bg-purple-400/10 border-purple-400/20 shrink-0">VOL.</span>
+                </div>
+                <div class="relative w-full mt-auto">
+                  <input type="number" min="10" max="200" step="1" v-model.number="status.maxCopySize" @change="updateCopyTrading" class="w-full h-12 bg-[#09090b] border border-zinc-800/80 rounded-xl pl-4 pr-12 text-white font-mono text-lg font-bold outline-none transition-all placeholder-zinc-700 appearance-none focus:border-purple-500/50 focus:ring-1 focus:ring-purple-500/50" />
+                  <span class="absolute right-4 top-1/2 -translate-y-1/2 text-purple-600/50 font-black pointer-events-none text-xs">SH</span>
+                </div>
+                <input type="range" min="10" max="200" step="1" v-model.number="status.maxCopySize" @change="updateCopyTrading" class="w-full h-1 mt-4 bg-zinc-800/80 rounded-lg appearance-none cursor-pointer accent-purple-500" />
+              </div>
+
+              <div class="flex flex-col p-5 rounded-2xl bg-[#161619] border border-zinc-800/60 hover:border-zinc-700/80 transition-colors">
+                <div class="flex justify-between items-start mb-4 gap-2">
+                  <label class="text-[10px] text-zinc-400 font-bold uppercase tracking-widest leading-snug">Límite Balance</label>
+                  <span class="text-[9px] font-black px-2 py-1 rounded-md border text-purple-400 bg-purple-400/10 border-purple-400/20 shrink-0">CAP.</span>
+                </div>
+                <div class="relative w-full mt-auto">
+                  <input type="number" min="1" max="15" step="1" v-model.number="status[status.activeProfileName].maxCopyPercentOfBalance" @change="updateCopySettings" class="w-full h-12 bg-[#09090b] border border-zinc-800/80 rounded-xl pl-4 pr-10 text-white font-mono text-lg font-bold outline-none transition-all placeholder-zinc-700 appearance-none focus:border-purple-500/50 focus:ring-1 focus:ring-purple-500/50" />
+                  <span class="absolute right-4 top-1/2 -translate-y-1/2 text-purple-600/50 font-black pointer-events-none">%</span>
+                </div>
+                <input type="range" min="1" max="15" step="1" v-model.number="status[status.activeProfileName].maxCopyPercentOfBalance" @change="updateCopySettings" class="w-full h-1 mt-4 bg-zinc-800/80 rounded-lg appearance-none cursor-pointer accent-purple-500" />
+              </div>
+
+            </div>
             <div class="flex flex-col sm:flex-row gap-3">
               <input 
                 v-model="newWhaleAddress"
