@@ -352,6 +352,15 @@ async function updateRealBalances() {
                         continue; 
                     }
 
+                    // 🔥 DETECTOR DE OUTCOME (YES / NO) PARA EL FRONTEND
+                    let outcomeVal = "N/A";
+                    if (pos.outcome) {
+                        outcomeVal = String(pos.outcome).toUpperCase(); // Asegura que diga "YES" o "NO" en mayúsculas
+                    } else if (pos.assetName && typeof pos.assetName === 'string') {
+                        if (pos.assetName.toUpperCase().includes("-YES")) outcomeVal = "YES";
+                        else if (pos.assetName.toUpperCase().includes("-NO")) outcomeVal = "NO";
+                    }
+
                     botStatus.activePositions.push({
                         tokenId: pos.asset || pos.token_id || pos.asset_id,
                         conditionId: pos.conditionId || pos.condition_id,
@@ -362,7 +371,8 @@ async function updateRealBalances() {
                         currentValue: valorActual.toFixed(2),
                         cashPnl: cashPnl,
                         percentPnl: percentPnl,
-                        category: getMarketCategoryEnhanced(pos.title || pos.market || pos['título'] || "")
+                        category: getMarketCategoryEnhanced(pos.title || pos.market || pos['título'] || ""),
+                        outcome: outcomeVal // 🔥 AQUÍ SE ENVÍA A LA TARJETA
                     });
                 }
             }
