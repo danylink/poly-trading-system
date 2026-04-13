@@ -1497,10 +1497,22 @@ async function runBot() {
         const sportsLimit = botStatus.maxActiveSportsMarkets;
         const isSportsLimitReached = (marketItem.category === 'SPORTS' && sportsLimit > 0 && activeSportsCount >= sportsLimit);
 
+        // 🔥 Detectamos si el bot hizo el cálculo inverso apostando al "NO"
+        const isFlippedToNo = (targetSideLabel === "NO");
+
         const isStrongSignal = 
             (!alreadyInvested && !alreadyClosed && !alreadyPending && !isSportsLimitReached) && (
+                // 1. Caso Normal: Compra fuerte con Edge fijo
                 (finalAnalysis.recommendation === "STRONG_BUY" && edge > 0.105) ||
+                
+                // 2. Caso Normal: Compra estándar usando los parámetros de tu Dashboard
                 (finalAnalysis.recommendation === "BUY" && edge >= profile.edgeThreshold && targetProb >= profile.predictionThreshold) ||
+                
+                // 3. 🔥 NUEVO FIX QUANT (Candado Inverso): Si el sistema apuntó al "NO", 
+                // disparamos basados PURAMENTE en tu Dashboard, ignorando si la IA dijo "SELL".
+                (isFlippedToNo && targetProb >= profile.predictionThreshold && edge >= profile.edgeThreshold) ||
+                
+                // 4. Caso Extremo: La IA detecta una oportunidad urgente de último minuto
                 (finalAnalysis.urgency >= 9 && edge >= Math.max(0.09, profile.edgeThreshold * 0.85))
             );
 
