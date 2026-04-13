@@ -184,7 +184,10 @@ function saveConfigToDisk(origen = "Sistema") {
             maxWhalesToCopy: botStatus.maxWhalesToCopy,
             maxActiveSportsMarkets: botStatus.maxActiveSportsMarkets,
             useAutoWhales: botStatus.useAutoWhales,
-            customWhales: botStatus.customWhales
+            customWhales: botStatus.customWhales,
+            // 🔥 FIX: Guardar la memoria fotográfica de Copy Trading
+            copiedPositions: botStatus.copiedPositions || [],
+            copiedTrades: botStatus.copiedTrades || []
         };
         fs.writeFileSync(CONFIG_FILE, JSON.stringify(configToSave, null, 2), 'utf8');
         console.log(`💾 Configuración guardada en el disco duro. (Origen: ${origen})`);
@@ -200,20 +203,22 @@ function loadConfigFromDisk() {
             const data = fs.readFileSync(CONFIG_FILE, 'utf8');
             const savedConfig = JSON.parse(data);
 
-            // Carga directa y limpia de los nuevos objetos
             if (savedConfig.aiConfig) botStatus.aiConfig = savedConfig.aiConfig;
             if (savedConfig.whaleConfig) botStatus.whaleConfig = savedConfig.whaleConfig;
             if (savedConfig.marketFilters) botStatus.marketFilters = savedConfig.marketFilters;
             
-            // Carga de variables sueltas
             if (savedConfig.autoTradeEnabled !== undefined) botStatus.autoTradeEnabled = savedConfig.autoTradeEnabled;
             if (savedConfig.copyTradingEnabled !== undefined) botStatus.copyTradingEnabled = savedConfig.copyTradingEnabled;
             if (savedConfig.maxWhalesToCopy !== undefined) botStatus.maxWhalesToCopy = savedConfig.maxWhalesToCopy;
             if (savedConfig.maxActiveSportsMarkets !== undefined) botStatus.maxActiveSportsMarkets = savedConfig.maxActiveSportsMarkets;
             if (savedConfig.useAutoWhales !== undefined) botStatus.useAutoWhales = savedConfig.useAutoWhales;
             if (savedConfig.customWhales !== undefined) botStatus.customWhales = savedConfig.customWhales;
+            
+            // 🔥 FIX: Recuperar la memoria fotográfica
+            if (savedConfig.copiedPositions) botStatus.copiedPositions = savedConfig.copiedPositions;
+            if (savedConfig.copiedTrades) botStatus.copiedTrades = savedConfig.copiedTrades;
 
-            console.log("📂 Configuración cargada con éxito desde JSON limpio.");
+            console.log("📂 Configuración y Memoria de Ballenas cargada con éxito.");
         } else {
             console.log("📝 No hay archivo de configuración. Se creará uno nuevo.");
             saveConfigToDisk("Inicialización"); 
@@ -1205,6 +1210,8 @@ async function checkAndCopyWhaleTrades() {
                                 marketName: title
                             });
 
+                            saveConfigToDisk("Nueva Ballena Copiada");
+
                             botStatus.copyTradingStats.totalCopied = (botStatus.copyTradingStats.totalCopied || 0) + 1;
                             botStatus.copyTradingStats.successful = (botStatus.copyTradingStats.successful || 0) + 1;
 
@@ -1229,6 +1236,7 @@ async function checkAndCopyWhaleTrades() {
 
                         if (sellResult?.success) {
                             botStatus.copiedPositions.splice(copiedIndex, 1);
+                            saveConfigToDisk("Ballena Vendida");
                             const rescateEst = (position.sizeCopied * limitSellPrice).toFixed(2);
                             await sendAlert(`🛑 *COPY SELL*\nMercado: ${title.substring(0,40)}...\nRescatado ≈ $${rescateEst} USDC`);
                         }
