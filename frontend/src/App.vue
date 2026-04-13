@@ -177,7 +177,8 @@ const deleteCustomWhale = async (address) => {
 const toggleAutoWhales = async () => {
   try {
     await axios.post(`${API_URL}/auto-whales/toggle`, {
-      enabled: !status.value.useAutoWhales
+      // 🔥 FIX: Quitamos el "!" porque v-model ya actualizó la variable al estado correcto
+      enabled: status.value.useAutoWhales 
     }, {
       headers: { 
         'Authorization': authPassword.value || localStorage.getItem('poly_auth') 
