@@ -87,13 +87,17 @@ const newWhaleAddress = ref('');
 const newWhaleNickname = ref('');
 
 // Cargar ballenas recomendadas
-const loadRecommendedWhales = async () => {
+/* const loadRecommendedWhalesGrok = async () => {
   const recommended = [
     { address: "0x492442eab586f242b53bda933fd5de859c8a3782", nickname: "Multicolored" },
     { address: "0xc2e7800b5af46e6093872b177b7a5e7f0563be51", nickname: "BeachBoy4" },
     { address: "0x2a2c53bd278c04da9962fcf96490e17f3dfb9bc1", nickname: "Horizon" },
     { address: "0xbddf61af533ff524d27154e589d2d7a81510c684", nickname: "Countryside" },
-    { address: "0x2005d16a84ceefa912d4e3b5e8f5e8f5e8f5e8f5", nickname: "TopWhale5" }
+    { address: "0x2005d16a84ceefa912d4e3b5e8f5e8f5e8f5e8f5", nickname: "TopWhale5" },
+    { address: "0x17db3fcd93ba12d38382a0cade24b200185c5f6d", nickname: "fengdubiying" },
+    { address: "0xdbade4c82fb72780a0db9a38f821d8671aba9c95", nickname: "SwissMiss" },
+    { address: "0x9d84ce0306f8551e02efef1680475fc0f1dc1344", nickname: "ImJustKen" },
+
   ];
 
   for (const whale of recommended) {
@@ -108,8 +112,8 @@ const loadRecommendedWhales = async () => {
     }
   }
   await fetchStatus();
-  Swal.fire('Listo', '5 ballenas recomendadas cargadas', 'success');
-};
+  Swal.fire('Listo', '8 ballenas recomendadas cargadas', 'success');
+}; */
 
 // Agregar ballena manual
 const addCustomWhale = async () => {
@@ -557,6 +561,34 @@ const fetchLogs = async () => {
     systemLogs.value = res.data.reverse(); 
   } catch (error) {
     console.error("Error al obtener logs de la terminal");
+  }
+};
+
+// Variable reactiva para el efecto visual del botón "Copiado"
+const isCopied = ref(false);
+
+// Función para formatear y copiar el log al portapapeles
+const copyLogsToClipboard = async () => {
+  if (!systemLogs.value || systemLogs.value.length === 0) return;
+
+  // Mapeamos el array de logs para convertirlo en texto de consola clásico
+  const logText = systemLogs.value.map(log => {
+    const icon = log.type === 'error' ? '❌ ' : '> ';
+    return `[${log.time}] ${icon}${log.message}`;
+  }).join('\n');
+
+  try {
+    await navigator.clipboard.writeText(logText);
+    
+    // Cambiamos el estado para dar feedback visual
+    isCopied.value = true;
+    setTimeout(() => {
+      isCopied.value = false;
+    }, 2000);
+  } catch (err) {
+    console.error('Error al copiar al portapapeles:', err);
+    // Si tienes SweetAlert2 importado como Swal, puedes descomentar la siguiente línea:
+    // Swal.fire('Error', 'No se pudo copiar el log', 'error');
   }
 };
 
@@ -1121,9 +1153,23 @@ onUnmounted(() => {
               <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
               <h3 class="text-[10px] text-[#D4AF37] font-black uppercase tracking-[0.2em]">Live Terminal</h3>
             </div>
-            <button @click="fetchLogs" class="text-[10px] text-zinc-400 hover:text-[#D4AF37] uppercase tracking-widest font-bold transition-colors border border-zinc-800 hover:border-[#D4AF37]/50 px-3 py-1 rounded-lg">
-              Actualizar
-            </button>
+            
+            <div class="flex items-center gap-2">
+              <button 
+                @click="copyLogsToClipboard" 
+                :class="isCopied ? 'text-emerald-400 border-emerald-500/50' : 'text-zinc-400 hover:text-[#D4AF37] border-zinc-800 hover:border-[#D4AF37]/50'"
+                class="text-[10px] uppercase tracking-widest font-bold transition-all duration-300 border px-3 py-1 rounded-lg flex items-center justify-center min-w-[75px]"
+              >
+                {{ isCopied ? '✅ Copiado' : '📋 Copiar' }}
+              </button>
+              
+              <button 
+                @click="fetchLogs" 
+                class="text-[10px] text-zinc-400 hover:text-[#D4AF37] uppercase tracking-widest font-bold transition-colors border border-zinc-800 hover:border-[#D4AF37]/50 px-3 py-1 rounded-lg"
+              >
+                Actualizar
+              </button>
+            </div>
           </div>
           
           <div class="h-64 overflow-y-auto custom-scroll flex flex-col gap-1.5 font-mono text-[10px] sm:text-xs pr-2 bg-black/50 p-3 rounded-xl border border-zinc-900">
@@ -1601,11 +1647,11 @@ onUnmounted(() => {
               </div>
             </div>
 
-            <button 
+            <!-- <button 
               @click="loadRecommendedWhales"
               class="w-full py-3 text-xs px-4 bg-purple-600/20 hover:bg-purple-600/30 text-purple-400 rounded-xl font-medium transition flex items-center justify-center gap-2 border border-purple-500/20">
-              📥 Cargar 5 Ballenas Recomendadas
-            </button>
+              📥 Cargar 8 Ballenas Recomendadas Grok
+            </button> -->
 
             <div v-if="status.customWhales && status.customWhales.length > 0" class="max-h-52 overflow-y-auto custom-scroll space-y-2 pr-2">
               <div v-for="(whale, index) in status.customWhales" :key="index"
