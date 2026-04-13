@@ -120,51 +120,38 @@ let botStatus = {
     currentTopic: "Inicializando radares...",
     watchlist: [],
     lastNews: [], 
-    balanceUSDC: "0.00",      // Este será el que use el bot para cálculos
-    walletOnlyUSDC: "0.00",   // <--- NUEVO: Solo lo que hay en MetaMask
-    clobOnlyUSDC: "0.00",     // <--- NUEVO: Solo lo que hay en Polymarket
+    balanceUSDC: "0.00",      
+    walletOnlyUSDC: "0.00",   
+    clobOnlyUSDC: "0.00",     
     unclaimedUSDC: "0.00",
     balancePOL: "0.00",
     activePositions: [],
     executions: [], 
     pendingSignals: [], 
-    // 👇 NUEVA ARQUITECTURA BIFURCADA
-    standardConfig: {
-        predictionThreshold: 0.65,
-        edgeThreshold: 0.05,
-        takeProfitThreshold: 20,
-        stopLossThreshold: -20,
-        maxCopyPercentOfBalance: 8,
-        microBetAmount: 5.0
+
+    // 🔥 NUEVA ARQUITECTURA BIFURCADA BIDIMENSIONAL
+    aiConfig: {
+        standard: { predictionThreshold: 0.70, edgeThreshold: 0.08, takeProfitThreshold: 40, stopLossThreshold: -40, microBetAmount: 5 },
+        volatile: { predictionThreshold: 0.85, edgeThreshold: 0.12, takeProfitThreshold: 25, stopLossThreshold: -30, microBetAmount: 0.5 }
     },
-    volatileConfig: {
-        predictionThreshold: 0.85,
-        edgeThreshold: 0.12,
-        takeProfitThreshold: 25,
-        stopLossThreshold: -30,
-        maxCopyPercentOfBalance: 3,
-        microBetAmount: 0.5
+    whaleConfig: {
+        standard: { takeProfitThreshold: 90, stopLossThreshold: -90, maxCopyPercentOfBalance: 8, maxCopySize: 50 },
+        volatile: { takeProfitThreshold: 50, stopLossThreshold: -50, maxCopyPercentOfBalance: 2, maxCopySize: 10 }
     },
 
     autoTradeEnabled: true,
+    copyTradingEnabled: false,
+    useAutoWhales: true,
     isPanicStopped: false,
-    predictionThreshold: 0.70,
-    edgeThreshold: 0.09,
-    takeProfitThreshold: 18,
-    stopLossThreshold: -15,
-    autoTradeEnabled: true,
     suggestedInversion: 0, 
     potentialROI: 0,
-    copyTradingEnabled: false,
-    maxCopySize: 50,
-    maxActiveSportsMarkets: 2,                    // ← Máximo shares a copiar por trade
-    maxCopyPercentOfBalance: 8,         // ← Máximo % del balance por copia (8%)
-    dailyLossLimit: 15,                   // ← Nuevo: Stop-loss diario en %
-    dailyPnL: 0,                          // ← Nuevo: PnL acumulado del día
-    dailyStartBalance: 0,                 // ← Nuevo: Balance al inicio del día
-    autoRedeemEnabled: true,              // ← Nuevo: Auto-redeem activado
-    autoSelectedWhales: [],        // ← wallets que el bot elige automáticamente
-    maxWhalesToCopy: 5,            // cuántas ballenas copiar (1 a 5)
+    maxActiveSportsMarkets: 2,
+    dailyLossLimit: 15,                   
+    dailyPnL: 0,                          
+    dailyStartBalance: 0,                 
+    autoRedeemEnabled: true,              
+    autoSelectedWhales: [],        
+    maxWhalesToCopy: 5,            
     lastWhaleSelection: null,
     copiedTrades: [],
     copiedPositions: [],
@@ -176,34 +163,28 @@ let botStatus = {
         sports: false,
         pop: false,
     },
-    customWhales: [],           // ← [{ address: "0x...", nickname: "...", enabled: true }]
-    useAutoWhales: true,        // ← Toggle global para ballenas automáticas
+    customWhales: []
 };
 
 
 // ==========================================
-// 🧠 MOTOR DE MEMORIA PERSISTENTE (V2 BLINDADA)
+// 🧠 MOTOR DE MEMORIA PERSISTENTE (V3 LIMPIA)
 // ==========================================
 const CONFIG_FILE = path.join(process.cwd(), 'bot_config.json');
 
-// Función para GUARDAR la configuración en el disco duro
+// Función para GUARDAR la configuración
 function saveConfigToDisk(origen = "Sistema") {
     try {
         const configToSave = {
-            standardConfig: botStatus.standardConfig,
-            volatileConfig: botStatus.volatileConfig,
+            aiConfig: botStatus.aiConfig,
+            whaleConfig: botStatus.whaleConfig,
             marketFilters: botStatus.marketFilters,
-            
-            // 🔥 MOTORES PRINCIPALES (Toggles)
             autoTradeEnabled: botStatus.autoTradeEnabled,
             copyTradingEnabled: botStatus.copyTradingEnabled,
-            
-            // 🔥 SETTINGS ADICIONALES
-            maxCopySize: botStatus.maxCopySize,
             maxWhalesToCopy: botStatus.maxWhalesToCopy,
             maxActiveSportsMarkets: botStatus.maxActiveSportsMarkets,
-            customWhales: botStatus.customWhales,
             useAutoWhales: botStatus.useAutoWhales,
+            customWhales: botStatus.customWhales
         };
         fs.writeFileSync(CONFIG_FILE, JSON.stringify(configToSave, null, 2), 'utf8');
         console.log(`💾 Configuración guardada en el disco duro. (Origen: ${origen})`);
@@ -212,36 +193,29 @@ function saveConfigToDisk(origen = "Sistema") {
     }
 }
 
-// Función para CARGAR la configuración al reiniciar el bot
+// Función para CARGAR la configuración
 function loadConfigFromDisk() {
     try {
         if (fs.existsSync(CONFIG_FILE)) {
             const data = fs.readFileSync(CONFIG_FILE, 'utf8');
             const savedConfig = JSON.parse(data);
 
-            // 🛡️ FIX QUANT: Fusión Profunda (Spread Operator)
-            if (savedConfig.standardConfig) {
-                botStatus.standardConfig = { ...botStatus.standardConfig, ...savedConfig.standardConfig };
-            }
-            if (savedConfig.volatileConfig) {
-                botStatus.volatileConfig = { ...botStatus.volatileConfig, ...savedConfig.volatileConfig };
-            }
-            if (savedConfig.marketFilters) {
-                botStatus.marketFilters = { ...botStatus.marketFilters, ...savedConfig.marketFilters };
-            }
+            // Carga directa y limpia de los nuevos objetos
+            if (savedConfig.aiConfig) botStatus.aiConfig = savedConfig.aiConfig;
+            if (savedConfig.whaleConfig) botStatus.whaleConfig = savedConfig.whaleConfig;
+            if (savedConfig.marketFilters) botStatus.marketFilters = savedConfig.marketFilters;
             
-            // 🔄 Restauramos el estado de los Motores y Variables Sueltas
+            // Carga de variables sueltas
             if (savedConfig.autoTradeEnabled !== undefined) botStatus.autoTradeEnabled = savedConfig.autoTradeEnabled;
             if (savedConfig.copyTradingEnabled !== undefined) botStatus.copyTradingEnabled = savedConfig.copyTradingEnabled;
-            if (savedConfig.maxCopySize !== undefined) botStatus.maxCopySize = savedConfig.maxCopySize;
             if (savedConfig.maxWhalesToCopy !== undefined) botStatus.maxWhalesToCopy = savedConfig.maxWhalesToCopy;
             if (savedConfig.maxActiveSportsMarkets !== undefined) botStatus.maxActiveSportsMarkets = savedConfig.maxActiveSportsMarkets;
-            if (savedConfig.customWhales !== undefined) botStatus.customWhales = savedConfig.customWhales;
             if (savedConfig.useAutoWhales !== undefined) botStatus.useAutoWhales = savedConfig.useAutoWhales;
+            if (savedConfig.customWhales !== undefined) botStatus.customWhales = savedConfig.customWhales;
 
-            console.log("📂 Configuración de motores y perfiles restaurada con éxito desde JSON.");
+            console.log("📂 Configuración cargada con éxito desde JSON limpio.");
         } else {
-            console.log("📝 No hay archivo de configuración previo. Usando valores por defecto.");
+            console.log("📝 No hay archivo de configuración. Se creará uno nuevo.");
             saveConfigToDisk("Inicialización"); 
         }
     } catch (err) {
@@ -249,7 +223,6 @@ function loadConfigFromDisk() {
     }
 }
 
-// 🔥 DISPARAMOS LA LECTURA INMEDIATAMENTE AL PRENDER EL BOT
 loadConfigFromDisk();
 
 // --- INICIALIZACIONES EXTERNAS ---
@@ -1103,6 +1076,7 @@ async function autoSelectTopWhales() {
 
 // ==========================================
 // CHECK AND COPY WHALE TRADES - VERSIÓN FINAL CORREGIDA (Auto + Custom)
+// ==========================================
 let isScanningWhales = false;
 
 async function checkAndCopyWhaleTrades() {
@@ -1110,31 +1084,25 @@ async function checkAndCopyWhaleTrades() {
 
     const hasActiveCopiedPositions = (botStatus.copiedPositions || []).length > 0;
 
-    // Solo continuar si hay algo activo (Auto o Custom)
     if (!botStatus.useAutoWhales && !botStatus.copyTradingEnabled && !hasActiveCopiedPositions) return;
 
     isScanningWhales = true;
 
     try {
-        // 1. Ballenas Automáticas (solo si el toggle "Copy Trading Auto" está encendido)
         let allWhales = [];
 
         if (botStatus.useAutoWhales) {
-            // Forzar selección automática si no hay ballenas o ya pasaron 10 minutos
             if (!botStatus.autoSelectedWhales || botStatus.autoSelectedWhales.length === 0 ||
                 !botStatus.lastWhaleSelection || 
                 (Date.now() - new Date(botStatus.lastWhaleSelection).getTime()) > 10 * 60 * 1000) {
-                
                 await autoSelectTopWhales();
             }
             allWhales = [...(botStatus.autoSelectedWhales || [])];
         }
 
-        // 2. Ballenas Custom (solo las que el usuario habilitó)
         const enabledCustom = (botStatus.customWhales || []).filter(w => w.enabled === true);
         allWhales = allWhales.concat(enabledCustom);
 
-        // Evitar duplicados por address
         const seen = new Set();
         allWhales = allWhales.filter(whale => {
             const addr = whale.address.toLowerCase();
@@ -1177,7 +1145,6 @@ async function checkAndCopyWhaleTrades() {
 
                     const title = trade.title || "Mercado desconocido";
 
-                    // Filtros de calidad
                     if (!tokenId || whaleSize < 500) continue;
                     if (Date.now() - timestamp > 15 * 60 * 1000) continue;
 
@@ -1186,7 +1153,6 @@ async function checkAndCopyWhaleTrades() {
                         if (botStatus.isPanicStopped) continue;
                         if (!isMarketAllowed(title)) continue;
 
-                        // Límite de deportes
                         if (botStatus.maxActiveSportsMarkets > 0 && botStatus.copiedPositions.length >= botStatus.maxActiveSportsMarkets) continue;
 
                         const alreadyHavePosition = botStatus.activePositions.some(p => p.tokenId === tokenId);
@@ -1195,10 +1161,17 @@ async function checkAndCopyWhaleTrades() {
 
                         if (alreadyHavePosition || alreadyCopied || alreadyPending) continue;
 
-                        const { config: riskConfig } = getRiskProfile(title);
+                        // 🛡️ FIX QUANT 2: Le decimos al motor que SÍ es una ballena (true)
+                        const { config: riskConfig } = getRiskProfile(title, true);
                         const currentBalance = parseFloat(botStatus.clobOnlyUSDC || 0);
 
-                        let montoInversion = riskConfig.microBetAmount || 0.50;
+                        // 🛡️ FIX QUANT 3: Lógica matemática restaurada para el límite de capital
+                        const maxPct = riskConfig.maxCopyPercentOfBalance || 8; 
+                        const maxAllowedPercent = currentBalance * (maxPct / 100);
+                        
+                        let montoInversion = Math.min(riskConfig.maxCopySize || 50, maxAllowedPercent);
+                        if (montoInversion < 1) montoInversion = 1;
+
                         if (currentBalance < montoInversion) continue;
 
                         let limitPrice = price * 1.04;
@@ -1299,34 +1272,19 @@ function isMarketAllowed(title = "", slug = "") {
     return true; 
 }
 
-// ⚖️ ESCÁNER DE PERFIL DE RIESGO
-/* function getRiskProfile(marketName = "", category = "") {
-    const lower = (marketName + " " + category).toLowerCase();
-
-    // Mercados volátiles (deportes, pop, temperature, vs, match, etc.)
-    if (lower.includes("vs") || 
-        lower.includes("spread") || 
-        lower.includes("o/u") || 
-        lower.includes("temperature") || 
-        lower.includes("temperatura") || 
-        lower.includes("win") || 
-        lower.includes("match") || 
-        lower.includes("game") || 
-        lower.includes("set") ||
-        botStatus.marketFilters.sports === true) {   // si tienes filtro sports activo
-
-        return { 
-            config: botStatus.volatileConfig, 
-            profileType: 'VOLATIL' 
-        };
-    }
-
-    // Por defecto: estándar (crypto, politics, business)
-    return { 
-        config: botStatus.standardConfig, 
-        profileType: 'ESTANDAR' 
+// === NUEVO MOTOR DE PERFILES DE RIESGO ===
+function getRiskProfile(marketName = "", isWhale = false) {
+    const text = marketName.toLowerCase();
+    
+    // Grupo 2 (Volátil): Deportes y Pop
+    const isVolatile = /nba|nfl|mlb|nhl|soccer|tennis|f1|ufc|league|champions|madrid|lakers|sports|pop|movie|oscar|grammy|temperature|temperatura/i.test(text);
+    
+    const profileType = isVolatile ? 'volatile' : 'standard';
+    return {
+        config: isWhale ? botStatus.whaleConfig[profileType] : botStatus.aiConfig[profileType],
+        profileType: profileType
     };
-} */
+}
 
 // ==========================================
 // 10. CICLO PRINCIPAL (EL CEREBRO DEL BOT)
@@ -1353,19 +1311,15 @@ async function runBot() {
         await updateRealBalances();
 
         // 2. Copy-Trading (Auto + Custom)
-        // Ahora usamos useAutoWhales para las ballenas automáticas y copyTradingEnabled para las custom
         if (botStatus.useAutoWhales || botStatus.copyTradingEnabled || 
             (botStatus.copiedPositions && botStatus.copiedPositions.length > 0)) {
             
-            // Solo seleccionamos nuevas ballenas automáticas si el toggle Auto está activo
             if (botStatus.useAutoWhales) {
                 if (!botStatus.lastWhaleSelection || 
                     (Date.now() - new Date(botStatus.lastWhaleSelection).getTime()) > 10 * 60 * 1000) {
                     await autoSelectTopWhales();
                 }
             }
-            
-            // Siempre revisamos trades (para poder copiar compras y ventas)
             await checkAndCopyWhaleTrades();
         }
 
@@ -1405,7 +1359,6 @@ async function runBot() {
         } else {
             console.log(`\n🤖 Analizando con la Trinidad (Claude, Gemini, Grok): ${marketTitle.substring(0,40)}...`);
             
-            // ⚡ Promise.all ejecuta los 3 motores al mismo tiempo
             const [claudeResult, geminiResult, grokResult] = await Promise.all([
                 analyzeMarketWithClaude(marketTitle, newsString),
                 analyzeMarketWithGemini(marketTitle, newsString),
@@ -1497,28 +1450,19 @@ async function runBot() {
         const alreadyClosed = closedPositionsCache.has(targetTokenId);
         const alreadyPending = pendingOrdersCache.has(targetTokenId); 
         
-        const { config: profile, profileType } = getRiskProfile(marketTitle, marketItem.category || "");
+        // 🛡️ FIX QUANT 1: Detectamos correctamente a la IA
+        const { config: profile, profileType } = getRiskProfile(marketTitle, false);
 
         const activeSportsCount = botStatus.activePositions.filter(p => p.category === 'SPORTS').length;
         const sportsLimit = botStatus.maxActiveSportsMarkets;
         const isSportsLimitReached = (marketItem.category === 'SPORTS' && sportsLimit > 0 && activeSportsCount >= sportsLimit);
-
-        // 🔥 Detectamos si el bot hizo el cálculo inverso apostando al "NO"
         const isFlippedToNo = (targetSideLabel === "NO");
 
         const isStrongSignal = 
             (!alreadyInvested && !alreadyClosed && !alreadyPending && !isSportsLimitReached) && (
-                // 1. Caso Normal: Compra fuerte con Edge fijo
                 (finalAnalysis.recommendation === "STRONG_BUY" && edge > 0.105) ||
-                
-                // 2. Caso Normal: Compra estándar usando los parámetros de tu Dashboard
                 (finalAnalysis.recommendation === "BUY" && edge >= profile.edgeThreshold && targetProb >= profile.predictionThreshold) ||
-                
-                // 3. 🔥 NUEVO FIX QUANT (Candado Inverso): Si el sistema apuntó al "NO", 
-                // disparamos basados PURAMENTE en tu Dashboard, ignorando si la IA dijo "SELL".
                 (isFlippedToNo && targetProb >= profile.predictionThreshold && edge >= profile.edgeThreshold) ||
-                
-                // 4. Caso Extremo: La IA detecta una oportunidad urgente de último minuto
                 (finalAnalysis.urgency >= 9 && edge >= Math.max(0.09, profile.edgeThreshold * 0.85))
             );
 
@@ -1593,28 +1537,6 @@ async function runBot() {
     }
 }
 
-
-// === FUNCIÓN AUXILIAR ===
-function getRiskProfile(marketName = "", category = "") {
-    const text = (marketName + " " + (category || "")).toLowerCase();
-
-    // Mercados claramente volátiles
-    const isVolatileMarket = /vs|spread|o\/u|temperature|temperatura|win on|match|game|set|inning|quarter|half/i.test(text);
-
-    // 🔥 FIX: Obligamos a que cualquier mercado con la etiqueta SPORTS o POP sea VOLÁTIL
-    if (isVolatileMarket || category === 'SPORTS' || category === 'POP') {
-        return { 
-            config: botStatus.volatileConfig, 
-            profileType: 'VOLATIL' 
-        };
-    }
-
-    return { 
-        config: botStatus.standardConfig, 
-        profileType: 'ESTANDAR' 
-    };
-}
-
 // === AUTO SELL MANAGER MEJORADO ===
 async function autoSellManager() {
     for (const pos of botStatus.activePositions) {
@@ -1623,8 +1545,9 @@ async function autoSellManager() {
         const profit = pos.percentPnl || 0;
         const marketNameShort = (pos.marketName || "Mercado desconocido").substring(0, 45);
 
-        // Obtenemos la configuración según el tipo de mercado
-        const { config: riskConfig, profileType } = getRiskProfile(pos.marketName);
+        // 👇 DETECTAMOS EL ORIGEN (IA o BALLENA) Y SU PERFIL
+        const isWhaleTrade = botStatus.copiedPositions.some(cp => cp.tokenId === pos.tokenId);
+        const { config: riskConfig, profileType } = getRiskProfile(pos.marketName, isWhaleTrade);
 
         // ====================== TAKE PROFIT ======================
         if (profit >= riskConfig.takeProfitThreshold) {
@@ -1906,74 +1829,45 @@ app.get('/api/status', (req, res) => {
     });
 });
 
-app.post('/api/settings/threshold', async (req, res) => {
-    const newThreshold = parseFloat(req.body.threshold);
-    if (!isNaN(newThreshold)) {
-        botStatus.predictionThreshold = newThreshold;
-        console.log(`⚙️ Nuevo umbral configurado: ${newThreshold}`);
-        res.json({ success: true, current: botStatus.predictionThreshold });
-    } else {
-        res.status(400).json({ error: "Valor inválido" });
+// 🔥 ENDPOINT MAESTRO DE RIESGO BIDIMENSIONAL
+app.post('/api/settings/risk', (req, res) => {
+    const { source, profile, settings } = req.body;
+    
+    if (source === 'ai') {
+        botStatus.aiConfig[profile] = { ...botStatus.aiConfig[profile], ...settings };
+    } else if (source === 'whale') {
+        botStatus.whaleConfig[profile] = { ...botStatus.whaleConfig[profile], ...settings };
     }
+    
+    saveConfigToDisk("API Riesgo");
+    console.log(`⚖️ Gestión de Riesgo Actualizada [${source.toUpperCase()} - ${profile.toUpperCase()}]`);
+    res.json({ success: true, aiConfig: botStatus.aiConfig, whaleConfig: botStatus.whaleConfig });
 });
 
-// 2. Recibe la orden de Riesgo y AutoTrade desde la interfaz Vue
+// 2. Recibe la orden de Encender/Apagar el AutoTrade
 app.post('/api/settings/autotrade', (req, res) => {
-    const { enabled, amount, profile, predictionThreshold, edgeThreshold, takeProfitThreshold, stopLossThreshold, maxCopyPercentOfBalance } = req.body;
-
+    const { enabled } = req.body;
     if (enabled !== undefined) botStatus.autoTradeEnabled = !!enabled;
-    if (amount !== undefined) botStatus.microBetAmount = parseFloat(amount);
-
-    if (profile === 'ESTANDAR') {
-        if (predictionThreshold !== undefined) botStatus.standardConfig.predictionThreshold = parseFloat(predictionThreshold);
-        if (edgeThreshold !== undefined) botStatus.standardConfig.edgeThreshold = parseFloat(edgeThreshold);
-        if (takeProfitThreshold !== undefined) botStatus.standardConfig.takeProfitThreshold = parseFloat(takeProfitThreshold);
-        if (stopLossThreshold !== undefined) botStatus.standardConfig.stopLossThreshold = parseFloat(stopLossThreshold);
-        if (maxCopyPercentOfBalance !== undefined) botStatus.standardConfig.maxCopyPercentOfBalance = parseFloat(maxCopyPercentOfBalance);
-    } 
-    else if (profile === 'VOLATIL') {
-        if (predictionThreshold !== undefined) botStatus.volatileConfig.predictionThreshold = parseFloat(predictionThreshold);
-        if (edgeThreshold !== undefined) botStatus.volatileConfig.edgeThreshold = parseFloat(edgeThreshold);
-        if (takeProfitThreshold !== undefined) botStatus.volatileConfig.takeProfitThreshold = parseFloat(takeProfitThreshold);
-        if (stopLossThreshold !== undefined) botStatus.volatileConfig.stopLossThreshold = parseFloat(stopLossThreshold);
-        if (maxCopyPercentOfBalance !== undefined) botStatus.volatileConfig.maxCopyPercentOfBalance = parseFloat(maxCopyPercentOfBalance);
-    }
-
-    saveConfigToDisk(); // 💾 AUTOGUARDADO
-
-    console.log(`⚖️ Autotrade / Riesgo actualizado y guardado [Perfil: ${profile || 'GENERAL'}]`);
-    res.json({ success: true, ...botStatus });
+    
+    saveConfigToDisk("API Autotrade Toggle");
+    res.json({ success: true, autoTradeEnabled: botStatus.autoTradeEnabled });
 });
 
-// 3. Toggle Copy-Trading + filtros
+// 3. Toggle Copy-Trading + Top Whales
 app.post('/api/settings/copytrading', (req, res) => {
-    const { enabled, maxCopySize, maxWhalesToCopy, profile, maxCopyPercent } = req.body;
+    const { enabled, maxWhalesToCopy } = req.body;
     
     if (enabled !== undefined) botStatus.copyTradingEnabled = !!enabled;
-    if (maxCopySize !== undefined) botStatus.maxCopySize = parseFloat(maxCopySize) || 50;
     
     if (maxWhalesToCopy !== undefined) {
-        botStatus.maxWhalesToCopy = parseInt(maxWhalesToCopy) || 10;
-        botStatus.lastWhaleSelection = null; 
-    }
-
-    // Guardamos en el perfil correcto
-    if (profile === 'ESTANDAR' && maxCopyPercent !== undefined) {
-        botStatus.standardConfig.maxCopyPercentOfBalance = parseFloat(maxCopyPercent);
-    } else if (profile === 'VOLATIL' && maxCopyPercent !== undefined) {
-        botStatus.volatileConfig.maxCopyPercentOfBalance = parseFloat(maxCopyPercent);
+        botStatus.maxWhalesToCopy = parseInt(maxWhalesToCopy) || 5;
+        botStatus.lastWhaleSelection = null; // Forzamos a que busque nuevas ballenas
     }
     
-    saveConfigToDisk(); // 💾 AUTOGUARDADO
-    
-    console.log(`⚙️ Copy-Trading Actualizado y Guardado.`);
-    res.json({ 
-        success: true, 
-        copyTradingEnabled: botStatus.copyTradingEnabled,
-        standardConfig: botStatus.standardConfig,
-        volatileConfig: botStatus.volatileConfig
-    });
+    saveConfigToDisk("API CopyTrading Toggle");
+    res.json({ success: true, copyTradingEnabled: botStatus.copyTradingEnabled });
 });
+
 
 app.post('/api/settings/filters', (req, res) => {
     botStatus.marketFilters = { ...botStatus.marketFilters, ...req.body };
@@ -2358,12 +2252,6 @@ app.delete('/api/custom-whales', (req, res) => {
     botStatus.customWhales = botStatus.customWhales.filter(w => w.address.toLowerCase() !== address.toLowerCase());
     saveConfigToDisk("Custom Whale Eliminada");
     res.json({ success: true, customWhales: botStatus.customWhales });
-});
-
-app.post('/api/auto-whales/toggle', (req, res) => {
-    botStatus.useAutoWhales = !!req.body.enabled;
-    saveConfigToDisk("Auto Whales Toggle");
-    res.json({ success: true, useAutoWhales: botStatus.useAutoWhales });
 });
 
 // ==========================================

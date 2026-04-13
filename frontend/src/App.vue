@@ -47,26 +47,14 @@ const status = ref({
     totalCopied: 0, 
     successful: 0 
   },
-
-  // 3. Perfiles de Riesgo
-  activeProfileName: 'standardConfig', 
   
-  standardConfig: {
-    predictionThreshold: 0.65,      
-    edgeThreshold: 0.05,           
-    takeProfitThreshold: 20,
-    stopLossThreshold: -20,         
-    maxCopyPercentOfBalance: 8,
-    microBetAmount: 5.0
+  aiConfig: {
+    standard: { predictionThreshold: 0.70, edgeThreshold: 0.08, takeProfitThreshold: 40, stopLossThreshold: -40, microBetAmount: 5 },
+    volatile: { predictionThreshold: 0.85, edgeThreshold: 0.12, takeProfitThreshold: 25, stopLossThreshold: -30, microBetAmount: 0.5 }
   },
-
-  volatileConfig: {
-    predictionThreshold: 0.85,
-    edgeThreshold: 0.12,
-    takeProfitThreshold: 25,        
-    stopLossThreshold: -30,         
-    maxCopyPercentOfBalance: 2,     
-    microBetAmount: 0.5
+  whaleConfig: {
+    standard: { takeProfitThreshold: 90, stopLossThreshold: -90, maxCopyPercentOfBalance: 8, maxCopySize: 50 },
+    volatile: { takeProfitThreshold: 50, stopLossThreshold: -50, maxCopyPercentOfBalance: 2, maxCopySize: 10 }
   },
 
   // 4. Telemetría
@@ -78,6 +66,32 @@ const status = ref({
     cpuLoad: 0
   }
 });
+
+// --- CONTROL DE PESTAÑAS MÓVILES ---
+const mobileActiveTab = ref('main');
+
+// --- GESTIÓN DE RIESGO BIDIMENSIONAL ---
+const riskSource = ref('ai'); // 'ai' o 'whale'
+const riskCategory = ref('standard'); // 'standard' o 'volatile'
+
+const currentRiskSettings = computed(() => {
+  if (!status.value.aiConfig || !status.value.whaleConfig) return {};
+  return riskSource.value === 'ai' 
+    ? status.value.aiConfig[riskCategory.value] || {}
+    : status.value.whaleConfig[riskCategory.value] || {};
+});
+
+const updateRiskSettings = async () => {
+  try {
+    await axios.post(`${API_URL}/settings/risk`, {
+      source: riskSource.value,
+      profile: riskCategory.value,
+      settings: currentRiskSettings.value
+    });
+  } catch (error) {
+    console.error("Error actualizando riesgo", error);
+  }
+};
 
 // Arreglo maestro para forzar el orden visual de los filtros
 const filterOrder = ['crypto', 'politics', 'business', 'sports', 'pop'];
@@ -259,8 +273,8 @@ const updateAutoTrade = async () => {
   try {
     await axios.post(`${API_URL}/settings/autotrade`, {
       enabled: status.value.autoTradeEnabled,
-      // 🔥 FIX: Leemos el monto dinámicamente según el perfil que esté activo
-      amount: status.value[status.value.activeProfileName].microBetAmount
+      // Usamos el microBetAmount de la IA (Standard) como valor global del switch
+      amount: status.value.aiConfig?.standard?.microBetAmount || 1
     });
   } catch (error) {
     console.error("❌ Error actualizando AutoTrade");
@@ -287,17 +301,20 @@ const executeManualTrade = async (signal) => {
   signal.loading = true;
   
   try {
+    // 🔥 FIX: Detectamos la bala correcta según la categoría de la señal
+    const isVolatile = signal.category === 'SPORTS' || signal.category === 'POP';
+    const profileKey = isVolatile ? 'volatile' : 'standard';
+    const betAmount = status.value.aiConfig?.[profileKey]?.microBetAmount || 1;
+
     const res = await axios.post(`${API_URL}/execute-trade`, {
       market: signal.marketName,
-      // 🔥 FIX: Dispara usando el monto de la pestaña en la que estás parado
-      amount: status.value[status.value.activeProfileName].microBetAmount,
+      amount: betAmount, 
       conditionId: signal.conditionId,
       tokenId: signal.tokenId,
       marketPrice: signal.marketPrice 
     });
     
     if (res.data.success) {
-      // Limpiar señal localmente tras éxito
       status.value.pendingSignals = status.value.pendingSignals.filter(s => s.id !== signal.id);
       await fetchStatus(); 
     }
@@ -444,30 +461,6 @@ const triggerRescue = async () => {
   }
 };
 
-// --- ⚖️ FUNCIONES DE RIESGO BIFURCADO ---
-const updateRiskSettings = async () => {
-  try {
-    const profileName = status.value.activeProfileName;
-    const config = status.value[profileName];
-    const profileStr = profileName === 'standardConfig' ? 'ESTANDAR' : 'VOLATIL';
-
-    await axios.post(`${API_URL}/settings/autotrade`, { 
-      profile: profileStr,
-      predictionThreshold: config.predictionThreshold,
-      edgeThreshold: config.edgeThreshold,
-      takeProfitThreshold: config.takeProfitThreshold,
-      stopLossThreshold: config.stopLossThreshold,
-      // Opcional: también puedes enviar maxCopyPercent si quieres
-      maxCopyPercentOfBalance: config.maxCopyPercentOfBalance,
-      microBetAmount: config.microBetAmount
-    });
-
-    console.log(`✅ Configuración guardada para perfil ${profileStr}`);
-  } catch (error) {
-    console.error("❌ Error al guardar configuración de riesgo:", error.message);
-  }
-};
-
 // --- 🚨 BOTÓN DE FRENO DE EMERGENCIA / DESBLOQUEO ---
 const triggerPanicStop = async () => {
   try {
@@ -496,38 +489,14 @@ const triggerPanicStop = async () => {
   }
 };
 
-const updateCopySettings = async () => {
-  try {
-    const profileStr = status.value.activeProfileName === 'standardConfig' ? 'ESTANDAR' : 'VOLATIL';
-    const config = status.value[status.value.activeProfileName];
-
-    await axios.post(`${API_URL}/settings/copytrading`, { 
-      profile: profileStr,
-      maxCopySize: status.value.maxCopySize,
-      maxCopyPercent: config.maxCopyPercentOfBalance
-    });
-  } catch (error) {
-    console.error('Error updating copy settings:', error);
-  }
-};
-
 const updateCopyTrading = async () => {
   try {
-    const currentProfile = status.value[status.value.activeProfileName];
-
     await axios.post(`${API_URL}/settings/copytrading`, {
       enabled: status.value.copyTradingEnabled,
-      maxCopySize: status.value.maxCopySize || 50,
-      maxCopyPercent: currentProfile.maxCopyPercentOfBalance || 8,   // ← Corregido
-      maxWhalesToCopy: status.value.maxWhalesToCopy || 5,
-      
-      // Enviamos el perfil actual para que el backend sepa qué modo de riesgo usar
-      profile: status.value.activeProfileName === 'standardConfig' ? 'ESTANDAR' : 'VOLATIL'
+      maxWhalesToCopy: status.value.maxWhalesToCopy || 5
     });
-
-    console.log(`✅ Copy Trading actualizado | Perfil: ${status.value.activeProfileName} | Max %: ${currentProfile.maxCopyPercentOfBalance}%`);
   } catch (error) {
-    console.error("❌ Error actualizando Copy Trading settings:", error.message);
+    console.error("❌ Error actualizando Copy Trading", error);
   }
 };
 
@@ -590,18 +559,6 @@ const copyLogsToClipboard = async () => {
     // Si tienes SweetAlert2 importado como Swal, puedes descomentar la siguiente línea:
     // Swal.fire('Error', 'No se pudo copiar el log', 'error');
   }
-};
-
-const switchProfile = async (profileName) => {
-  // Solo cambiamos si es diferente
-  if (status.value.activeProfileName === profileName) return;
-
-  status.value.activeProfileName = profileName;
-
-  console.log(`🔄 Editando perfil: ${profileName === 'standardConfig' ? 'ESTÁNDAR' : 'VOLÁTIL'}`);
-
-  // Guardamos inmediatamente los cambios del perfil que acabamos de dejar
-  await updateRiskSettings();
 };
 
 // --- COMPUTED PROPERTIES ---
@@ -732,10 +689,26 @@ onUnmounted(() => {
       </div>
     </header>
 
-    <main class="max-w-[1600px] mx-auto grid grid-cols-12 gap-8">
+    <main class="max-w-[1600px] mx-auto grid grid-cols-12 gap-8 relative px-4 xl:px-8 mt-8">
       
-      <div class="col-span-12 xl:col-span-8 space-y-8">
+      <div class="col-span-12 xl:hidden flex bg-[#111114]/95 p-1.5 rounded-2xl border border-zinc-800/80 sticky top-4 z-50 backdrop-blur-xl shadow-2xl mb-4">
+        <button 
+          @click="mobileActiveTab = 'main'"
+          :class="mobileActiveTab === 'main' ? 'bg-[#D4AF37]/15 text-[#D4AF37] border border-[#D4AF37]/30 shadow-[0_0_15px_rgba(212,175,55,0.1)]' : 'text-zinc-500 hover:text-zinc-300 border border-transparent'"
+          class="flex-1 py-3.5 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all duration-300 flex items-center justify-center gap-2">
+          <Activity :size="16" /> Operaciones
+        </button>
+        <button 
+          @click="mobileActiveTab = 'system'"
+          :class="mobileActiveTab === 'system' ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 shadow-[0_0_15px_rgba(16,185,129,0.1)]' : 'text-zinc-500 hover:text-zinc-300 border border-transparent'"
+          class="flex-1 py-3.5 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all duration-300 flex items-center justify-center gap-2">
+          <Server :size="16" /> Sistema
+        </button>
+      </div>
+
+      <div class="col-span-12 xl:col-span-8 space-y-8" :class="mobileActiveTab === 'main' ? 'block' : 'hidden xl:block'">
         
+        <!-- ====================== ESTADO DE CUENTA SECTION ====================== -->
         <div class="bg-[#111114] border border-zinc-800/80 rounded-[2rem] p-6 lg:p-8 mb-8 transition-all duration-500 relative overflow-hidden shadow-lg hover:border-[#D4AF37]/30 group">
           <div class="absolute -top-32 -left-32 w-64 h-64 bg-[#D4AF37] rounded-full blur-[120px] opacity-5 pointer-events-none group-hover:opacity-10 transition-opacity duration-700"></div>
           
@@ -821,7 +794,7 @@ onUnmounted(() => {
           </div>
         </div>
 
-
+        <!-- ====================== POSICIONES EN VIVO SECTION ====================== -->
         <div class="bg-[#111114] border border-zinc-800/80 rounded-[2rem] p-6 lg:p-8 mb-8 transition-all duration-500 relative overflow-hidden shadow-lg hover:border-emerald-500/30 group">
           <div class="absolute -bottom-32 -right-32 w-64 h-64 bg-emerald-500 rounded-full blur-[120px] opacity-5 pointer-events-none group-hover:opacity-10 transition-opacity duration-700"></div>
 
@@ -906,6 +879,7 @@ onUnmounted(() => {
           </div>
         </div>
 
+        <!-- ====================== SEÑALES MULTI-AGENTE SECTION ====================== -->
         <div class="bg-[#111114] border-2 border-zinc-800 rounded-3xl p-8 mb-8">
           <div class="flex items-center justify-between mb-8 pb-4 border-b border-zinc-800/50">
             <h2 class="text-xl font-bold text-white flex items-center gap-3">
@@ -993,6 +967,7 @@ onUnmounted(() => {
           </div>
         </div>
 
+        <!-- ====================== OPERACIONES COPY TRADING WHALES SECTION ====================== -->
         <div class="bg-[#111114] border-2 border-purple-500/10 rounded-3xl p-8 mb-8">
           <div class="flex items-center justify-between mb-8 pb-4 border-b border-zinc-800/50">
             <h2 class="text-xl font-bold text-white flex items-center gap-3">
@@ -1049,6 +1024,7 @@ onUnmounted(() => {
           </div>
         </div>
 
+        <!-- ====================== HISTORIAL DE EJECUCIONES SECTION ====================== -->
         <div class="bg-[#1C1612] border border-[#3C2A21] rounded-2xl overflow-hidden shadow-lg">
           <div class="p-6 border-b border-[#3C2A21] flex justify-between items-center bg-[#251B15]">
             <h3 class="text-zinc-400 font-black text-xs tracking-widest uppercase flex items-center gap-2">
@@ -1119,6 +1095,7 @@ onUnmounted(() => {
           </div>
         </div>
 
+        <!-- ====================== RADAR DE INTELIGENCIA SECTION ====================== -->
         <div class="bg-[#111114] border-2 border-[#D4AF37]/20 rounded-3xl p-8 mb-8 shadow-[0_0_40px_rgba(212,175,55,0.05)] relative overflow-hidden group">
           <div class="absolute -right-10 -top-10 opacity-5 group-hover:opacity-10 transition-all duration-700 rotate-12">
             <Target :size="200" class="text-[#D4AF37]" />
@@ -1147,6 +1124,11 @@ onUnmounted(() => {
           </div>
         </div>
 
+      </div>
+
+      <div class="col-span-12 xl:col-span-4 h-full space-y-6" :class="mobileActiveTab === 'system' ? 'block' : 'hidden xl:block'">
+      
+        <!-- ====================== LIVE TERMINAL SECTION ====================== -->
         <div class="bg-[#0a0a0a] border border-[#D4AF37]/30 rounded-3xl p-5 shadow-2xl mt-8">
           <div class="flex justify-between items-center mb-4 border-b border-[#D4AF37]/20 pb-3">
             <div class="flex items-center gap-2">
@@ -1186,10 +1168,7 @@ onUnmounted(() => {
           </div>
         </div>
 
-      </div>
-
-      <div class="col-span-12 xl:col-span-4 h-full space-y-6">
-
+        <!-- ====================== TELEMETRIA DEL SISTEMA SECTION ====================== -->
         <div class="mb-6 bg-[#1C1612] border border-[#D4AF37]/20 rounded-[2rem] p-6 relative overflow-hidden group shadow-2xl">
           <div class="absolute -top-24 -right-24 w-48 h-48 bg-[#D4AF37] rounded-full blur-[80px] opacity-5 pointer-events-none"></div>
           
@@ -1248,125 +1227,75 @@ onUnmounted(() => {
           </div>
         </div>        
 
-        <div class="bg-[#111114] border border-zinc-800/80 rounded-[2rem] p-6 lg:p-8 transition-all duration-500 relative overflow-hidden group shadow-lg"
-             :class="status.activeProfileName === 'standardConfig' ? 'shadow-[0_0_50px_rgba(14,165,233,0.03)] hover:border-sky-500/30' : 'shadow-[0_0_50px_rgba(249,115,22,0.03)] hover:border-orange-500/30'">
+        <!-- ====================== GESTION DE RIESGO SECTION ====================== -->
+        <div class="bg-[#111114] border border-[#D4AF37]/30 rounded-[2rem] p-6 lg:p-8 transition-all shadow-2xl mb-8 relative overflow-hidden group">
+          <div class="absolute -right-20 -top-20 w-64 h-64 bg-[#D4AF37] rounded-full blur-[100px] opacity-5 pointer-events-none"></div>
           
-          <div class="absolute -top-32 -right-32 w-64 h-64 rounded-full blur-[100px] opacity-20 pointer-events-none transition-colors duration-700"
-               :class="status.activeProfileName === 'standardConfig' ? 'bg-sky-500' : 'bg-orange-500'"></div>
-
-          <div class="flex flex-col gap-5 mb-8 relative z-10">
-            <div class="flex items-center gap-4">
-              <div class="p-3.5 rounded-2xl border transition-colors duration-500 shadow-inner shrink-0"
-                   :class="status.activeProfileName === 'standardConfig' ? 'bg-sky-500/10 border-sky-500/20 text-sky-400' : 'bg-orange-500/10 border-orange-500/20 text-orange-400'">
-                <ShieldCheck :size="24" />
-              </div>
-              <div>
-                <h3 class="text-white font-black text-lg tracking-tight">Gestión de Riesgo</h3>
-                <p class="text-xs text-zinc-500 font-medium">Ajuste algorítmico por sector</p>
-              </div>
-            </div>
-
-            <div class="flex p-1.5 bg-[#09090b] rounded-xl border border-zinc-800/80 w-full shadow-inner">
-              <button 
-                @click="switchProfile('standardConfig')"
-                :class="status.activeProfileName === 'standardConfig' ? 'bg-sky-500/15 text-sky-400 border-sky-500/20 shadow-[0_0_15px_rgba(14,165,233,0.1)]' : 'text-zinc-500 border-transparent hover:text-zinc-300'"
-                class="flex-1 px-2 py-3 rounded-lg text-[10px] sm:text-[11px] font-black uppercase tracking-widest border transition-all duration-300 flex justify-center items-center">
-                  📘 Crypto / Política
-              </button>
-              <button 
-                @click="switchProfile('volatileConfig')"
-                :class="status.activeProfileName === 'volatileConfig' ? 'bg-orange-500/15 text-orange-400 border-orange-500/20 shadow-[0_0_15px_rgba(249,115,22,0.1)]' : 'text-zinc-500 border-transparent hover:text-zinc-300'"
-                class="flex-1 px-2 py-3 rounded-lg text-[10px] sm:text-[11px] font-black uppercase tracking-widest border transition-all duration-300 flex justify-center items-center">
-                  📙 Deportes / Pop
-              </button>
+          <div class="flex items-center gap-3 mb-6 pb-4 border-b border-zinc-800/80">
+            <div class="p-2.5 bg-[#D4AF37]/10 rounded-xl border border-[#D4AF37]/20"><ShieldCheck :size="22" class="text-[#D4AF37]" /></div>
+            <div>
+              <h3 class="text-white font-black text-lg tracking-tight">Gestión de Riesgo Avanzada</h3>
+              <p class="text-[10px] text-zinc-500 uppercase tracking-widest mt-0.5">Control separado por Origen y Categoría</p>
             </div>
           </div>
 
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-5 relative z-10">
+          <div class="flex gap-2 mb-4 bg-[#09090b] p-1.5 rounded-2xl border border-zinc-800/80">
+            <button @click="riskSource = 'ai'" :class="riskSource === 'ai' ? 'bg-[#D4AF37]/20 text-[#D4AF37] border-[#D4AF37]/30' : 'text-zinc-500 border-transparent'" class="flex-1 py-3 rounded-xl text-xs font-black uppercase tracking-widest border transition-all flex items-center justify-center gap-2">
+              <Cpu :size="16" /> Modelos de IA
+            </button>
+            <button @click="riskSource = 'whale'" :class="riskSource === 'whale' ? 'bg-purple-500/20 text-purple-400 border-purple-500/30' : 'text-zinc-500 border-transparent'" class="flex-1 py-3 rounded-xl text-xs font-black uppercase tracking-widest border transition-all flex items-center justify-center gap-2">
+              <Target :size="16" /> Copy Trading
+            </button>
+          </div>
 
-            <div class="flex flex-col p-5 rounded-2xl bg-[#161619] border border-zinc-800/60 hover:border-zinc-700/80 transition-colors">
-              <div class="flex justify-between items-center mb-4">
-                <label class="text-[11px] text-zinc-400 font-bold uppercase tracking-widest whitespace-nowrap">Tamaño de la Bala</label>
-                <span class="text-[9px] font-black px-2 py-1 rounded-md border shrink-0 whitespace-nowrap" :class="status.activeProfileName === 'standardConfig' ? 'text-sky-400 bg-sky-400/10 border-sky-400/20' : 'text-orange-400 bg-orange-400/10 border-orange-400/20'">USDC</span>
+          <div class="flex gap-2 mb-6">
+            <button @click="riskCategory = 'standard'" :class="riskCategory === 'standard' ? 'text-white border-zinc-600 bg-zinc-800' : 'text-zinc-500 border-zinc-800/50 bg-zinc-900/50'" class="flex-1 py-2 rounded-lg text-[10px] font-bold uppercase tracking-widest border transition-all">
+              📘 Estándar (Cripto/Pol)
+            </button>
+            <button @click="riskCategory = 'volatile'" :class="riskCategory === 'volatile' ? 'text-white border-zinc-600 bg-zinc-800' : 'text-zinc-500 border-zinc-800/50 bg-zinc-900/50'" class="flex-1 py-2 rounded-lg text-[10px] font-bold uppercase tracking-widest border transition-all">
+              🌶️ Volátil (Pop/Deportes)
+            </button>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 relative z-10">
+            <template v-if="riskSource === 'ai'">
+              <div class="flex flex-col gap-1 p-3 rounded-xl border border-zinc-800/60 bg-[#161619]">
+                <label class="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Balas por Disparo ($)</label>
+                <input type="number" min="0.5" step="0.5" v-model.number="currentRiskSettings.microBetAmount" @change="updateRiskSettings" class="bg-[#09090b] text-white px-3 py-2 rounded-lg border border-zinc-700 focus:border-[#D4AF37] outline-none font-mono text-sm" />
               </div>
-              
-              <div class="relative w-full">
-                <span class="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500 font-black pointer-events-none">$</span>
-                
-                <input 
-                  type="number" 
-                  min="0.5" 
-                  max="50" 
-                  step="0.5" 
-                  v-model.number="status[status.activeProfileName].microBetAmount" 
-                  @change="updateRiskSettings()" 
-                  class="w-full h-12 bg-[#09090b] border border-zinc-800/80 rounded-xl pl-8 pr-4 text-white font-mono text-lg font-bold outline-none transition-all placeholder-zinc-700 appearance-none" 
-                  :class="status.activeProfileName === 'standardConfig' ? 'focus:border-sky-500/50 focus:ring-1 focus:ring-sky-500/50' : 'focus:border-orange-500/50 focus:ring-1 focus:ring-orange-500/50'" 
-                />
+              <div class="flex flex-col gap-1 p-3 rounded-xl border border-zinc-800/60 bg-[#161619]">
+                <label class="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Certeza IA (0.1-1.0)</label>
+                <input type="number" min="0.1" max="1.0" step="0.05" v-model.number="currentRiskSettings.predictionThreshold" @change="updateRiskSettings" class="bg-[#09090b] text-white px-3 py-2 rounded-lg border border-zinc-700 focus:border-[#D4AF37] outline-none font-mono text-sm" />
               </div>
-              
-              <input 
-                type="range" 
-                min="0.5" 
-                max="50" 
-                step="0.5" 
-                v-model.number="status[status.activeProfileName].microBetAmount" 
-                @change="updateRiskSettings()" 
-                class="w-full h-1 mt-4 bg-zinc-800/80 rounded-lg appearance-none cursor-pointer" 
-                :class="status.activeProfileName === 'standardConfig' ? 'accent-sky-500' : 'accent-orange-500'" 
-              />
+              <div class="flex flex-col gap-1 p-3 rounded-xl border border-zinc-800/60 bg-[#161619]">
+                <label class="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Mínimo Edge (0.01-0.50)</label>
+                <input type="number" min="0.01" max="0.5" step="0.01" v-model.number="currentRiskSettings.edgeThreshold" @change="updateRiskSettings" class="bg-[#09090b] text-white px-3 py-2 rounded-lg border border-zinc-700 focus:border-[#D4AF37] outline-none font-mono text-sm" />
+              </div>
+            </template>
+
+            <template v-if="riskSource === 'whale'">
+              <div class="flex flex-col gap-1 p-3 rounded-xl border border-purple-500/20 bg-[#161619]">
+                <label class="text-[10px] font-bold text-purple-400 uppercase tracking-widest">Tamaño Max (Shares)</label>
+                <input type="number" min="1" step="1" v-model.number="currentRiskSettings.maxCopySize" @change="updateRiskSettings" class="bg-[#09090b] text-white px-3 py-2 rounded-lg border border-purple-900 focus:border-purple-500 outline-none font-mono text-sm" />
+              </div>
+              <div class="flex flex-col gap-1 p-3 rounded-xl border border-purple-500/20 bg-[#161619]">
+                <label class="text-[10px] font-bold text-purple-400 uppercase tracking-widest">Límite % de Balance</label>
+                <input type="number" min="1" max="25" step="1" v-model.number="currentRiskSettings.maxCopyPercentOfBalance" @change="updateRiskSettings" class="bg-[#09090b] text-white px-3 py-2 rounded-lg border border-purple-900 focus:border-purple-500 outline-none font-mono text-sm" />
+              </div>
+            </template>
+
+            <div class="flex flex-col gap-1 p-3 rounded-xl border border-zinc-800/60 bg-[#161619]">
+              <label class="text-[10px] font-bold text-emerald-500 uppercase tracking-widest">Take Profit (%)</label>
+              <input type="number" min="5" step="5" v-model.number="currentRiskSettings.takeProfitThreshold" @change="updateRiskSettings" class="bg-[#09090b] text-emerald-400 px-3 py-2 rounded-lg border border-emerald-900 focus:border-emerald-500 outline-none font-mono text-sm" />
             </div>
-
-            <div class="flex flex-col p-5 rounded-2xl bg-[#161619] border border-zinc-800/60 hover:border-zinc-700/80 transition-colors">
-              <div class="flex justify-between items-center mb-4">
-                <label class="text-[11px] text-zinc-400 font-bold uppercase tracking-widest whitespace-nowrap">Filtro Sens.</label>
-                <span class="text-[9px] font-black px-2 py-1 rounded-md border shrink-0 whitespace-nowrap" :class="status.activeProfileName === 'standardConfig' ? 'text-sky-400 bg-sky-400/10 border-sky-400/20' : 'text-orange-400 bg-orange-400/10 border-orange-400/20'">CERTEZA</span>
-              </div>
-              <div class="relative w-full">
-                <input type="number" min="10" max="95" step="1" :value="Math.round((status[status.activeProfileName].predictionThreshold || 0.70) * 100)" @change="status[status.activeProfileName].predictionThreshold = $event.target.value / 100; updateRiskSettings();" class="w-full h-12 bg-[#09090b] border border-zinc-800/80 rounded-xl pl-4 pr-10 text-white font-mono text-lg font-bold outline-none transition-all placeholder-zinc-700 appearance-none" :class="status.activeProfileName === 'standardConfig' ? 'focus:border-sky-500/50 focus:ring-1 focus:ring-sky-500/50' : 'focus:border-orange-500/50 focus:ring-1 focus:ring-orange-500/50'" />
-                <span class="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-500 font-black pointer-events-none">%</span>
-              </div>
-              <input type="range" min="10" max="95" step="1" :value="Math.round((status[status.activeProfileName].predictionThreshold || 0.70) * 100)" @input="status[status.activeProfileName].predictionThreshold = $event.target.value / 100" @change="updateRiskSettings()" class="w-full h-1 mt-4 bg-zinc-800/80 rounded-lg appearance-none cursor-pointer" :class="status.activeProfileName === 'standardConfig' ? 'accent-sky-500' : 'accent-orange-500'" />
-            </div>
-
-            <div class="flex flex-col p-5 rounded-2xl bg-[#161619] border border-zinc-800/60 hover:border-zinc-700/80 transition-colors">
-              <div class="flex justify-between items-center mb-4">
-                <label class="text-[11px] text-zinc-400 font-bold uppercase tracking-widest whitespace-nowrap">Mínimo Edge</label>
-                <span class="text-[9px] font-black px-2 py-1 rounded-md border shrink-0 whitespace-nowrap" :class="status.activeProfileName === 'standardConfig' ? 'text-sky-400 bg-sky-400/10 border-sky-400/20' : 'text-orange-400 bg-orange-400/10 border-orange-400/20'">VENTAJA</span>
-              </div>
-              <div class="relative w-full">
-                <input type="number" min="2" max="30" step="1" :value="Math.round((status[status.activeProfileName].edgeThreshold || 0.08) * 100)" @change="status[status.activeProfileName].edgeThreshold = $event.target.value / 100; updateRiskSettings();" class="w-full h-12 bg-[#09090b] border border-zinc-800/80 rounded-xl pl-4 pr-10 text-white font-mono text-lg font-bold outline-none transition-all placeholder-zinc-700 appearance-none" :class="status.activeProfileName === 'standardConfig' ? 'focus:border-sky-500/50 focus:ring-1 focus:ring-sky-500/50' : 'focus:border-orange-500/50 focus:ring-1 focus:ring-orange-500/50'" />
-                <span class="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-500 font-black pointer-events-none">%</span>
-              </div>
-              <input type="range" min="2" max="30" step="1" :value="Math.round((status[status.activeProfileName].edgeThreshold || 0.08) * 100)" @input="status[status.activeProfileName].edgeThreshold = $event.target.value / 100" @change="updateRiskSettings()" class="w-full h-1 mt-4 bg-zinc-800/80 rounded-lg appearance-none cursor-pointer" :class="status.activeProfileName === 'standardConfig' ? 'accent-sky-500' : 'accent-orange-500'" />
-            </div>
-
-            <div class="flex flex-col p-5 rounded-2xl bg-[#161619] border border-zinc-800/60 hover:border-zinc-700/80 transition-colors">
-              <div class="flex justify-between items-center mb-4">
-                <label class="text-[11px] text-zinc-400 font-bold uppercase tracking-widest whitespace-nowrap">Take Profit</label>
-                <span class="text-[9px] font-black px-2 py-1 rounded-md border text-emerald-400 bg-emerald-400/10 border-emerald-400/20 shrink-0 whitespace-nowrap">GANANCIAS</span>
-              </div>
-              <div class="relative w-full">
-                <input type="number" min="5" max="100" step="1" v-model.number="status[status.activeProfileName].takeProfitThreshold" @change="updateRiskSettings" class="w-full h-12 bg-[#09090b] border border-zinc-800/80 rounded-xl pl-4 pr-10 text-white font-mono text-lg font-bold outline-none transition-all placeholder-zinc-700 appearance-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50" />
-                <span class="absolute right-4 top-1/2 -translate-y-1/2 text-emerald-600 font-black pointer-events-none">%</span>
-              </div>
-              <input type="range" min="5" max="100" step="1" v-model.number="status[status.activeProfileName].takeProfitThreshold" @change="updateRiskSettings" class="w-full h-1 mt-4 bg-zinc-800/80 rounded-lg appearance-none cursor-pointer accent-emerald-500" />
-            </div>
-
-            <div class="flex flex-col p-5 rounded-2xl bg-[#161619] border border-zinc-800/60 hover:border-zinc-700/80 transition-colors">
-              <div class="flex justify-between items-center mb-4">
-                <label class="text-[11px] text-zinc-400 font-bold uppercase tracking-widest whitespace-nowrap">Stop Loss</label>
-                <span class="text-[9px] font-black px-2 py-1 rounded-md border text-rose-400 bg-rose-400/10 border-rose-400/20 shrink-0 whitespace-nowrap">PÉRDIDAS</span>
-              </div>
-              <div class="relative w-full">
-                <input type="number" min="-90" max="-5" step="1" v-model.number="status[status.activeProfileName].stopLossThreshold" @change="updateRiskSettings" class="w-full h-12 bg-[#09090b] border border-zinc-800/80 rounded-xl pl-4 pr-10 text-white font-mono text-lg font-bold outline-none transition-all placeholder-zinc-700 appearance-none focus:border-rose-500/50 focus:ring-1 focus:ring-rose-500/50" />
-                <span class="absolute right-4 top-1/2 -translate-y-1/2 text-rose-600 font-black pointer-events-none">%</span>
-              </div>
-              <input type="range" min="-90" max="-5" step="1" v-model.number="status[status.activeProfileName].stopLossThreshold" @change="updateRiskSettings" class="w-full h-1 mt-4 bg-zinc-800/80 rounded-lg appearance-none cursor-pointer accent-rose-500" />
+            <div class="flex flex-col gap-1 p-3 rounded-xl border border-zinc-800/60 bg-[#161619]">
+              <label class="text-[10px] font-bold text-rose-500 uppercase tracking-widest">Stop Loss (%)</label>
+              <input type="number" max="-5" step="5" v-model.number="currentRiskSettings.stopLossThreshold" @change="updateRiskSettings" class="bg-[#09090b] text-rose-400 px-3 py-2 rounded-lg border border-rose-900 focus:border-rose-500 outline-none font-mono text-sm" />
             </div>
           </div>
         </div>
 
+        <!-- ====================== FILTRO DE MERCADOS SECTION ====================== -->
         <div class="bg-[#111114] border border-zinc-800/80 rounded-[2rem] p-6 lg:p-8 transition-all duration-500 relative overflow-hidden group shadow-[0_0_50px_rgba(52,211,153,0.02)] hover:border-emerald-500/30">
           <div class="absolute -top-32 -right-32 w-64 h-64 bg-emerald-500 rounded-full blur-[100px] opacity-5 pointer-events-none transition-colors duration-700"></div>
           
@@ -1428,14 +1357,15 @@ onUnmounted(() => {
           </div>
 
         </div>
-
-        <div class="bg-[#111114] border border-zinc-800/80 rounded-[2rem] p-6 lg:p-8 transition-all duration-500 relative overflow-hidden group shadow-[0_0_50px_rgba(16,185,129,0.02)] hover:border-emerald-500/30">
+      
+        <!-- ====================== AUTOPILOT SNIPER SECTION ====================== -->
+        <div class="bg-[#111114] border border-zinc-800/80 rounded-[2rem] p-6 lg:p-8 transition-all duration-500 relative overflow-hidden group shadow-[0_0_50px_rgba(16,185,129,0.02)] hover:border-emerald-500/30 mb-8">
           <div class="absolute -top-32 -right-32 w-64 h-64 bg-emerald-500 rounded-full blur-[100px] opacity-10 pointer-events-none transition-colors duration-700"></div>
           <div class="absolute -right-6 -top-6 opacity-5 group-hover:opacity-10 transition-all duration-700 pointer-events-none">
             <Cpu :size="150" class="text-emerald-500" />
           </div>
           
-          <div class="flex items-center justify-between mb-6 relative z-10 pb-6 border-b border-zinc-800/80">
+          <div class="flex items-center justify-between relative z-10">
             <div class="flex items-center gap-4">
               <div class="p-3.5 rounded-2xl border transition-colors duration-500 shadow-inner shrink-0 bg-emerald-500/10 border-emerald-500/20 text-emerald-400">
                 <Cpu :size="24" />
@@ -1451,28 +1381,7 @@ onUnmounted(() => {
               <div class="w-11 h-6 bg-[#09090b] border border-zinc-700 rounded-full peer peer-focus:ring-2 peer-focus:ring-emerald-500/20 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-zinc-400 after:border-zinc-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500 peer-checked:border-emerald-500 group-hover/toggle:shadow-[0_0_15px_rgba(16,185,129,0.3)]"></div>
             </label>
           </div>
-
-          <div class="relative z-10 flex flex-col sm:flex-row items-center justify-between bg-[#161619] p-4 rounded-2xl border border-zinc-800/60 focus-within:border-emerald-500/50 transition-colors gap-4">
-            <div class="flex flex-col w-full">
-              <span class="text-[10px] text-zinc-500 font-black uppercase tracking-widest mb-2">Monto por Disparo</span>
-              <div class="flex items-center relative w-full">
-                <span class="absolute left-4 text-emerald-500 font-bold text-lg">$</span>
-                <input 
-                  type="number" v-model.number="status[status.activeProfileName].microBetAmount" @change="updateAutoTrade" min="0.5" step="0.5"
-                  class="w-full h-12 bg-[#09090b] border border-zinc-800/80 rounded-xl pl-9 pr-4 text-white font-mono text-xl font-bold outline-none transition-all placeholder-zinc-700 focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 disabled:opacity-50 disabled:cursor-not-allowed" 
-                  :disabled="!status.autoTradeEnabled"
-                />
-              </div>
-            </div>
-            <div class="text-[10px] font-black flex justify-center items-center gap-2 uppercase border px-4 py-3 rounded-xl transition-all w-full sm:w-auto mt-2 sm:mt-0" 
-                 :class="status.autoTradeEnabled ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30 shadow-[0_0_15px_rgba(16,185,129,0.1)]' : 'text-zinc-500 bg-[#09090b] border-zinc-800/80'">
-              <div v-if="status.autoTradeEnabled" class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
-              <span>{{ status.autoTradeEnabled ? 'ARMADO' : 'SEGURO' }}</span>
-            </div>
-          </div>
         </div>
-
-        <!-- ====================== COPY TRADING SECTION ====================== -->
 
         <!-- ====================== COPY TRADING AUTO ====================== -->
         <div class="bg-[#111114] border border-zinc-800/80 rounded-[2rem] p-6 lg:p-8 transition-all duration-500 relative overflow-hidden group shadow-[0_0_50px_rgba(16,185,129,0.02)] hover:border-emerald-500/30">
@@ -1501,46 +1410,18 @@ onUnmounted(() => {
           </div>
 
           <div v-if="status.useAutoWhales" class="relative z-10 space-y-6">
-            
-            <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
-              
-              <div class="flex flex-col p-5 rounded-2xl bg-[#161619] border border-zinc-800/60 hover:border-zinc-700/80 transition-colors">
-                <div class="flex justify-between items-start mb-4 gap-2">
-                  <label class="text-[10px] text-zinc-400 font-bold uppercase tracking-widest leading-snug">Tamaño Máximo</label>
-                  <span class="text-[9px] font-black px-2 py-1 rounded-md border text-emerald-400 bg-emerald-400/10 border-emerald-400/20 shrink-0">VOL.</span>
-                </div>
-                <div class="relative w-full mt-auto">
-                  <input type="number" min="10" max="200" step="1" v-model.number="status.maxCopySize" @change="updateCopyTrading" class="w-full h-12 bg-[#09090b] border border-zinc-800/80 rounded-xl pl-4 pr-12 text-white font-mono text-lg font-bold outline-none transition-all placeholder-zinc-700 appearance-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50" />
-                  <span class="absolute right-4 top-1/2 -translate-y-1/2 text-emerald-600/50 font-black pointer-events-none text-xs">SH</span>
-                </div>
-                <input type="range" min="10" max="200" step="1" v-model.number="status.maxCopySize" @change="updateCopyTrading" class="w-full h-1 mt-4 bg-zinc-800/80 rounded-lg appearance-none cursor-pointer accent-emerald-500" />
+            <div class="flex flex-col p-5 rounded-2xl bg-[#161619] border border-zinc-800/60 hover:border-zinc-700/80 transition-colors w-full sm:w-1/2 md:w-1/3">
+              <div class="flex justify-between items-start mb-4 gap-2">
+                <label class="text-[10px] text-zinc-400 font-bold uppercase tracking-widest leading-snug">Top Whales</label>
+                <span class="text-[9px] font-black px-2 py-1 rounded-md border text-emerald-400 bg-emerald-400/10 border-emerald-400/20 shrink-0">SEG.</span>
               </div>
-
-              <div class="flex flex-col p-5 rounded-2xl bg-[#161619] border border-zinc-800/60 hover:border-zinc-700/80 transition-colors">
-                <div class="flex justify-between items-start mb-4 gap-2">
-                  <label class="text-[10px] text-zinc-400 font-bold uppercase tracking-widest leading-snug">Límite Balance</label>
-                  <span class="text-[9px] font-black px-2 py-1 rounded-md border text-emerald-400 bg-emerald-400/10 border-emerald-400/20 shrink-0">CAP.</span>
-                </div>
-                <div class="relative w-full mt-auto">
-                  <input type="number" min="1" max="15" step="1" v-model.number="status[status.activeProfileName].maxCopyPercentOfBalance" @change="updateCopySettings" class="w-full h-12 bg-[#09090b] border border-zinc-800/80 rounded-xl pl-4 pr-10 text-white font-mono text-lg font-bold outline-none transition-all placeholder-zinc-700 appearance-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50" />
-                  <span class="absolute right-4 top-1/2 -translate-y-1/2 text-emerald-600/50 font-black pointer-events-none">%</span>
-                </div>
-                <input type="range" min="1" max="15" step="1" v-model.number="status[status.activeProfileName].maxCopyPercentOfBalance" @change="updateCopySettings" class="w-full h-1 mt-4 bg-zinc-800/80 rounded-lg appearance-none cursor-pointer accent-emerald-500" />
+              <div class="relative w-full mt-auto">
+                <input type="number" min="1" max="20" step="1" v-model.number="status.maxWhalesToCopy" @change="updateCopyTrading" class="w-full h-12 bg-[#09090b] border border-zinc-800/80 rounded-xl pl-4 pr-16 text-white font-mono text-lg font-bold outline-none transition-all placeholder-zinc-700 appearance-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50" />
+                <span class="absolute right-4 top-1/2 -translate-y-1/2 text-emerald-600/50 font-black pointer-events-none text-xs">USERS</span>
               </div>
-
-              <div class="flex flex-col p-5 rounded-2xl bg-[#161619] border border-zinc-800/60 hover:border-zinc-700/80 transition-colors md:col-span-2 xl:col-span-1">
-                <div class="flex justify-between items-start mb-4 gap-2">
-                  <label class="text-[10px] text-zinc-400 font-bold uppercase tracking-widest leading-snug">Top Whales</label>
-                  <span class="text-[9px] font-black px-2 py-1 rounded-md border text-emerald-400 bg-emerald-400/10 border-emerald-400/20 shrink-0">SEG.</span>
-                </div>
-                <div class="relative w-full mt-auto">
-                  <input type="number" min="1" max="20" step="1" v-model.number="status.maxWhalesToCopy" @change="updateCopyTrading" class="w-full h-12 bg-[#09090b] border border-zinc-800/80 rounded-xl pl-4 pr-16 text-white font-mono text-lg font-bold outline-none transition-all placeholder-zinc-700 appearance-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50" />
-                  <span class="absolute right-4 top-1/2 -translate-y-1/2 text-emerald-600/50 font-black pointer-events-none text-xs">USERS</span>
-                </div>
-                <input type="range" min="1" max="20" step="1" v-model.number="status.maxWhalesToCopy" @change="updateCopyTrading" class="w-full h-1 mt-4 bg-zinc-800/80 rounded-lg appearance-none cursor-pointer accent-emerald-500" />
-              </div>
-              
+              <input type="range" min="1" max="20" step="1" v-model.number="status.maxWhalesToCopy" @change="updateCopyTrading" class="w-full h-1 mt-4 bg-zinc-800/80 rounded-lg appearance-none cursor-pointer accent-emerald-500" />
             </div>
+              
             <div class="pt-2">
               <p class="text-[11px] text-zinc-500 font-bold uppercase tracking-widest mb-3 px-1">Whales seleccionadas automáticamente</p>
               <div class="max-h-52 overflow-y-auto custom-scroll space-y-2 pr-2">
@@ -1582,76 +1463,48 @@ onUnmounted(() => {
                 <Target :size="24" />
               </div>
               <div>
-                <h3 class="text-white font-black text-lg tracking-tight">Copy Trading Custom</h3>
+                <div class="flex items-center gap-3">
+                  <h3 class="text-white font-black text-lg tracking-tight">Copy Trading Custom</h3>
+                  <span class="text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-md border hidden sm:block"
+                        :class="(status.customWhales?.length || 0) >= 10 ? 'bg-rose-500/10 text-rose-400 border-rose-500/30' : 'bg-purple-500/10 text-purple-400 border-purple-500/30'">
+                    {{ status.customWhales?.length || 0 }} / 10 MAX
+                  </span>
+                </div>
                 <p class="text-xs text-zinc-500 font-medium">Agrega y controla tus propias ballenas</p>
               </div>
             </div>
             
             <label class="relative inline-flex items-center cursor-pointer group/toggle">
-              <input 
-                type="checkbox" 
-                v-model="status.copyTradingEnabled" 
-                @change="updateCopyTrading" 
-                class="sr-only peer"
-              />
+              <input type="checkbox" v-model="status.copyTradingEnabled" @change="updateCopyTrading" class="sr-only peer" />
               <div class="w-11 h-6 bg-[#09090b] border border-zinc-700 rounded-full peer peer-focus:ring-2 peer-focus:ring-purple-500/20 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-zinc-400 after:border-zinc-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-500 peer-checked:border-purple-500 group-hover/toggle:shadow-[0_0_15px_rgba(168,85,247,0.3)]"></div>
             </label>
           </div>
 
           <div v-if="status.copyTradingEnabled" class="relative z-10 space-y-6">
             
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
-              
-              <div class="flex flex-col p-5 rounded-2xl bg-[#161619] border border-zinc-800/60 hover:border-zinc-700/80 transition-colors">
-                <div class="flex justify-between items-start mb-4 gap-2">
-                  <label class="text-[10px] text-zinc-400 font-bold uppercase tracking-widest leading-snug">Tamaño Máximo</label>
-                  <span class="text-[9px] font-black px-2 py-1 rounded-md border text-purple-400 bg-purple-400/10 border-purple-400/20 shrink-0">VOL.</span>
-                </div>
-                <div class="relative w-full mt-auto">
-                  <input type="number" min="10" max="200" step="1" v-model.number="status.maxCopySize" @change="updateCopyTrading" class="w-full h-12 bg-[#09090b] border border-zinc-800/80 rounded-xl pl-4 pr-12 text-white font-mono text-lg font-bold outline-none transition-all placeholder-zinc-700 appearance-none focus:border-purple-500/50 focus:ring-1 focus:ring-purple-500/50" />
-                  <span class="absolute right-4 top-1/2 -translate-y-1/2 text-purple-600/50 font-black pointer-events-none text-xs">SH</span>
-                </div>
-                <input type="range" min="10" max="200" step="1" v-model.number="status.maxCopySize" @change="updateCopyTrading" class="w-full h-1 mt-4 bg-zinc-800/80 rounded-lg appearance-none cursor-pointer accent-purple-500" />
-              </div>
-
-              <div class="flex flex-col p-5 rounded-2xl bg-[#161619] border border-zinc-800/60 hover:border-zinc-700/80 transition-colors">
-                <div class="flex justify-between items-start mb-4 gap-2">
-                  <label class="text-[10px] text-zinc-400 font-bold uppercase tracking-widest leading-snug">Límite Balance</label>
-                  <span class="text-[9px] font-black px-2 py-1 rounded-md border text-purple-400 bg-purple-400/10 border-purple-400/20 shrink-0">CAP.</span>
-                </div>
-                <div class="relative w-full mt-auto">
-                  <input type="number" min="1" max="15" step="1" v-model.number="status[status.activeProfileName].maxCopyPercentOfBalance" @change="updateCopySettings" class="w-full h-12 bg-[#09090b] border border-zinc-800/80 rounded-xl pl-4 pr-10 text-white font-mono text-lg font-bold outline-none transition-all placeholder-zinc-700 appearance-none focus:border-purple-500/50 focus:ring-1 focus:ring-purple-500/50" />
-                  <span class="absolute right-4 top-1/2 -translate-y-1/2 text-purple-600/50 font-black pointer-events-none">%</span>
-                </div>
-                <input type="range" min="1" max="15" step="1" v-model.number="status[status.activeProfileName].maxCopyPercentOfBalance" @change="updateCopySettings" class="w-full h-1 mt-4 bg-zinc-800/80 rounded-lg appearance-none cursor-pointer accent-purple-500" />
-              </div>
-
-            </div>
             <div class="flex flex-col sm:flex-row gap-3">
               <input 
                 v-model="newWhaleAddress"
-                placeholder="0x1234...abcd"
-                class="w-full sm:flex-1 bg-[#09090b] border border-zinc-700 rounded-2xl px-4 py-3 text-sm font-mono focus:outline-none focus:border-purple-500 transition-colors"
+                :disabled="(status.customWhales?.length || 0) >= 10"
+                :placeholder="(status.customWhales?.length || 0) >= 10 ? 'Límite de 10 ballenas alcanzado' : '0x1234...abcd'"
+                class="w-full sm:flex-1 bg-[#09090b] border border-zinc-700 rounded-2xl px-4 py-3 text-sm font-mono focus:outline-none focus:border-purple-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               />
               <div class="flex gap-3 w-full sm:w-auto">
                 <input 
                   v-model="newWhaleNickname"
+                  :disabled="(status.customWhales?.length || 0) >= 10"
                   placeholder="Nickname (opc)"
-                  class="flex-1 sm:w-36 bg-[#09090b] border border-zinc-700 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-purple-500 transition-colors"
+                  class="flex-1 sm:w-36 bg-[#09090b] border border-zinc-700 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-purple-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 />
                 <button 
                   @click="addCustomWhale"
-                  class="px-6 py-3 bg-purple-600 hover:bg-purple-500 rounded-2xl font-bold text-sm transition-colors whitespace-nowrap shrink-0 shadow-lg">
+                  :disabled="(status.customWhales?.length || 0) >= 10"
+                  class="px-6 py-3 rounded-2xl font-bold text-sm transition-all whitespace-nowrap shrink-0 shadow-lg disabled:cursor-not-allowed"
+                  :class="(status.customWhales?.length || 0) >= 10 ? 'bg-zinc-800 text-zinc-500 shadow-none' : 'bg-purple-600 hover:bg-purple-500 text-white'">
                   Agregar
                 </button>
               </div>
             </div>
-
-            <!-- <button 
-              @click="loadRecommendedWhales"
-              class="w-full py-3 text-xs px-4 bg-purple-600/20 hover:bg-purple-600/30 text-purple-400 rounded-xl font-medium transition flex items-center justify-center gap-2 border border-purple-500/20">
-              📥 Cargar 8 Ballenas Recomendadas Grok
-            </button> -->
 
             <div v-if="status.customWhales && status.customWhales.length > 0" class="max-h-52 overflow-y-auto custom-scroll space-y-2 pr-2">
               <div v-for="(whale, index) in status.customWhales" :key="index"
@@ -1689,6 +1542,7 @@ onUnmounted(() => {
           </div>
         </div>
 
+        <!-- ====================== DATOS DEL SISTEMA ====================== -->
         <div class="bg-[#111114] border border-zinc-800/80 rounded-[2rem] p-6 lg:p-8 transition-all shadow-lg hover:border-zinc-700/50">
           <h3 class="text-zinc-400 font-black text-xs uppercase tracking-[0.2em] mb-5 flex items-center gap-2">
             <Activity :size="16" class="text-zinc-500" />

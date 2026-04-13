@@ -1,19 +1,33 @@
 {
-  "standardConfig": {
-    "predictionThreshold": 0.75,
-    "edgeThreshold": 0.08,
-    "takeProfitThreshold": 20,
-    "stopLossThreshold": -20,
-    "maxCopyPercentOfBalance": 8,
-    "microBetAmount": 5
+  "aiConfig": {
+    "standard": {
+      "predictionThreshold": 0.7,
+      "edgeThreshold": 0.08,
+      "takeProfitThreshold": 40,
+      "stopLossThreshold": -40,
+      "microBetAmount": 5
+    },
+    "volatile": {
+      "predictionThreshold": 0.85,
+      "edgeThreshold": 0.12,
+      "takeProfitThreshold": 25,
+      "stopLossThreshold": -30,
+      "microBetAmount": 0.5
+    }
   },
-  "volatileConfig": {
-    "predictionThreshold": 0.85,
-    "edgeThreshold": 0.12,
-    "takeProfitThreshold": 25,
-    "stopLossThreshold": -30,
-    "maxCopyPercentOfBalance": 2,
-    "microBetAmount": 0.5
+  "whaleConfig": {
+    "standard": {
+      "takeProfitThreshold": 90,
+      "stopLossThreshold": -90,
+      "maxCopyPercentOfBalance": 8,
+      "maxCopySize": 50
+    },
+    "volatile": {
+      "takeProfitThreshold": 50,
+      "stopLossThreshold": -50,
+      "maxCopyPercentOfBalance": 2,
+      "maxCopySize": 10
+    }
   },
   "marketFilters": {
     "crypto": true,
@@ -24,9 +38,9 @@
   },
   "autoTradeEnabled": true,
   "copyTradingEnabled": true,
-  "maxCopySize": 50,
   "maxWhalesToCopy": 5,
   "maxActiveSportsMarkets": 5,
+  "useAutoWhales": false,
   "customWhales": [
     {
       "address": "0x492442eab586f242b53bda933fd5de859c8a3782",
@@ -52,7 +66,21 @@
       "address": "0x2005d16a84ceefa912d4e3b5e8f5e8f5e8f5e8f5",
       "nickname": "TopWhale5",
       "enabled": true
+    },
+    {
+      "address": "0x9d84ce0306f8551e02efef1680475fc0f1dc1344",
+      "nickname": "debased",
+      "enabled": true
+    },
+    {
+      "address": "0x44c1dfe43260c94ed4f1d00de2e1f80fb113ebc1",
+      "nickname": "aenews2",
+      "enabled": true
+    },
+    {
+      "address": "0x8f42ae0a01c0383c7ca8bd060b86a645ee74b88f",
+      "nickname": "cashy",
+      "enabled": true
     }
-  ],
-  "useAutoWhales": false
+  ]
 }
