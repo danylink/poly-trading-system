@@ -540,25 +540,52 @@ const isCopied = ref(false);
 const copyLogsToClipboard = async () => {
   if (!systemLogs.value || systemLogs.value.length === 0) return;
 
-  // Mapeamos el array de logs para convertirlo en texto de consola clásico
+  // Transformar los logs en texto puro
   const logText = systemLogs.value.map(log => {
-    const icon = log.type === 'error' ? '❌ ' : '> ';
+    let icon = '> ';
+    if (log.type === 'error') icon = '❌ ';
+    else if (log.message && log.message.includes('🎯')) icon = '';
     return `[${log.time}] ${icon}${log.message}`;
   }).join('\n');
 
-  try {
-    await navigator.clipboard.writeText(logText);
-    
-    // Cambiamos el estado para dar feedback visual
-    isCopied.value = true;
-    setTimeout(() => {
-      isCopied.value = false;
-    }, 2000);
-  } catch (err) {
-    console.error('Error al copiar al portapapeles:', err);
-    // Si tienes SweetAlert2 importado como Swal, puedes descomentar la siguiente línea:
-    // Swal.fire('Error', 'No se pudo copiar el log', 'error');
+  // PLAN A: Método Moderno (Solo funciona si tienes HTTPS o localhost)
+  if (window.isSecureContext && navigator?.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(logText);
+      isCopied.value = true;
+      setTimeout(() => isCopied.value = false, 2000);
+      return; // Salimos si fue exitoso
+    } catch (err) {
+      console.warn('API moderna bloqueada. Usando Fallback...');
+    }
   }
+
+  // PLAN B: Fallback Clásico (Para IPs locales http://192.168... en celular)
+  const textArea = document.createElement("textarea");
+  textArea.value = logText;
+  // Lo hacemos completamente invisible para no romper el diseño visual
+  textArea.style.position = "fixed";
+  textArea.style.top = "0";
+  textArea.style.left = "0";
+  textArea.style.opacity = "0";
+  
+  document.body.appendChild(textArea);
+  textArea.focus();
+  textArea.select();
+
+  try {
+    const successful = document.execCommand('copy');
+    if (successful) {
+      isCopied.value = true;
+      setTimeout(() => isCopied.value = false, 2000);
+    } else {
+      Swal.fire('Error', 'Tu navegador móvil bloqueó el copiado', 'error');
+    }
+  } catch (err) {
+    console.error('Fallback falló:', err);
+    Swal.fire('Error', 'No se pudo copiar el log', 'error');
+  }
+  document.body.removeChild(textArea);
 };
 
 // --- COMPUTED PROPERTIES ---
@@ -1228,10 +1255,10 @@ onUnmounted(() => {
         </div>        
 
         <!-- ====================== GESTION DE RIESGO SECTION ====================== -->
-        <div class="bg-[#111114] border border-[#D4AF37]/30 rounded-[2rem] p-6 lg:p-8 transition-all shadow-2xl mb-8 relative overflow-hidden group">
+        <div v-if="status.aiConfig && status.whaleConfig" class="bg-[#111114] border border-[#D4AF37]/30 rounded-[2rem] p-6 lg:p-8 transition-all shadow-2xl mb-8 relative overflow-hidden group">
           <div class="absolute -right-20 -top-20 w-64 h-64 bg-[#D4AF37] rounded-full blur-[100px] opacity-5 pointer-events-none"></div>
           
-          <div class="flex items-center gap-3 mb-6 pb-4 border-b border-zinc-800/80">
+          <div class="flex items-center gap-3 mb-6 pb-4 border-b border-zinc-800/80 relative z-10">
             <div class="p-2.5 bg-[#D4AF37]/10 rounded-xl border border-[#D4AF37]/20"><ShieldCheck :size="22" class="text-[#D4AF37]" /></div>
             <div>
               <h3 class="text-white font-black text-lg tracking-tight">Gestión de Riesgo Avanzada</h3>
@@ -1239,59 +1266,137 @@ onUnmounted(() => {
             </div>
           </div>
 
-          <div class="flex gap-2 mb-4 bg-[#09090b] p-1.5 rounded-2xl border border-zinc-800/80">
-            <button @click="riskSource = 'ai'" :class="riskSource === 'ai' ? 'bg-[#D4AF37]/20 text-[#D4AF37] border-[#D4AF37]/30' : 'text-zinc-500 border-transparent'" class="flex-1 py-3 rounded-xl text-xs font-black uppercase tracking-widest border transition-all flex items-center justify-center gap-2">
+          <div class="flex gap-2 mb-4 bg-[#09090b] p-1.5 rounded-2xl border border-zinc-800/80 relative z-10">
+            <button @click="riskSource = 'ai'" :class="riskSource === 'ai' ? 'bg-[#D4AF37]/20 text-[#D4AF37] border-[#D4AF37]/30 shadow-[0_0_10px_rgba(212,175,55,0.1)]' : 'text-zinc-500 border-transparent'" class="flex-1 py-3 rounded-xl text-xs font-black uppercase tracking-widest border transition-all flex items-center justify-center gap-2">
               <Cpu :size="16" /> Modelos de IA
             </button>
-            <button @click="riskSource = 'whale'" :class="riskSource === 'whale' ? 'bg-purple-500/20 text-purple-400 border-purple-500/30' : 'text-zinc-500 border-transparent'" class="flex-1 py-3 rounded-xl text-xs font-black uppercase tracking-widest border transition-all flex items-center justify-center gap-2">
+            <button @click="riskSource = 'whale'" :class="riskSource === 'whale' ? 'bg-purple-500/20 text-purple-400 border-purple-500/30 shadow-[0_0_10px_rgba(168,85,247,0.1)]' : 'text-zinc-500 border-transparent'" class="flex-1 py-3 rounded-xl text-xs font-black uppercase tracking-widest border transition-all flex items-center justify-center gap-2">
               <Target :size="16" /> Copy Trading
             </button>
           </div>
 
-          <div class="flex gap-2 mb-6">
-            <button @click="riskCategory = 'standard'" :class="riskCategory === 'standard' ? 'text-white border-zinc-600 bg-zinc-800' : 'text-zinc-500 border-zinc-800/50 bg-zinc-900/50'" class="flex-1 py-2 rounded-lg text-[10px] font-bold uppercase tracking-widest border transition-all">
+          <div class="flex gap-2 mb-8 relative z-10">
+            <button @click="riskCategory = 'standard'" :class="riskCategory === 'standard' ? 'text-white border-zinc-600 bg-zinc-800 shadow-inner' : 'text-zinc-500 border-zinc-800/50 bg-zinc-900/50 hover:bg-zinc-800/80'" class="flex-1 py-2 rounded-lg text-[10px] font-bold uppercase tracking-widest border transition-all">
               📘 Estándar (Cripto/Pol)
             </button>
-            <button @click="riskCategory = 'volatile'" :class="riskCategory === 'volatile' ? 'text-white border-zinc-600 bg-zinc-800' : 'text-zinc-500 border-zinc-800/50 bg-zinc-900/50'" class="flex-1 py-2 rounded-lg text-[10px] font-bold uppercase tracking-widest border transition-all">
+            <button @click="riskCategory = 'volatile'" :class="riskCategory === 'volatile' ? 'text-white border-zinc-600 bg-zinc-800 shadow-inner' : 'text-zinc-500 border-zinc-800/50 bg-zinc-900/50 hover:bg-zinc-800/80'" class="flex-1 py-2 rounded-lg text-[10px] font-bold uppercase tracking-widest border transition-all">
               🌶️ Volátil (Pop/Deportes)
             </button>
           </div>
 
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 relative z-10">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-5 relative z-10">
+            
             <template v-if="riskSource === 'ai'">
-              <div class="flex flex-col gap-1 p-3 rounded-xl border border-zinc-800/60 bg-[#161619]">
-                <label class="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Balas por Disparo ($)</label>
-                <input type="number" min="0.5" step="0.5" v-model.number="currentRiskSettings.microBetAmount" @change="updateRiskSettings" class="bg-[#09090b] text-white px-3 py-2 rounded-lg border border-zinc-700 focus:border-[#D4AF37] outline-none font-mono text-sm" />
+              <div class="flex flex-col gap-2 p-4 rounded-xl border border-zinc-800/60 bg-[#161619] relative overflow-hidden">
+                <div class="flex justify-between items-center mb-1">
+                  <label class="text-[10px] text-zinc-400 font-black uppercase tracking-[0.2em]">Balas por Disparo</label>
+                  <span class="text-[8px] font-black px-1.5 py-0.5 rounded border text-blue-400 bg-blue-500/10 border-blue-500/40">USDC</span>
+                </div>
+                <div class="flex items-center gap-3">
+                  <input type="range" min="0.5" max="50" step="0.5" v-model.number="status.aiConfig[riskCategory].microBetAmount" @change="updateRiskSettings" class="flex-1 accent-blue-500 h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer" />
+                  <div class="flex items-center gap-1 w-20 bg-[#09090b] border border-zinc-700 rounded-lg px-2 py-1.5">
+                    <span class="text-zinc-500 font-bold text-xs">$</span>
+                    <input type="number" min="0.5" max="50" step="0.5" v-model.number="status.aiConfig[riskCategory].microBetAmount" @change="updateRiskSettings" class="w-full bg-transparent text-white font-mono text-sm text-right outline-none" />
+                  </div>
+                </div>
               </div>
-              <div class="flex flex-col gap-1 p-3 rounded-xl border border-zinc-800/60 bg-[#161619]">
-                <label class="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Certeza IA (0.1-1.0)</label>
-                <input type="number" min="0.1" max="1.0" step="0.05" v-model.number="currentRiskSettings.predictionThreshold" @change="updateRiskSettings" class="bg-[#09090b] text-white px-3 py-2 rounded-lg border border-zinc-700 focus:border-[#D4AF37] outline-none font-mono text-sm" />
+
+              <div class="flex flex-col gap-2 p-4 rounded-xl border border-zinc-800/60 bg-[#161619] relative overflow-hidden">
+                <div class="flex justify-between items-center mb-1">
+                  <label class="text-[10px] text-zinc-400 font-black uppercase tracking-[0.2em]">Filtro Sens. (IA)</label>
+                  <span class="text-[8px] font-black px-1.5 py-0.5 rounded border" :class="status.aiConfig[riskCategory].predictionThreshold >= 0.75 ? 'text-emerald-500 bg-emerald-500/10 border-emerald-500/40' : status.aiConfig[riskCategory].predictionThreshold <= 0.40 ? 'text-rose-500 bg-rose-500/10 border-rose-500/40' : 'text-[#D4AF37] bg-[#D4AF37]/10 border-[#D4AF37]/40'">
+                    {{ status.aiConfig[riskCategory].predictionThreshold >= 0.75 ? 'MODO SEGURO' : (status.aiConfig[riskCategory].predictionThreshold <= 0.40 ? 'ALTO RIESGO' : 'ESTÁNDAR') }}
+                  </span>
+                </div>
+                <div class="flex items-center gap-3">
+                  <input type="range" min="10" max="100" step="1" :value="Math.round(status.aiConfig[riskCategory].predictionThreshold * 100)" @input="status.aiConfig[riskCategory].predictionThreshold = $event.target.value / 100" @change="updateRiskSettings" class="flex-1 accent-[#D4AF37] h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer" />
+                  <div class="flex items-center gap-1 w-20 bg-[#09090b] border border-zinc-700 rounded-lg px-2 py-1.5">
+                    <input type="number" min="10" max="100" step="1" :value="Math.round(status.aiConfig[riskCategory].predictionThreshold * 100)" @input="status.aiConfig[riskCategory].predictionThreshold = $event.target.value / 100" @change="updateRiskSettings" class="w-full bg-transparent text-white font-mono text-sm text-right outline-none" />
+                    <span class="text-[#D4AF37] font-bold text-xs">%</span>
+                  </div>
+                </div>
               </div>
-              <div class="flex flex-col gap-1 p-3 rounded-xl border border-zinc-800/60 bg-[#161619]">
-                <label class="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Mínimo Edge (0.01-0.50)</label>
-                <input type="number" min="0.01" max="0.5" step="0.01" v-model.number="currentRiskSettings.edgeThreshold" @change="updateRiskSettings" class="bg-[#09090b] text-white px-3 py-2 rounded-lg border border-zinc-700 focus:border-[#D4AF37] outline-none font-mono text-sm" />
+
+              <div class="flex flex-col gap-2 p-4 rounded-xl border border-zinc-800/60 bg-[#161619] relative overflow-hidden sm:col-span-2 md:col-span-1">
+                <div class="flex justify-between items-center mb-1">
+                  <label class="text-[10px] text-zinc-400 font-black uppercase tracking-[0.2em]">Mínimo Edge</label>
+                  <span class="text-[8px] font-black px-1.5 py-0.5 rounded border" :class="status.aiConfig[riskCategory].edgeThreshold >= 0.12 ? 'text-emerald-500 bg-emerald-500/10 border-emerald-500/40' : status.aiConfig[riskCategory].edgeThreshold <= 0.05 ? 'text-rose-500 bg-rose-500/10 border-rose-500/40' : 'text-[#D4AF37] bg-[#D4AF37]/10 border-[#D4AF37]/40'">
+                    {{ status.aiConfig[riskCategory].edgeThreshold >= 0.12 ? 'CONSERVADOR' : (status.aiConfig[riskCategory].edgeThreshold <= 0.05 ? 'FRANCOTIRADOR' : 'ESTÁNDAR') }}
+                  </span>
+                </div>
+                <div class="flex items-center gap-3">
+                  <input type="range" min="1" max="50" step="1" :value="Math.round(status.aiConfig[riskCategory].edgeThreshold * 100)" @input="status.aiConfig[riskCategory].edgeThreshold = $event.target.value / 100" @change="updateRiskSettings" class="flex-1 accent-[#D4AF37] h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer" />
+                  <div class="flex items-center gap-1 w-20 bg-[#09090b] border border-zinc-700 rounded-lg px-2 py-1.5">
+                    <input type="number" min="1" max="50" step="1" :value="Math.round(status.aiConfig[riskCategory].edgeThreshold * 100)" @input="status.aiConfig[riskCategory].edgeThreshold = $event.target.value / 100" @change="updateRiskSettings" class="w-full bg-transparent text-white font-mono text-sm text-right outline-none" />
+                    <span class="text-[#D4AF37] font-bold text-xs">%</span>
+                  </div>
+                </div>
               </div>
             </template>
 
             <template v-if="riskSource === 'whale'">
-              <div class="flex flex-col gap-1 p-3 rounded-xl border border-purple-500/20 bg-[#161619]">
-                <label class="text-[10px] font-bold text-purple-400 uppercase tracking-widest">Tamaño Max (Shares)</label>
-                <input type="number" min="1" step="1" v-model.number="currentRiskSettings.maxCopySize" @change="updateRiskSettings" class="bg-[#09090b] text-white px-3 py-2 rounded-lg border border-purple-900 focus:border-purple-500 outline-none font-mono text-sm" />
+              <div class="flex flex-col gap-2 p-4 rounded-xl border border-purple-500/20 bg-[#161619] relative overflow-hidden">
+                <div class="flex justify-between items-center mb-1">
+                  <label class="text-[10px] text-purple-400 font-black uppercase tracking-[0.2em]">Tamaño Máximo</label>
+                  <span class="text-[8px] font-black px-1.5 py-0.5 rounded border text-purple-400 bg-purple-500/10 border-purple-500/40">ACCIONES</span>
+                </div>
+                <div class="flex items-center gap-3">
+                  <input type="range" min="1" max="500" step="1" v-model.number="status.whaleConfig[riskCategory].maxCopySize" @change="updateRiskSettings" class="flex-1 accent-purple-500 h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer" />
+                  <div class="flex items-center gap-1 w-20 bg-[#09090b] border border-purple-900/50 rounded-lg px-2 py-1.5">
+                    <input type="number" min="1" v-model.number="status.whaleConfig[riskCategory].maxCopySize" @change="updateRiskSettings" class="w-full bg-transparent text-white font-mono text-sm text-right outline-none" />
+                  </div>
+                </div>
               </div>
-              <div class="flex flex-col gap-1 p-3 rounded-xl border border-purple-500/20 bg-[#161619]">
-                <label class="text-[10px] font-bold text-purple-400 uppercase tracking-widest">Límite % de Balance</label>
-                <input type="number" min="1" max="25" step="1" v-model.number="currentRiskSettings.maxCopyPercentOfBalance" @change="updateRiskSettings" class="bg-[#09090b] text-white px-3 py-2 rounded-lg border border-purple-900 focus:border-purple-500 outline-none font-mono text-sm" />
+
+              <div class="flex flex-col gap-2 p-4 rounded-xl border border-purple-500/20 bg-[#161619] relative overflow-hidden">
+                <div class="flex justify-between items-center mb-1">
+                  <label class="text-[10px] text-purple-400 font-black uppercase tracking-[0.2em]">Límite Balance</label>
+                  <span class="text-[8px] font-black px-1.5 py-0.5 rounded border text-amber-400 bg-amber-500/10 border-amber-500/40">PROTECCIÓN</span>
+                </div>
+                <div class="flex items-center gap-3">
+                  <input type="range" min="1" max="50" step="1" v-model.number="status.whaleConfig[riskCategory].maxCopyPercentOfBalance" @change="updateRiskSettings" class="flex-1 accent-purple-500 h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer" />
+                  <div class="flex items-center gap-1 w-20 bg-[#09090b] border border-purple-900/50 rounded-lg px-2 py-1.5">
+                    <input type="number" min="1" max="100" v-model.number="status.whaleConfig[riskCategory].maxCopyPercentOfBalance" @change="updateRiskSettings" class="w-full bg-transparent text-white font-mono text-sm text-right outline-none" />
+                    <span class="text-purple-500 font-bold text-xs">%</span>
+                  </div>
+                </div>
               </div>
             </template>
 
-            <div class="flex flex-col gap-1 p-3 rounded-xl border border-zinc-800/60 bg-[#161619]">
-              <label class="text-[10px] font-bold text-emerald-500 uppercase tracking-widest">Take Profit (%)</label>
-              <input type="number" min="5" step="5" v-model.number="currentRiskSettings.takeProfitThreshold" @change="updateRiskSettings" class="bg-[#09090b] text-emerald-400 px-3 py-2 rounded-lg border border-emerald-900 focus:border-emerald-500 outline-none font-mono text-sm" />
+            <div class="col-span-1 sm:col-span-2 border-t border-zinc-800/80 my-2"></div>
+
+            <div class="flex flex-col gap-2 p-4 rounded-xl border border-zinc-800/60 bg-[#161619] relative overflow-hidden">
+              <div class="flex justify-between items-center mb-1">
+                <label class="text-[10px] text-zinc-400 font-black uppercase tracking-[0.2em]">Take Profit</label>
+                <span class="text-[8px] font-black px-1.5 py-0.5 rounded border" :class="status[riskSource + 'Config'][riskCategory].takeProfitThreshold >= 40 ? 'text-[#D4AF37] bg-[#D4AF37]/10 border-[#D4AF37]/40' : status[riskSource + 'Config'][riskCategory].takeProfitThreshold <= 15 ? 'text-emerald-400 bg-emerald-400/10 border-emerald-400/40' : 'text-emerald-500 bg-emerald-500/10 border-emerald-500/40'">
+                  {{ status[riskSource + 'Config'][riskCategory].takeProfitThreshold >= 40 ? 'PACIENTE' : (status[riskSource + 'Config'][riskCategory].takeProfitThreshold <= 15 ? 'AGRESIVO' : 'ESTÁNDAR') }}
+                </span>
+              </div>
+              <div class="flex items-center gap-3">
+                <input type="range" min="5" max="100" step="1" v-model.number="status[riskSource + 'Config'][riskCategory].takeProfitThreshold" @change="updateRiskSettings" class="flex-1 accent-emerald-500 h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer" />
+                <div class="flex items-center gap-1 w-20 bg-[#09090b] border border-emerald-900/30 rounded-lg px-2 py-1.5">
+                  <input type="number" min="5" max="100" step="1" v-model.number="status[riskSource + 'Config'][riskCategory].takeProfitThreshold" @change="updateRiskSettings" class="w-full bg-transparent text-emerald-400 font-mono text-sm text-right outline-none" />
+                  <span class="text-emerald-600 font-bold text-xs">%</span>
+                </div>
+              </div>
             </div>
-            <div class="flex flex-col gap-1 p-3 rounded-xl border border-zinc-800/60 bg-[#161619]">
-              <label class="text-[10px] font-bold text-rose-500 uppercase tracking-widest">Stop Loss (%)</label>
-              <input type="number" max="-5" step="5" v-model.number="currentRiskSettings.stopLossThreshold" @change="updateRiskSettings" class="bg-[#09090b] text-rose-400 px-3 py-2 rounded-lg border border-rose-900 focus:border-rose-500 outline-none font-mono text-sm" />
+
+            <div class="flex flex-col gap-2 p-4 rounded-xl border border-zinc-800/60 bg-[#161619] relative overflow-hidden">
+              <div class="flex justify-between items-center mb-1">
+                <label class="text-[10px] text-zinc-400 font-black uppercase tracking-[0.2em]">Stop Loss</label>
+                <span class="text-[8px] font-black px-1.5 py-0.5 rounded border" :class="status[riskSource + 'Config'][riskCategory].stopLossThreshold <= -50 ? 'text-[#D4AF37] bg-[#D4AF37]/10 border-[#D4AF37]/40' : status[riskSource + 'Config'][riskCategory].stopLossThreshold >= -15 ? 'text-rose-400 bg-rose-400/10 border-rose-400/40' : 'text-rose-500 bg-rose-500/10 border-rose-500/40'">
+                  {{ status[riskSource + 'Config'][riskCategory].stopLossThreshold <= -50 ? 'PACIENTE' : (status[riskSource + 'Config'][riskCategory].stopLossThreshold >= -15 ? 'ESTRICTO' : 'ESTÁNDAR') }}
+                </span>
+              </div>
+              <div class="flex items-center gap-3">
+                <input type="range" min="-100" max="-5" step="1" v-model.number="status[riskSource + 'Config'][riskCategory].stopLossThreshold" @change="updateRiskSettings" class="flex-1 accent-rose-500 h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer" />
+                <div class="flex items-center gap-1 w-20 bg-[#09090b] border border-rose-900/30 rounded-lg px-2 py-1.5">
+                  <input type="number" max="-5" step="1" v-model.number="status[riskSource + 'Config'][riskCategory].stopLossThreshold" @change="updateRiskSettings" class="w-full bg-transparent text-rose-400 font-mono text-sm text-right outline-none" />
+                  <span class="text-rose-600 font-bold text-xs">%</span>
+                </div>
+              </div>
             </div>
+
           </div>
         </div>
 
