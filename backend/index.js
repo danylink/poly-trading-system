@@ -1545,13 +1545,23 @@ async function autoSellManager() {
         const profit = pos.percentPnl || 0;
         const marketNameShort = (pos.marketName || "Mercado desconocido").substring(0, 45);
 
-        // 👇 DETECTAMOS EL ORIGEN (IA o BALLENA) Y SU PERFIL
-        const isWhaleTrade = botStatus.copiedPositions.some(cp => cp.tokenId === pos.tokenId);
+        // 👇 FIX CRÍTICO: Verificación más robusta del origen (IA o Ballena)
+        // 1. Verificamos la memoria a corto plazo (si recién lo copiamos)
+        let isWhaleTrade = botStatus.copiedPositions.some(cp => cp.tokenId === pos.tokenId);
+        
+        // 2. Verificamos la memoria a largo plazo (el historial general de trades)
+        if (!isWhaleTrade) {
+            isWhaleTrade = botStatus.copiedTrades.some(ct => ct.tokenId === pos.tokenId);
+        }
+
         const { config: riskConfig, profileType } = getRiskProfile(pos.marketName, isWhaleTrade);
+        
+        // Para los logs, agregamos una etiqueta visual del origen
+        const originTag = isWhaleTrade ? 'WHALE' : 'IA';
 
         // ====================== TAKE PROFIT ======================
         if (profit >= riskConfig.takeProfitThreshold) {
-            console.log(`📈 TAKE PROFIT [${profileType}]: ${marketNameShort} (+${profit.toFixed(1)}%)`);
+            console.log(`📈 TAKE PROFIT [${originTag}-${profileType}]: ${marketNameShort} (+${profit.toFixed(1)}%)`);
 
             try {
                 const bookResp = await axios.get(`https://clob.polymarket.com/book?token_id=${pos.tokenId}`, 
@@ -1563,7 +1573,7 @@ async function autoSellManager() {
                 const sharesToSell = parseFloat(pos.exactSize || pos.size || 0);
                 const bestPrice = parseFloat(bids[0].price);
 
-                if (bestPrice <= 0.005) continue;   // protección ligera
+                if (bestPrice <= 0.005) continue; 
 
                 const result = await executeSellOnChain(
                     pos.conditionId || null, 
@@ -1575,7 +1585,7 @@ async function autoSellManager() {
 
                 if (result?.success) {
                     closedPositionsCache.add(pos.tokenId);
-                    await sendAlert(`✅ *TAKE PROFIT [${profileType}]*\nMercado: ${marketNameShort}\nGanancia: +${profit.toFixed(1)}%`);
+                    await sendAlert(`✅ *TAKE PROFIT [${originTag} ${profileType}]*\nMercado: ${marketNameShort}\nGanancia: +${profit.toFixed(1)}%`);
                     await updateRealBalances();
                 }
             } catch (e) {
@@ -1586,7 +1596,7 @@ async function autoSellManager() {
 
         // ====================== STOP LOSS ======================
         if (profit <= riskConfig.stopLossThreshold) {
-            console.log(`🛑 STOP LOSS [${profileType}]: ${marketNameShort} (${profit.toFixed(1)}%)`);
+            console.log(`🛑 STOP LOSS [${originTag}-${profileType}]: ${marketNameShort} (${profit.toFixed(1)}%)`);
 
             try {
                 const bookResp = await axios.get(`https://clob.polymarket.com/book?token_id=${pos.tokenId}`, 
@@ -1628,7 +1638,7 @@ async function autoSellManager() {
                     closedPositionsCache.add(pos.tokenId);
                     const rescate = (sharesToSell * worstPrice).toFixed(2);
                     await sendAlert(
-                        `🛑 *STOP LOSS [${profileType}]*\nMercado: ${marketNameShort}\nPnL: ${profit.toFixed(1)}%\nRescatado ≈ $${rescate} USDC`
+                        `🛑 *STOP LOSS [${originTag} ${profileType}]*\nMercado: ${marketNameShort}\nPnL: ${profit.toFixed(1)}%\nRescatado ≈ $${rescate} USDC`
                     );
                     await updateRealBalances();
                 }
