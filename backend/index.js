@@ -2299,7 +2299,7 @@ app.post('/api/custom-whales', (req, res) => {
 
         const normalizedAddress = trimmedAddress.toLowerCase();
 
-        if (botStatus.customWhales.length >= 5) {
+        if (botStatus.customWhales.length >= 10) {
             return res.status(400).json({ 
                 success: false, 
                 error: "Máximo 5 ballenas custom permitidas" 
