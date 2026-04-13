@@ -1,7 +1,7 @@
 {
   "standardConfig": {
-    "predictionThreshold": 0.65,
-    "edgeThreshold": 0.05,
+    "predictionThreshold": 0.75,
+    "edgeThreshold": 0.08,
     "takeProfitThreshold": 20,
     "stopLossThreshold": -20,
     "maxCopyPercentOfBalance": 8,
@@ -23,14 +23,36 @@
     "pop": false
   },
   "autoTradeEnabled": true,
-  "copyTradingEnabled": false,
-  "useAutoWhales": true,
+  "copyTradingEnabled": true,
   "maxCopySize": 50,
   "maxWhalesToCopy": 5,
-  "maxActiveSportsMarkets": 2,
-  "customWhales": [],
-  "copyTradingStats": {
-    "totalCopied": 0,
-    "successful": 0
-  }
+  "maxActiveSportsMarkets": 5,
+  "customWhales": [
+    {
+      "address": "0x492442eab586f242b53bda933fd5de859c8a3782",
+      "nickname": "Multicolored",
+      "enabled": true
+    },
+    {
+      "address": "0xc2e7800b5af46e6093872b177b7a5e7f0563be51",
+      "nickname": "BeachBoy4",
+      "enabled": true
+    },
+    {
+      "address": "0x2a2c53bd278c04da9962fcf96490e17f3dfb9bc1",
+      "nickname": "Horizon",
+      "enabled": true
+    },
+    {
+      "address": "0xbddf61af533ff524d27154e589d2d7a81510c684",
+      "nickname": "Countryside",
+      "enabled": true
+    },
+    {
+      "address": "0x2005d16a84ceefa912d4e3b5e8f5e8f5e8f5e8f5",
+      "nickname": "TopWhale5",
+      "enabled": true
+    }
+  ],
+  "useAutoWhales": false
 }
