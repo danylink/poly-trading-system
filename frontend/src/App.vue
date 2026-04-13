@@ -19,6 +19,7 @@ const status = ref({
   lastNews: [],
   balanceUSDC: '0.00',
   balancePOL: '0.00',
+  unclaimedUSDC: '0.00',
   executions: [],
   pendingSignals: [],
   activePositions: [],
@@ -581,10 +582,11 @@ const activePortfolioValue = computed(() => {
   }, 0);
 });
 
-// 2. Cartera Total (Efectivo libre + Valor de posiciones activas)
+// 2. Cartera Total (Efectivo libre + Valor de posiciones activas + Dinero por reclamar)
 const totalCartera = computed(() => {
   const cash = parseFloat(status.value.clobOnlyUSDC || status.value.balanceUSDC || 0);
-  return (cash + activePortfolioValue.value).toFixed(2);
+  const unclaimed = parseFloat(status.value.unclaimedUSDC || 0);
+  return (cash + activePortfolioValue.value + unclaimed).toFixed(2);
 });
 
 // 3. Beneficio/Pérdida Flotante (Suma del PnL de todas tus posiciones abiertas)
@@ -718,15 +720,20 @@ onUnmounted(() => {
 
           <div class="grid grid-cols-1 md:grid-cols-3 gap-5 relative z-10"> 
             
-            <div class="bg-[#1c1917] border-2 border-[#D4AF37] p-5 rounded-2xl shadow-[0_0_20px_rgba(212,175,55,0.15)] relative overflow-hidden flex flex-col justify-center transition-all hover:scale-[1.02]">
-              <div class="absolute -right-4 -top-4 opacity-10"><Target :size="80" class="text-[#D4AF37]" /></div>
+            <div class="bg-[#1c1917] border-2 border-[#D4AF37] p-5 rounded-3xl shadow-[0_0_20px_rgba(212,175,55,0.2)] relative overflow-hidden group flex flex-col justify-center">
+              <div class="absolute -right-6 -top-6 opacity-10"><Target :size="80" class="text-[#D4AF37]" /></div>
               <p class="text-[10px] uppercase font-black text-[#D4AF37] tracking-widest mb-1">Cartera Total</p>
               <div class="flex items-baseline gap-1">
                 <h3 class="text-4xl font-extrabold text-white font-mono">${{ totalCartera }}</h3>
               </div>
               <p class="text-[9px] text-zinc-400 mt-2 font-bold uppercase tracking-tighter flex items-center gap-1">
-                <span class="w-1.5 h-1.5 rounded-full bg-[#D4AF37] animate-pulse"></span> Valor global de la cuenta
+                <span class="w-1.5 h-1.5 rounded-full bg-[#D4AF37] animate-pulse"></span> Valor total de la cuenta
               </p>
+              
+              <div v-if="parseFloat(status.unclaimedUSDC) > 0" class="mt-3 flex items-center justify-between bg-blue-500/10 border border-blue-500/30 px-3 py-1.5 rounded-xl">
+                <span class="text-[9px] font-black uppercase tracking-widest text-blue-400">Por Reclamar</span>
+                <span class="text-xs font-mono font-bold text-blue-400">+${{ status.unclaimedUSDC }}</span>
+              </div>
             </div>
 
             <div class="bg-[#09090b] border border-zinc-800/80 p-5 rounded-2xl flex flex-col justify-center hover:border-zinc-700 transition-all">

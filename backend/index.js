@@ -123,6 +123,7 @@ let botStatus = {
     balanceUSDC: "0.00",      // Este será el que use el bot para cálculos
     walletOnlyUSDC: "0.00",   // <--- NUEVO: Solo lo que hay en MetaMask
     clobOnlyUSDC: "0.00",     // <--- NUEVO: Solo lo que hay en Polymarket
+    unclaimedUSDC: "0.00",
     balancePOL: "0.00",
     activePositions: [],
     executions: [], 
@@ -350,13 +351,12 @@ async function updateRealBalances() {
             const positions = await response.json();
             
             botStatus.activePositions = []; 
+            let totalUnclaimed = 0; // 🔥 NUEVO: Sumador de dinero por reclamar
             
             if (Array.isArray(positions) && positions.length > 0) {
                 for (const pos of positions) {
                     const size = parseFloat(pos.size || pos['tamaño'] || 0);
                     
-                    // 🧹 FIX QUANT: Ignorar el "polvo" residual (menos de 0.1 shares) 
-                    // para evitar que queden posiciones fantasmas en el dashboard después de vender.
                     if (size < 0.1) continue; 
 
                     const cashPnl = parseFloat(pos.cashPnl || pos['ganancias en efectivo'] || 0);
@@ -365,11 +365,13 @@ async function updateRealBalances() {
 
                     const isRedeemable = pos.redeemable === true || pos['canjeable'] === true;
 
+                    // 🔥 FIX QUANT: Si es canjeable, lo sumamos a la bóveda de unclaimed y lo ocultamos de posiciones activas
                     if (isRedeemable) {
+                        totalUnclaimed += valorActual;
                         if (!redeemedCache.has(pos.asset || pos.token_id)) {
                             redeemedCache.add(pos.asset || pos.token_id);
                         }
-                        continue; // No mostramos posiciones ya finalizadas
+                        continue; 
                     }
 
                     botStatus.activePositions.push({
@@ -386,6 +388,10 @@ async function updateRealBalances() {
                     });
                 }
             }
+            
+            // Guardamos el total reclamable en el estado del bot
+            botStatus.unclaimedUSDC = totalUnclaimed.toFixed(2);
+
         } catch (apiError) {
             console.log("⚠️ No se pudieron obtener posiciones:", apiError.message);
         }
