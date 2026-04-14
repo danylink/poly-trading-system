@@ -34,6 +34,7 @@ const status = ref({
     pop: false 
   },
   maxActiveSportsMarkets: 2,
+  dailyLossLimit: 15,
 
   // 2. Copy Trading (Auto + Custom) ← ESTO ES LO QUE FALTABA
   copyTradingEnabled: false,
@@ -504,11 +505,12 @@ const updateFilters = async () => {
 const updateConfig = async () => {
   try {
     await axios.post(`${API_URL}/settings/config`, {
-      maxActiveSportsMarkets: status.value.maxActiveSportsMarkets
+      maxActiveSportsMarkets: status.value.maxActiveSportsMarkets,
+      dailyLossLimit: status.value.dailyLossLimit // 🔥 NUEVO DATO ENVIADO
     });
-    console.log(`✅ Límite de deportes actualizado a: ${status.value.maxActiveSportsMarkets === 0 ? 'ILIMITADO' : status.value.maxActiveSportsMarkets}`);
+    console.log(`✅ Configuración actualizada`);
   } catch (error) {
-    console.error("❌ Error actualizando límite de deportes", error);
+    console.error("❌ Error actualizando configuración", error);
   }
 };
 
@@ -1464,6 +1466,26 @@ onUnmounted(() => {
                   <span class="text-zinc-500 font-bold text-sm">Min</span>
                 </div>
               </div>
+            </div>
+
+            <div class="flex flex-col gap-2 p-4 md:p-5 rounded-xl border border-rose-500/30 bg-[#161619] relative overflow-hidden shadow-[0_0_20px_rgba(244,63,94,0.05)] mt-4">
+              <div class="absolute -right-4 -top-4 opacity-10 pointer-events-none">
+                <Power :size="80" class="text-rose-500" />
+              </div>
+              <div class="flex justify-between items-center mb-2 relative z-10">
+                <label class="text-[10px] sm:text-xs text-rose-400 font-black uppercase tracking-[0.2em]">Pérdida Max. Diaria</label>
+                <span class="text-[8px] sm:text-[10px] font-black px-2 py-1 rounded border text-rose-400 bg-rose-500/10 border-rose-500/40">GLOBAL (BOT KILLER)</span>
+              </div>
+              <div class="flex items-center gap-4 relative z-10">
+                <input type="range" min="5" max="50" step="1" v-model.number="status.dailyLossLimit" @change="updateConfig" class="flex-1 accent-rose-500 h-2 bg-zinc-800 rounded-lg appearance-none cursor-pointer shadow-inner" />
+                <div class="flex items-center gap-1 w-28 shrink-0 bg-[#09090b] border border-rose-900/50 rounded-xl px-3 py-2">
+                  <input type="number" min="5" max="50" v-model.number="status.dailyLossLimit" @change="updateConfig" class="w-full bg-transparent text-rose-400 font-mono text-base text-right outline-none" />
+                  <span class="text-rose-600 font-bold text-sm">%</span>
+                </div>
+              </div>
+              <p class="text-[9px] text-zinc-500 font-medium relative z-10 mt-1 uppercase tracking-widest">
+                Si la cartera baja más de este %, el bot activa el Freno de Emergencia.
+              </p>
             </div>
 
           </div>

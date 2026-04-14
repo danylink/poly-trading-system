@@ -41,6 +41,7 @@
   "maxWhalesToCopy": 5,
   "maxActiveSportsMarkets": 5,
   "useAutoWhales": false,
+  "dailyLossLimit": 15,
   "customWhales": [
     {
       "address": "0x492442eab586f242b53bda933fd5de859c8a3782",

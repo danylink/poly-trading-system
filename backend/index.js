@@ -192,6 +192,7 @@ function saveConfigToDisk(origen = "Sistema") {
             maxActiveSportsMarkets: botStatus.maxActiveSportsMarkets,
             useAutoWhales: botStatus.useAutoWhales,
             customWhales: botStatus.customWhales,
+            dailyLossLimit: botStatus.dailyLossLimit,
             copiedPositions: botStatus.copiedPositions || [],
             copiedTrades: botStatus.copiedTrades || [],
             // 🔥 NUEVO: Guardado de Riesgo Avanzado
@@ -220,6 +221,7 @@ function loadConfigFromDisk() {
             if (savedConfig.maxActiveSportsMarkets !== undefined) botStatus.maxActiveSportsMarkets = savedConfig.maxActiveSportsMarkets;
             if (savedConfig.useAutoWhales !== undefined) botStatus.useAutoWhales = savedConfig.useAutoWhales;
             if (savedConfig.customWhales !== undefined) botStatus.customWhales = savedConfig.customWhales;
+            if (savedConfig.dailyLossLimit !== undefined) botStatus.dailyLossLimit = savedConfig.dailyLossLimit;
             if (savedConfig.copiedPositions) botStatus.copiedPositions = savedConfig.copiedPositions;
             if (savedConfig.copiedTrades) botStatus.copiedTrades = savedConfig.copiedTrades;
             
@@ -1968,16 +1970,23 @@ app.post('/api/settings/filters', (req, res) => {
 // ==========================================
 app.post('/api/settings/config', (req, res) => {
     try {
-        const { maxActiveSportsMarkets } = req.body;
+        const { maxActiveSportsMarkets, dailyLossLimit } = req.body;
         
+        let updated = false;
+
         if (maxActiveSportsMarkets !== undefined) {
-            // Actualizamos la memoria RAM del bot
             botStatus.maxActiveSportsMarkets = parseInt(maxActiveSportsMarkets);
-            
-            // Guardamos permanentemente en el bot_config.json
-            saveConfigToDisk("API Configuración Límite Deportes");
-            
-            res.json({ success: true, message: "Límite de deportes actualizado" });
+            updated = true;
+        }
+        
+        if (dailyLossLimit !== undefined) {
+            botStatus.dailyLossLimit = parseFloat(dailyLossLimit);
+            updated = true;
+        }
+
+        if (updated) {
+            saveConfigToDisk("API Configuración General");
+            res.json({ success: true, message: "Configuración actualizada" });
         } else {
             res.status(400).json({ success: false, error: "Parámetros incompletos" });
         }
