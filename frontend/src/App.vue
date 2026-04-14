@@ -827,24 +827,63 @@ onUnmounted(() => {
           
           <div class="grid grid-cols-1 gap-4 relative z-10">
             <div v-for="pos in status.activePositions" :key="pos.tokenId" 
-                class="bg-[#161619] border border-zinc-800/60 rounded-2xl p-5 hover:border-[#D4AF37]/30 transition-all group">
+                 class="bg-[#09090b] border border-zinc-800/80 rounded-2xl p-4 sm:p-5 flex flex-col md:flex-row justify-between items-start md:items-center shadow-inner hover:border-[#D4AF37]/50 transition-all">
               
-              <div class="flex justify-between items-start mb-4">
-                <div class="flex flex-col gap-1">
-                  <div class="flex items-center gap-2">
-                    <span :class="pos.outcome === 'YES' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-rose-500/10 text-rose-400 border-rose-500/20'"
-                          class="text-[9px] font-black px-2 py-0.5 rounded border uppercase tracking-widest">
-                      {{ pos.outcome }}
-                    </span>
-                    <span class="text-[10px] text-zinc-500 font-bold uppercase tracking-widest">Contrato</span>
-                  </div>
-                  
-                  <h4 class="text-white font-bold text-sm leading-snug group-hover:text-[#D4AF37] transition-colors">
-                    {{ pos.marketName }}
-                  </h4>
+              <div class="flex flex-col w-full md:w-1/2 pr-0 md:pr-4">
+                <div class="flex items-center gap-2 mb-2">
+                  <span class="text-[9px] text-zinc-400 font-black uppercase tracking-widest px-2 py-0.5 bg-zinc-800/80 rounded-md border border-zinc-700/80">
+                    {{ pos.category || 'MERCADO' }}
+                  </span>
+                  <span v-if="pos.outcome && pos.outcome !== 'N/A'" 
+                        :class="pos.outcome === 'YES' ? 'text-emerald-400 border-emerald-500/30 bg-emerald-500/10' : 'text-rose-400 border-rose-500/30 bg-rose-500/10'"
+                        class="text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-md border shadow-inner">
+                    {{ pos.outcome }}
+                  </span>
+                </div>
+                <span class="text-zinc-200 font-bold text-sm line-clamp-2" :title="pos.marketName">{{ pos.marketName }}</span>
+                <span class="text-[#D4AF37] font-mono text-[10px] mt-1">{{ pos.size }} Acciones</span>
+              </div>
+
+              <div class="flex items-center w-full md:w-auto justify-between md:justify-end gap-4 mt-4 md:mt-0 pt-4 md:pt-0 border-t border-zinc-800/50 md:border-0">
+                
+                <div class="text-left md:text-right hidden lg:block">
+                  <span class="text-[9px] text-zinc-500 block uppercase font-black tracking-widest mb-0.5">Estado</span>
+                  <span class="font-mono font-bold text-[10px]" :class="pos.status.includes('CANJEAR') ? 'text-zinc-500' : 'text-emerald-400'">
+                    {{ pos.status }}
+                  </span>
+                </div>
+
+                <div class="text-left md:text-right flex flex-col justify-center min-w-[80px]">
+                  <span class="text-[9px] text-zinc-500 block uppercase font-black tracking-widest mb-0.5">Valor</span>
+                  <span class="text-white font-mono font-bold text-sm">
+                    ${{ pos.currentValue }}
+                  </span>
+                  <span v-if="!pos.status.includes('CANJEAR')" 
+                        class="text-[10px] font-bold font-mono mt-0.5 tracking-tighter"
+                        :class="(pos.cashPnl || 0) >= 0 ? 'text-emerald-500' : 'text-rose-500'">
+                    {{ (pos.cashPnl || 0) >= 0 ? '+' : '' }}${{ pos.cashPnl !== undefined ? pos.cashPnl.toFixed(2) : '0.00' }} ({{ pos.percentPnl !== undefined ? pos.percentPnl.toFixed(2) : '0.00' }}%)
+                  </span>
+                  <span v-else class="text-[10px] font-bold font-mono mt-0.5 tracking-tighter text-rose-500">
+                    -$0.00 (100%)
+                  </span>
                 </div>
                 
-                </div>
+                <button @click="sellPosition(pos.tokenId, pos.exactSize)" 
+                        :disabled="isSelling[pos.tokenId]"
+                        translate="no"
+                        class="px-4 py-2.5 rounded-xl text-[10px] font-black tracking-widest uppercase transition-all flex items-center justify-center gap-2 disabled:opacity-50 border shrink-0"
+                        :class="pos.status.includes('CANJEAR') 
+                          ? 'bg-zinc-800 text-zinc-400 border-zinc-700 hover:bg-zinc-700 hover:text-white' 
+                          : ((pos.cashPnl || 0) >= 0 
+                              ? 'bg-emerald-500/10 hover:bg-emerald-500 text-emerald-500 hover:text-white border-emerald-500/30 shadow-[0_0_15px_rgba(16,185,129,0.1)]' 
+                              : 'bg-rose-500/10 hover:bg-rose-500 text-rose-500 hover:text-white border-rose-500/30 shadow-[0_0_15px_rgba(244,63,94,0.1)]')">
+                  
+                  <span v-if="isSelling[pos.tokenId]" class="w-2 h-2 rounded-full animate-ping" 
+                        :class="pos.status.includes('CANJEAR') ? 'bg-zinc-400' : ((pos.cashPnl || 0) >= 0 ? 'bg-emerald-400' : 'bg-rose-400')"></span>
+                  
+                  {{ isSelling[pos.tokenId] ? 'PROCESANDO...' : (pos.status.includes('CANJEAR') ? 'CANJEAR' : 'VENDER TODO') }}
+                </button>
+              </div>
             </div>
 
             <div v-if="!status.activePositions || status.activePositions.length === 0" 
