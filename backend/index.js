@@ -1638,22 +1638,26 @@ async function autoSellManager() {
 
         // ====================== STOP LOSS ======================
         if (profit <= riskConfig.stopLossThreshold) {
-            console.log(`🛑 STOP LOSS [${originTag}-${profileType}]: ${marketNameShort} (${profit.toFixed(1)}%)`);
+            console.log(`🛑 STOP LOSS DETECTADO [${originTag}-${profileType}]: ${marketNameShort} (${profit.toFixed(1)}%)`);
 
             try {
                 const bookResp = await axios.get(`https://clob.polymarket.com/book?token_id=${pos.tokenId}`, 
                     { httpsAgent: agent, timeout: 6500 });
 
                 const bids = bookResp.data?.bids || [];
-                if (bids.length === 0) continue;
+                if (bids.length === 0) {
+                    console.log(`⚠️ Orderbook vacío. No hay compradores para hacer Stop Loss.`);
+                    continue;
+                }
 
                 const sharesToSell = parseFloat(pos.exactSize || pos.size || 0);
                 if (sharesToSell <= 0) continue;
 
                 const bestBidPrice = parseFloat(bids[0].price);
 
-                if (bestBidPrice <= 0.005) {
-                    console.log(`⚠️ Precio extremo. Manteniendo HOLD.`);
+                // Bajamos el límite extremo a 0.001 (0.1 centavos) para intentar rascar lo que sea
+                if (bestBidPrice <= 0.001) {
+                    console.log(`⚠️ Precio es cero absoluto. Manteniendo HOLD por milagro.`);
                     continue;
                 }
 
@@ -1665,8 +1669,14 @@ async function autoSellManager() {
                     if (accumulated >= sharesToSell) break;
                 }
 
+                // 🔥 EL FIX: Elevamos la tolerancia al slippage al 40% en Stop Loss. 
+                // Prefieres perder un poco más por slippage, que perder el 100% por no vender.
                 const slippage = ((bestBidPrice - worstPrice) / bestBidPrice) * 100;
-                if (slippage > 18) continue;
+                if (slippage > 40) {
+                    console.log(`⚠️ Slippage del ${slippage.toFixed(0)}%. Ajustando a venta parcial segura.`);
+                    // Si el slippage es brutal, al menos vendemos lo que el mejor comprador aguante
+                    worstPrice = bestBidPrice * 0.60; 
+                }
 
                 const result = await executeSellOnChain(
                     pos.conditionId || null, 
@@ -1678,11 +1688,23 @@ async function autoSellManager() {
 
                 if (result?.success) {
                     closedPositionsCache.add(pos.tokenId);
+                    
+                    await updateRealBalances(); // 1. Actualizamos saldos
+                    
+                    const metaMaskVal = parseFloat(botStatus.walletOnlyUSDC || 0);
+                    const polyVal = parseFloat(botStatus.clobOnlyUSDC || 0);
+                    const carteraTotal = (metaMaskVal + polyVal).toFixed(2);
                     const rescate = (sharesToSell * worstPrice).toFixed(2);
+                    
                     await sendAlert(
-                        `🛑 *STOP LOSS [${originTag} ${profileType}]*\nMercado: ${marketNameShort}\nPnL: ${profit.toFixed(1)}%\nRescatado ≈ $${rescate} USDC`
+                        `🛑 *STOP LOSS EJECUTADO [${originTag} ${profileType}]*\n` +
+                        `Mercado: ${marketNameShort}\n` +
+                        `PnL Final: ${profit.toFixed(1)}%\n` +
+                        `Rescatado ≈ $${rescate} USDC\n\n` +
+                        `🏦 *NUEVO ESTADO DE CUENTA*\n` +
+                        `Cartera Total: *$${carteraTotal} USDC*\n` +
+                        `Disponible: *$${polyVal.toFixed(2)} USDC*`
                     );
-                    await updateRealBalances();
                 }
             } catch (e) {
                 console.error(`❌ Stop Loss error:`, e.message);
