@@ -386,7 +386,11 @@ async function updateRealBalances() {
 
         // 🔥 IMPRESIÓN DE BALANCES - Solo cada 4 ciclos (reduce spam)
         if (Math.random() < 0.25) {
-            console.log(`📊 Balances: Wallet: $${botStatus.walletOnlyUSDC} | Polymarket: $${botStatus.clobOnlyUSDC} | Gas: ${botStatus.balancePOL} POL`);
+            const metaMaskVal = parseFloat(botStatus.walletOnlyUSDC || 0);
+            const polyVal = parseFloat(botStatus.clobOnlyUSDC || 0);
+            const carteraTotal = (metaMaskVal + polyVal).toFixed(2);
+
+            console.log(`📊 Balances: Cartera Total: $${carteraTotal} | Disponible (Poly): $${polyVal.toFixed(2)} | MetaMask: $${metaMaskVal.toFixed(2)} | Gas: ${botStatus.balancePOL} POL`);
         }
 
     } catch (e) { 
@@ -1601,10 +1605,30 @@ async function autoSellManager() {
                     "0.01"
                 );
 
+                // 🔥 AQUÍ ESTÁ LA MAGIA: El nuevo reporte premium solo cuando hay éxito
                 if (result?.success) {
                     closedPositionsCache.add(pos.tokenId);
-                    await sendAlert(`✅ *TAKE PROFIT [${originTag} ${profileType}]*\nMercado: ${marketNameShort}\nGanancia: +${profit.toFixed(1)}%`);
+                    
+                    // 1. Actualizamos saldos INMEDIATAMENTE para tener la info real post-venta
                     await updateRealBalances();
+
+                    // 2. Calculamos la Cartera Total sumando MetaMask + Polymarket
+                    const metaMaskVal = parseFloat(botStatus.walletOnlyUSDC || 0);
+                    const polyVal = parseFloat(botStatus.clobOnlyUSDC || 0);
+                    const carteraTotal = (metaMaskVal + polyVal).toFixed(2);
+
+                    // 3. Ensamblamos la alerta premium
+                    const alerta = `✅ *TAKE PROFIT EJECUTADO* ✅\n` +
+                                   `Origen: [${originTag} ${profileType}]\n\n` +
+                                   `📈 Mercado: *${marketNameShort}*\n` +
+                                   `💰 Ganancia Asegurada: *+${profit.toFixed(1)}%*\n\n` +
+                                   `🏦 *NUEVO ESTADO DE CUENTA*\n` +
+                                   `Cartera Total: *$${carteraTotal} USDC*\n` +
+                                   `🟢 Disponible (Poly): *$${polyVal.toFixed(2)} USDC*\n` +
+                                   `🦊 MetaMask Wallet: *$${metaMaskVal.toFixed(2)} USDC*`;
+
+                    // 4. Disparamos a Telegram
+                    await sendAlert(alerta);
                 }
             } catch (e) {
                 console.error(`❌ Take Profit error:`, e.message);
