@@ -779,92 +779,66 @@ async function refreshWatchlist() {
 }
 
 // ==========================================
-// 8. EJECUCIÓN DE COMPRA (CORREGIDA)
+// 8. EJECUCIÓN DE COMPRA - VERSIÓN OPTIMIZADA PARA $2 BETS
 // ==========================================
-// Agregamos marketTickSize como parámetro (con "0.01" por defecto por seguridad)
 async function executeTradeOnChain(conditionId, tokenId, amountUsdc, currentPrice, marketTickSize = "0.01") {
     try {
         console.log(`\n--- ⚖️ EJECUCIÓN ON-CHAIN EN POLYMARKET ---`);
 
-        if (!clobClient) {
-            throw new Error("clobClient no está inicializado.");
-        }
+        if (!clobClient) throw new Error("clobClient no está inicializado.");
 
-        // 🛡️ 1. AUTO-LIMPIEZA DE FONDOS
+        // 1. Auto-limpieza
         console.log("🧹 Liberando USDC de órdenes anteriores...");
         try { await clobClient.cancelAll(); } catch (e) {}
 
-        // 🔍 2. OBTENER LA VERDAD ABSOLUTA DEL MERCADO (Tick Size y Neg Risk)
-        let trueTickSize = "0.01";
-        let isNegRisk = false; // Por defecto asumimos mercado normal
-        
+        // 2. Obtener datos reales del mercado
+        let trueTickSize = String(marketTickSize);
+        let isNegRisk = false;
+
         try {
-            // Le preguntamos al servidor central cómo está configurado este mercado
             const clobMarket = await axios.get(`https://clob.polymarket.com/markets/${conditionId}`);
             if (clobMarket.data) {
-                // 🚨 EL FIX MAESTRO: Detectamos si exige firma de Riesgo Negativo
-                if (clobMarket.data.neg_risk === true) {
-                    isNegRisk = true;
-                }
-                
+                if (clobMarket.data.neg_risk === true) isNegRisk = true;
                 if (clobMarket.data.tokens) {
                     const tokenData = clobMarket.data.tokens.find(t => t.token_id === tokenId);
-                    if (tokenData && tokenData.minimum_tick_size) {
-                        trueTickSize = tokenData.minimum_tick_size;
-                    }
+                    if (tokenData?.minimum_tick_size) trueTickSize = tokenData.minimum_tick_size;
                 }
             }
         } catch (e) {
-            trueTickSize = String(marketTickSize);
-            console.log("⚠️ No se pudo verificar el servidor, usando valores base.");
+            console.log("⚠️ No se pudo verificar tick size, usando valor base.");
         }
-        
-        const safeTickSize = String(trueTickSize);
-        console.log(`✅ Parámetros CLOB -> Tick: ${safeTickSize} | NegRisk: ${isNegRisk}`);
 
-        // 3. Ajuste de decimales y Precio Base
+        const safeTickSize = String(trueTickSize);
         const decimales = safeTickSize === "0.001" ? 3 : (safeTickSize === "0.0001" ? 4 : 2);
         const minPriceAllowed = parseFloat(safeTickSize);
-        
+
         let basePrice = Number(parseFloat(currentPrice).toFixed(decimales));
-        
-        // 🛡️ ESCUDO ANTI-FANTASMAS
+
         if (basePrice < minPriceAllowed) {
-            console.log(`⚠️ Mercado fantasma detectado (Precio: $${basePrice}). Ignorando disparo.`);
+            console.log(`⚠️ Mercado fantasma (Precio: $${basePrice}). Ignorando.`);
             return { success: false, error: "Precio por debajo del mínimo legal" };
         }
 
-        // ⚡ LÓGICA PRO: SLIPPAGE DE ENTRADA DINÁMICO
+        // Slippage de entrada (configurable)
         const entrySlippagePct = botStatus.riskSettings.entrySlippage || 5;
-        
-        // El precio límite es el precio base + el % de slippage que permitas
         let limitPrice = basePrice * (1 + (entrySlippagePct / 100));
-        
-        if (limitPrice > 0.99) limitPrice = 0.99; // Límite máximo legal absoluto en Polymarket
+        if (limitPrice > 0.99) limitPrice = 0.99;
         limitPrice = Number(limitPrice.toFixed(decimales));
 
-        // 4. Cálculo de munición (Calculamos usando el limitPrice para garantizar saldo suficiente)
-        let numShares = Number((parseFloat(amountUsdc) / limitPrice).toFixed(2));
-        
-        if (numShares < 5) {
-            console.log(`⚠️ Ajustando munición al mínimo requerido (5 shares)`);
-            numShares = 5; 
-        }
-        
-        if (numShares * limitPrice < 1) {
-            numShares = Math.ceil(1.05 / limitPrice); 
-            if (numShares < 5) numShares = 5;
+        // Cálculo de shares (RESPECTAMOS el monto enviado desde runBot)
+        let numShares = Number((parseFloat(amountUsdc) / limitPrice).toFixed(3));
+
+        // NUEVO: Mínimo mucho más flexible (ya no forzamos 5 shares)
+        if (numShares < 1) {
+            numShares = 1.0; // mínimo 1 share
         }
 
-        numShares = Number(numShares.toFixed(2));
+        console.log(`📡 Orden BUY: ${numShares} shares | Target: $${basePrice} | Max Tolerado: $${limitPrice} | Monto: $${amountUsdc}`);
 
-        console.log(`📡 Orden BUY: ${numShares} shares | Target: $${basePrice} | Max Tolerado: $${limitPrice}`);
-
-        // 5. Disparo Final con opciones CAMALEÓNICAS
         const response = await clobClient.createAndPostOrder(
             {
                 tokenID: tokenId,
-                price: limitPrice, // <--- DISPARAMOS CON EL PRECIO BLINDADO (SLIPPAGE)
+                price: limitPrice,
                 side: Side.BUY,
                 size: numShares,
             },
@@ -877,7 +851,7 @@ async function executeTradeOnChain(conditionId, tokenId, amountUsdc, currentPric
 
         if (response && response.success) {
             console.log(`🎉 ¡ORDEN ACEPTADA! Order ID: ${response.orderID}`);
-            return { success: true, hash: response.orderID }; 
+            return { success: true, hash: response.orderID };
         } else {
             throw new Error(`Orden rechazada: ${JSON.stringify(response)}`);
         }
@@ -889,81 +863,60 @@ async function executeTradeOnChain(conditionId, tokenId, amountUsdc, currentPric
 }
 
 // ==========================================
-// 8.5 EJECUCIÓN DE VENTA (NUEVO MOTOR DEDICADO)
+// 8.5 EJECUCIÓN DE VENTA (VERSIÓN PULIDA)
 // ==========================================
-// 🧠 Memoria a corto plazo para evitar Spam por retrasos de la API de Polymarket
 const recentlySoldTokens = new Set();
 
 async function executeSellOnChain(conditionId, tokenId, exactShares, limitPrice, marketTickSize = "0.01") {
     try {
-        // 1. CANDADO ANTI-SPAM (COOLDOWN)
         if (recentlySoldTokens.has(tokenId)) {
-            console.log(`      ⏳ Token en cooldown (Esperando actualización de API). Venta ignorada.`);
+            console.log(`      ⏳ Token en cooldown. Venta ignorada.`);
             return { success: false, reason: "COOLDOWN_ACTIVE" };
         }
 
         console.log(`\n--- 🔴 EJECUCIÓN DE VENTA ON-CHAIN ---`);
-        if (!clobClient) throw new Error("clobClient no está inicializado.");
 
-        // 2. OBTENER SALDO REAL DIRECTO DE LA BLOCKCHAIN
+        let sharesToSell = parseFloat(exactShares);
+        if (sharesToSell <= 0) return { success: false, reason: "NO_SHARES" };
+
+        // Obtener saldo real
         let realBalance = 0;
         try {
             const userAddress = process.env.POLY_PROXY_ADDRESS || "0x876E00CBF5c4fe22F4FA263F4cb713650cB758d2";
             const response = await fetch(`https://data-api.polymarket.com/positions?user=${userAddress}&limit=50`);
             const positions = await response.json();
-            
-            if (Array.isArray(positions)) {
-                const targetPos = positions.find(p => (p.asset === tokenId || p.token_id === tokenId));
-                if (targetPos) {
-                    realBalance = parseFloat(targetPos.size || targetPos['tamaño'] || 0);
-                }
-            }
-        } catch (e) {
-            console.log("⚠️ No se pudo obtener el saldo en tiempo real, usando la memoria del bot.");
-        }
+            const targetPos = positions.find(p => p.asset === tokenId || p.token_id === tokenId);
+            if (targetPos) realBalance = parseFloat(targetPos.size || 0);
+        } catch (e) {}
 
-        // 3. CÁLCULO SEGURO DE SHARES
-        let sharesToSell = parseFloat(exactShares);
-        
-        if (realBalance > 0 && sharesToSell > realBalance) {
-            sharesToSell = realBalance;
-        }
+        if (realBalance > 0 && sharesToSell > realBalance) sharesToSell = realBalance;
 
-        // TRUCO QUANT: Restamos un margen microscópico (0.01 shares) para evadir los errores de "Not enough balance"
-        sharesToSell = Math.max(0, sharesToSell - 0.01);
-        sharesToSell = Math.floor(sharesToSell * 100) / 100;
+        sharesToSell = Math.max(0, Math.floor((sharesToSell - 0.01) * 100) / 100);
 
         if (sharesToSell <= 0) {
-           console.log(`⚠️ Venta abortada: Balance de acciones demasiado bajo (Polvo residual).`);
-           recentlySoldTokens.add(tokenId); // Lo marcamos para ignorarlo y no hacer spam
-           return { success: false, reason: "LOW_BALANCE" };
+            recentlySoldTokens.add(tokenId);
+            return { success: false, reason: "LOW_BALANCE" };
         }
 
-        // 4. CONFIGURAR TICK SIZE Y PRECIO
+        // Configuración de tick y precio
         let trueTickSize = marketTickSize;
         let isNegRisk = false;
 
         try {
             const clobMarket = await axios.get(`https://clob.polymarket.com/markets/${conditionId}`);
             if (clobMarket.data) {
-                if (clobMarket.data.neg_risk === true) isNegRisk = true;
-                if (clobMarket.data.tokens) {
-                    const tokenData = clobMarket.data.tokens.find(t => t.token_id === tokenId);
-                    if (tokenData && tokenData.minimum_tick_size) trueTickSize = tokenData.minimum_tick_size;
-                }
+                isNegRisk = clobMarket.data.neg_risk === true;
+                const tokenData = clobMarket.data.tokens?.find(t => t.token_id === tokenId);
+                if (tokenData?.minimum_tick_size) trueTickSize = tokenData.minimum_tick_size;
             }
-        } catch (e) {
-            console.log("⚠️ No se pudo verificar el servidor para la venta, usando valores base.");
-        }
+        } catch (e) {}
 
         const decimales = trueTickSize === "0.001" ? 3 : (trueTickSize === "0.0001" ? 4 : 2);
         let safeLimitPrice = Number(parseFloat(limitPrice).toFixed(decimales));
-        
         if (safeLimitPrice <= 0) safeLimitPrice = parseFloat(trueTickSize);
 
-        console.log(`📡 Orden SELL: ${sharesToSell} shares | Target: $${safeLimitPrice} | NegRisk: ${isNegRisk}`);
+        console.log(`📡 Orden SELL: ${sharesToSell} shares | Precio: $${safeLimitPrice}`);
 
-        // 5. DISPARAR A LA BLOCKCHAIN
         const response = await clobClient.createAndPostOrder(
             {
                 tokenID: tokenId,
@@ -971,23 +924,15 @@ async function executeSellOnChain(conditionId, tokenId, exactShares, limitPrice,
                 side: Side.SELL,
                 size: sharesToSell,
             },
-            { 
-                tickSize: String(trueTickSize), 
-                negRisk: isNegRisk 
-            }, 
+            { tickSize: String(trueTickSize), negRisk: isNegRisk },
             OrderType.GTC
         );
 
         if (response && response.success) {
             console.log(`🎉 ¡VENTA ACEPTADA! Order ID: ${response.orderID}`);
-            
-            // 🧠 ACTIVAR MEMORIA: Recordar que ya lo vendimos por 3 minutos
             recentlySoldTokens.add(tokenId);
-            setTimeout(() => {
-                recentlySoldTokens.delete(tokenId);
-            }, 3 * 60 * 1000); // 3 minutos de cooldown
-            
-            return { success: true, hash: response.orderID }; 
+            setTimeout(() => recentlySoldTokens.delete(tokenId), 3 * 60 * 1000);
+            return { success: true, hash: response.orderID };
         } else {
             throw new Error(`Orden rechazada: ${JSON.stringify(response)}`);
         }
@@ -1535,18 +1480,22 @@ async function runBot() {
         if (botStatus.autoTradeEnabled && isStrongSignal) {
             const saldoLibre = parseFloat(botStatus.clobOnlyUSDC || 0);
             
-            // Cálculo más seguro de tamaño de apuesta
-            let dynamicBetAmount = Math.min(profile.microBetAmount || 2.0, 2.0);
+            // Base = lo que configuramos en el JSON (actualmente $2)
+            let dynamicBetAmount = profile.microBetAmount || 2.0;
 
-            if (edge > 0 && livePrice > 0 && livePrice < 1) {
+            // Solo aplicamos Kelly si el edge es realmente excepcional
+            if (edge > 0.25 && livePrice > 0 && livePrice < 1) {
                 const kellyFraction = edge / (1 - livePrice);
                 dynamicBetAmount = Math.min(
-                    saldoLibre * kellyFraction * 0.25,
-                    saldoLibre * 0.12,           // máximo 12% del balance por operación
-                    profile.microBetAmount * 2
+                    saldoLibre * kellyFraction * 0.20,   // más conservador
+                    3.0,                                 // ← LÍMITE DURO: nunca más de $3
+                    profile.microBetAmount * 1.5         // máximo 50% más de lo configurado
                 );
-                dynamicBetAmount = Math.max(dynamicBetAmount, profile.microBetAmount);
             }
+
+            // Nunca bajar de $1 ni superar el saldo disponible
+            dynamicBetAmount = Math.max(dynamicBetAmount, 1.0);
+            dynamicBetAmount = Math.min(dynamicBetAmount, saldoLibre * 0.15); // máximo 15% del balance
 
             // Cooldown
             const lastTradeTime = botStatus.lastTrades[targetTokenId];
