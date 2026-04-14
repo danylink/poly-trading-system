@@ -417,7 +417,7 @@ async function updateRealBalances() {
 }
 
 // ==========================================
-// 3A. MOTOR DE IA 1 (CLAUDE)
+// 3A. MOTOR DE IA 1 (CLAUDE) - PARCHE #6
 // ==========================================
 async function analyzeMarketWithClaude(marketQuestion, currentNews, retries = 2) {
     for (let attempt = 1; attempt <= retries; attempt++) {
@@ -425,7 +425,9 @@ async function analyzeMarketWithClaude(marketQuestion, currentNews, retries = 2)
             const response = await anthropic.messages.create({
                 model: "claude-sonnet-4-6",
                 max_tokens: 180,
-                system: `Eres un Senior Quant Trader especializado en Polymarket SHORT-TERM.
+                system: `Eres un Senior Quant Trader EXTREMADAMENTE ESTRICTO en Polymarket SHORT-TERM (máximo 48 horas).
+Solo recomiendas BUY si hay una ventaja clara y rápida.
+
 Responde ESTRICTAMENTE en JSON:
 {
   "prob": 0.XX,
@@ -434,15 +436,28 @@ Responde ESTRICTAMENTE en JSON:
   "reason": "Frase corta y clara",
   "edge": 0.XX,
   "recommendation": "STRONG_BUY" | "BUY" | "WAIT" | "SELL"
-}`,
-                messages: [{ role: "user", content: `Mercado: ${marketQuestion}\nNoticias: ${currentNews}\nAnaliza ventaja 24-48h.` }]
+}
+
+REGLAS OBLIGATORIAS:
+- Solo BUY si edge > 0.10 y se resuelve en <48h.
+- Si no hay ventaja clara → responde "WAIT".
+- Sé muy conservador. Mejor WAIT que una operación mediocre.`,
+                messages: [{ role: "user", content: `Mercado: ${marketQuestion}\nNoticias: ${currentNews}\nAnaliza ventaja real en las próximas 24-48 horas.` }]
             });
 
             const jsonMatch = response.content[0].text.match(/\{.*\}/s);
             if (!jsonMatch) throw new Error("JSON inválido");
             const data = JSON.parse(jsonMatch[0]);
 
-            return { isError: false, prob: parseFloat(data.prob) || 0, strategy: data.strategy || "WAIT", urgency: data.urgency || 5, reason: data.reason || "Sin ventaja", edge: parseFloat(data.edge) || 0, recommendation: data.recommendation || "WAIT" };
+            return { 
+                isError: false, 
+                prob: parseFloat(data.prob) || 0, 
+                strategy: data.strategy || "WAIT", 
+                urgency: data.urgency || 5, 
+                reason: data.reason || "Sin ventaja", 
+                edge: parseFloat(data.edge) || 0, 
+                recommendation: data.recommendation || "WAIT" 
+            };
 
         } catch (error) {
             if (attempt < retries) {
@@ -455,17 +470,15 @@ Responde ESTRICTAMENTE en JSON:
 }
 
 // ==========================================
-// 3B. MOTOR DE IA 2 (GEMINI)
+// 3B. MOTOR DE IA 2 (GEMINI) - PARCHE #6
 // ==========================================
 async function analyzeMarketWithGemini(marketQuestion, currentNews) {
-    // Ya no es Fallback, es un proceso titular
     console.log("🧠 Gemini Short-Term Analysis...");
     
     try {
-        const prompt = `Eres un Senior Quant Trader especializado en Polymarket SHORT-TERM (24-48 horas máximo).
-Tu objetivo es detectar ineficiencias rápidas.
+        const prompt = `Eres un Senior Quant Trader EXTREMADAMENTE ESTRICTO especializado en Polymarket SHORT-TERM (máximo 48 horas).
 
-Responde ESTRICTAMENTE con este esquema JSON:
+Responde ESTRICTAMENTE con este JSON:
 {
   "prob": 0.XX,
   "strategy": "TIME_EDGE" | "MOMENTUM" | "NEWS_ARBITRAGE" | "REVERSAL" | "WEATHER_EDGE" | "WAIT",
@@ -475,19 +488,17 @@ Responde ESTRICTAMENTE con este esquema JSON:
   "recommendation": "STRONG_BUY" | "BUY" | "WAIT" | "SELL"
 }
 
-REGLAS:
-- Prioriza mercados que se resuelvan en < 48h.
-- Sé agresivo en short-term. Si no hay edge claro → "WAIT".
+REGLAS OBLIGATORIAS:
+- Solo BUY si hay edge > 0.10 y se resuelve en <48h.
+- Si no estás 100% seguro → responde "WAIT".
+- Sé muy conservador.
 
 Mercado: ${marketQuestion}
-Noticias recientes: ${currentNews}
-Analiza si hay ventaja para operar en las próximas 24-48 horas.`;
+Noticias recientes: ${currentNews}`;
 
-        // 🚀 Ejecutamos el análisis
         const result = await geminiModel.generateContent(prompt);
         const responseText = result.response.text().trim();
 
-        // 🛡️ Extracción segura por si incluye marcas de Markdown (```json ... ```)
         const jsonMatch = responseText.match(/\{.*\}/s);
         if (!jsonMatch) throw new Error("JSON inválido o respuesta vacía");
 
@@ -498,13 +509,12 @@ Analiza si hay ventaja para operar en las próximas 24-48 horas.`;
             prob: parseFloat(data.prob) || 0,
             strategy: data.strategy || "WAIT",
             urgency: data.urgency || 5,
-            reason: data.reason || "Sin ventaja clara", // Le quitamos el "[Gemini]" hardcodeado porque runBot ya lo maneja
+            reason: data.reason || "Sin ventaja clara",
             edge: parseFloat(data.edge) || 0,
             recommendation: data.recommendation || "WAIT"
         };
 
     } catch (error) {
-        // Error aislado: No tumba el sistema, Claude puede seguir solo
         console.error("❌ Error en motor Gemini:", error.message);
         return { 
             isError: true, 
@@ -519,7 +529,7 @@ Analiza si hay ventaja para operar en las próximas 24-48 horas.`;
 }
 
 // ==========================================
-// 3C. MOTOR DE IA 3 (GROK / xAI)
+// 3C. MOTOR DE IA 3 (GROK / xAI) - PARCHE #6
 // ==========================================
 async function analyzeMarketWithGrok(marketQuestion, currentNews, retries = 2) {
     console.log("🧠 Grok Short-Term Analysis...");
@@ -527,12 +537,13 @@ async function analyzeMarketWithGrok(marketQuestion, currentNews, retries = 2) {
     for (let attempt = 1; attempt <= retries; attempt++) {
         try {
             const response = await grokClient.chat.completions.create({
-                model: "grok-4-1-fast-non-reasoning", // Usamos el modelo más rápido y barato de xAI
+                model: "grok-4-1-fast-non-reasoning",
                 messages: [
                     {
                         role: "system",
-                        content: `Eres un Quant Trader evaluando sentimiento social en tiempo real (X/Twitter).
-Tu objetivo es detectar euforia o pánico rápido en Polymarket.
+                        content: `Eres un Quant Trader EXTREMADAMENTE ESTRICTO en Polymarket SHORT-TERM.
+Solo recomiendas BUY si hay momentum claro y rápido.
+
 Responde ESTRICTAMENTE en JSON:
 {
   "prob": 0.XX,
@@ -543,14 +554,16 @@ Responde ESTRICTAMENTE en JSON:
   "recommendation": "STRONG_BUY" | "BUY" | "WAIT" | "SELL"
 }
 REGLAS:
-- Si no hay un hype o pánico evidente en redes, responde "WAIT".`
+- Solo BUY si hay hype fuerte o edge claro.
+- Si no hay ventaja clara → responde "WAIT".
+- Sé muy conservador.`
                     },
                     {
                         role: "user",
-                        content: `Mercado: ${marketQuestion}\nNoticias recientes: ${currentNews}\nAnaliza si hay momentum en las próximas 24h.`
+                        content: `Mercado: ${marketQuestion}\nNoticias recientes: ${currentNews}\nAnaliza momentum real en las próximas 24h.`
                     }
                 ],
-                response_format: { type: "json_object" } // xAI soporta JSON nativo
+                response_format: { type: "json_object" }
             });
 
             const data = JSON.parse(response.choices[0].message.content);
@@ -682,12 +695,12 @@ function getMarketCategoryEnhanced(title) {
 }
 
 // ==========================================
-// 7. ACTUALIZACIÓN DE WATCHLIST (GAMMA API)
+// 7. ACTUALIZACIÓN DE WATCHLIST (PARCHE #3)
 // ==========================================
 async function refreshWatchlist() {
     try {
-        botStatus.currentTopic = 'Buscando oportunidades rápidas (incluyendo 5m/15m)...';
-        console.log(`\n⏰ [SNIPER] Escaneando mercados cortos y de alta frecuencia...`);
+        botStatus.currentTopic = 'Buscando solo mercados que cierran en <48h...';
+        console.log(`\n⏰ [SNIPER] Escaneando SOLO mercados cortos (<48h)...`);
 
         const res = await axios.get(
             'https://gamma-api.polymarket.com/markets?active=true&closed=false&limit=500&order=volume&dir=desc',
@@ -696,17 +709,15 @@ async function refreshWatchlist() {
 
         const now = Date.now();
 
+        // 🔥 PARCHE #3: FILTRO MUY ESTRICTO
         const futureMarkets = res.data.filter(m => {
             if (!m.conditionId || !m.endDate) return false;
             
             const hoursLeft = hoursUntilClose(m.endDate);
             const volume = parseFloat(m.volume || 0);
 
-            // ✅ Cambios clave:
-            // - Bajamos el umbral de volumen para SHORT_TERM
-            // - Aceptamos mercados que cierren en menos de 48h o tengan volumen decente
-            return new Date(m.endDate).getTime() > now &&
-                   (hoursLeft <= 48 || volume > 6000);   // antes era 8000
+            // Solo aceptamos mercados que cierren en máximo 48 horas
+            return new Date(m.endDate).getTime() > now && hoursLeft <= 48;
         });
 
         const targetedMarkets = futureMarkets.map(m => ({
@@ -714,21 +725,19 @@ async function refreshWatchlist() {
             category: getMarketCategoryEnhanced(m.question)
         })).filter(m => m.category !== null);
 
-        // Prioridad fuerte a mercados cortos
+        // Ordenamos por tiempo restante (los que cierran antes primero)
         targetedMarkets.sort((a, b) => {
             const hrsA = hoursUntilClose(a.endDate);
             const hrsB = hoursUntilClose(b.endDate);
-            if (hrsA < 48 && hrsB >= 48) return -1;
-            if (hrsB < 48 && hrsA >= 48) return 1;
-            return parseFloat(b.volume || 0) - parseFloat(a.volume || 0);
+            return hrsA - hrsB;
         });
 
         const finalPool = [];
-        const cats = ['SHORT_TERM', 'CRYPTO', 'GEOPOLITICS', 'SOCIAL'];
+        const cats = ['SHORT_TERM', 'CRYPTO', 'GEOPOLITICS', 'BUSINESS']; // quitamos SOCIAL si quieres ser más conservador
         let idx = 0;
 
-        // Aumentamos el pool a 12-15 para tener más rotación
-        while (finalPool.length < 14 && targetedMarkets.length > 0) {
+        // Máximo 12 mercados en el pool (más calidad, menos ruido)
+        while (finalPool.length < 12 && targetedMarkets.length > 0) {
             const cat = cats[idx % cats.length];
             const match = targetedMarkets.findIndex(m => m.category === cat);
             if (match !== -1) {
@@ -749,12 +758,10 @@ async function refreshWatchlist() {
                 title: market.question,
                 category: market.category,
                 conditionId: market.conditionId,
-                // Guardamos AMBOS tokens y AMBOS precios
                 tokenYes: tokens[0] || null,
                 tokenNo: tokens[1] || null,
                 priceYes: parseFloat(prices[0] || 0),
                 priceNo: parseFloat(prices[1] || 0),
-                // Fallbacks para mantener compatibilidad con tu frontend
                 tokenId: tokens[0] || null, 
                 marketPrice: parseFloat(prices[0] || 0),
                 endsIn: hrs < 1 ? `${Math.round(hrs*60)}m` : `${hrs.toFixed(1)}h`,
@@ -764,7 +771,7 @@ async function refreshWatchlist() {
         });
 
         botStatus.watchlist = rawTrends;
-        console.log(`🎯 Pool seleccionado: ${rawTrends.length} mercados prioritarios (SHORT_TERM + otros)`);
+        console.log(`🎯 Pool seleccionado: ${rawTrends.length} mercados (TODOS cierran en <48h)`);
 
     } catch (e) {
         console.error('❌ Error refreshWatchlist:', e.message);
@@ -1345,7 +1352,7 @@ function getRiskProfile(marketName = "", isWhale = false) {
 let watchlistIndex = 0;
 
 // ==========================================
-// CICLO PRINCIPAL (MOTOR DEL BOT MULTI-AGENTE)
+// CICLO PRINCIPAL (MOTOR DEL BOT MULTI-AGENTE) - PARCHE #7 FINAL
 // ==========================================
 async function runBot() {
 
@@ -1369,7 +1376,7 @@ async function runBot() {
             
             if (botStatus.useAutoWhales) {
                 if (!botStatus.lastWhaleSelection || 
-                    (Date.now() - new Date(botStatus.lastWhaleSelection).getTime()) > 10 * 60 * 1000) {
+                    (Date.now() - new Date(botStatus.lastWhaleSelection).getTime()) > 15 * 60 * 1000) {
                     await autoSelectTopWhales();
                 }
             }
@@ -1383,7 +1390,7 @@ async function runBot() {
             await autoSellManager();
         }
 
-        // 3. Refresh Watchlist
+        // 3. Refresh Watchlist (ya filtrado por <48h gracias al Parche #3)
         if (botStatus.watchlist.length === 0 || watchlistIndex >= botStatus.watchlist.length) {
             await refreshWatchlist();
             watchlistIndex = 0;
@@ -1400,7 +1407,7 @@ async function runBot() {
         botStatus.currentTopic = marketTitle;
 
         // ====================================================
-        // 🧠 EJECUCIÓN MULTI-AGENTE (CLAUDE + GEMINI + GROK EN PARALELO)
+        // 🧠 EJECUCIÓN MULTI-AGENTE (CLAUDE + GEMINI + GROK)
         // ====================================================
         const newsString = await getLatestNews(marketTitle, marketItem.category);
         const cacheKey = `${marketItem.tokenId}-${newsString.substring(0, 60)}`;
@@ -1410,25 +1417,25 @@ async function runBot() {
         if (analysisCache.has(cacheKey)) {
             finalAnalysis = analysisCache.get(cacheKey);
         } else {
-            console.log(`\n🤖 Analizando con la Trinidad (Claude, Gemini, Grok): ${marketTitle.substring(0,40)}...`);
-            
+            console.log(`\n🤖 Analizando con la Trinidad: ${marketTitle.substring(0,45)}...`);
+
             const [claudeResult, geminiResult, grokResult] = await Promise.all([
                 analyzeMarketWithClaude(marketTitle, newsString),
                 analyzeMarketWithGemini(marketTitle, newsString),
                 analyzeMarketWithGrok(marketTitle, newsString)
             ]);
 
-            // === FUSIÓN DE OPINIONES (CONSENSO MAYORITARIO) ===
+            // === FUSIÓN DE OPINIONES (CONSENSO MÁS ESTRICTO) ===
             const claudeBuy = claudeResult.recommendation.includes("BUY");
             const geminiBuy = geminiResult.recommendation.includes("BUY");
-            const grokBuy = grokResult.recommendation.includes("BUY");
+            const grokBuy   = grokResult.recommendation.includes("BUY");
 
             const buyVotes = [claudeBuy, geminiBuy, grokBuy].filter(Boolean).length;
 
             finalAnalysis = { prob: 0, edge: 0, recommendation: "WAIT", reason: "", urgency: 5, engine: "None" };
 
             if (buyVotes >= 2) {
-                console.log(`🔥 ¡CONSENSO LOGRADO! (${buyVotes}/3 votos para COMPRAR)`);
+                console.log(`🔥 ¡CONSENSO FUERTE! (${buyVotes}/3 votos)`);
                 
                 const activeResults = [];
                 let enginesStr = [];
@@ -1441,9 +1448,7 @@ async function runBot() {
                 finalAnalysis.urgency = Math.max(...activeResults.map(r => r.urgency));
                 finalAnalysis.recommendation = "STRONG_BUY"; 
                 finalAnalysis.reason = `[CONSENSO] ` + activeResults.map((r, i) => `${enginesStr[i]}: ${r.reason}`).join(" | ");
-                
-                if (buyVotes === 3) finalAnalysis.engine = "Trinity (C+G+X)";
-                else finalAnalysis.engine = `Consenso (${enginesStr.join('+')})`;
+                finalAnalysis.engine = buyVotes === 3 ? "Trinity (C+G+X)" : `Consenso (${enginesStr.join('+')})`;
 
             } else if (claudeBuy) {
                 finalAnalysis = { ...claudeResult, engine: "Claude" };
@@ -1477,7 +1482,7 @@ async function runBot() {
         let targetProb = probYes;
         let targetSideLabel = "SÍ";
 
-        if (edgeNo > edgeYes && edgeNo > 0.03) {
+        if (edgeNo > edgeYes && edgeNo > 0.04) {
             bestEdge = edgeNo;
             targetTokenId = marketItem.tokenNo;
             targetPrice = priceNo;
@@ -1488,7 +1493,7 @@ async function runBot() {
         const livePrice = targetPrice;
         const edge = bestEdge;
 
-        // Filtros de Seguridad
+        // ====================== FILTROS DE SEGURIDAD ======================
         if (!isMarketAllowed(marketTitle, marketItem.slug || "")) {
             watchlistIndex = (watchlistIndex + 1) % botStatus.watchlist.length;
             return;
@@ -1502,55 +1507,67 @@ async function runBot() {
         const alreadyInvested = botStatus.activePositions.some(pos => pos.tokenId === targetTokenId);
         const alreadyClosed = closedPositionsCache.has(targetTokenId);
         const alreadyPending = pendingOrdersCache.has(targetTokenId); 
-        
-        // 🛡️ FIX QUANT 1: Detectamos correctamente a la IA
+
         const { config: profile, profileType } = getRiskProfile(marketTitle, false);
 
         const activeSportsCount = botStatus.activePositions.filter(p => p.category === 'SPORTS').length;
-        const sportsLimit = botStatus.maxActiveSportsMarkets;
-        const isSportsLimitReached = (marketItem.category === 'SPORTS' && sportsLimit > 0 && activeSportsCount >= sportsLimit);
+        const isSportsLimitReached = (marketItem.category === 'SPORTS' && 
+                                     botStatus.maxActiveSportsMarkets > 0 && 
+                                     activeSportsCount >= botStatus.maxActiveSportsMarkets);
+
         const isFlippedToNo = (targetSideLabel === "NO");
 
+        // ====================== SEÑAL FUERTE (MÁS ESTRICTA) ======================
         const isStrongSignal = 
             (!alreadyInvested && !alreadyClosed && !alreadyPending && !isSportsLimitReached) && (
-                (finalAnalysis.recommendation === "STRONG_BUY" && edge > 0.105) ||
-                (finalAnalysis.recommendation === "BUY" && edge >= profile.edgeThreshold && targetProb >= profile.predictionThreshold) ||
-                (isFlippedToNo && targetProb >= profile.predictionThreshold && edge >= profile.edgeThreshold) ||
-                (finalAnalysis.urgency >= 9 && edge >= Math.max(0.09, profile.edgeThreshold * 0.85))
+                (finalAnalysis.recommendation === "STRONG_BUY" && edge > 0.12) ||
+                (finalAnalysis.recommendation === "BUY" && edge >= profile.edgeThreshold + 0.03 && 
+                 targetProb >= profile.predictionThreshold + 0.05) ||
+                (isFlippedToNo && targetProb >= profile.predictionThreshold + 0.05 && edge >= profile.edgeThreshold + 0.03) ||
+                (finalAnalysis.urgency >= 9 && edge >= 0.11)
             );
 
         if (isSportsLimitReached) {
-            console.log(`⚠️ [LIMITE] Omitiendo ${marketTitle} porque ya tienes ${activeSportsCount} mercados de deportes abiertos.`);
+            console.log(`⚠️ [LIMITE] Omitiendo ${marketTitle} (límite de deportes alcanzado)`);
         }
 
-        let autoExecuted = false;
-
-        // Ejecución del Sniper (IA principal)
+        // ====================== EJECUCIÓN DEL SNIPER ======================
         if (botStatus.autoTradeEnabled && isStrongSignal) {
             const saldoLibre = parseFloat(botStatus.clobOnlyUSDC || 0);
-            let dynamicBetAmount = profile.microBetAmount || 1.0; 
+            
+            // Cálculo más seguro de tamaño de apuesta
+            let dynamicBetAmount = Math.min(profile.microBetAmount || 2.0, 2.0);
 
             if (edge > 0 && livePrice > 0 && livePrice < 1) {
                 const kellyFraction = edge / (1 - livePrice);
-                dynamicBetAmount = Math.min(saldoLibre * kellyFraction * 0.25, saldoLibre * 0.15, profile.microBetAmount * 3);
+                dynamicBetAmount = Math.min(
+                    saldoLibre * kellyFraction * 0.25,
+                    saldoLibre * 0.12,           // máximo 12% del balance por operación
+                    profile.microBetAmount * 2
+                );
                 dynamicBetAmount = Math.max(dynamicBetAmount, profile.microBetAmount);
             }
 
-            // 🔥 VALIDACIÓN DE COOLDOWN
+            // Cooldown
             const lastTradeTime = botStatus.lastTrades[targetTokenId];
             if (lastTradeTime) {
                 const minutesSince = (Date.now() - lastTradeTime) / 60000;
                 if (minutesSince < botStatus.riskSettings.tradeCooldownMin) {
-                    console.log(`⏳ COOLDOWN: Esperando ${Math.ceil(botStatus.riskSettings.tradeCooldownMin - minutesSince)}m para re-entrar.`);
+                    console.log(`⏳ COOLDOWN: Esperando ${Math.ceil(botStatus.riskSettings.tradeCooldownMin - minutesSince)}m`);
                     watchlistIndex = (watchlistIndex + 1) % botStatus.watchlist.length;
                     return; 
                 }
             }
 
-            // Justo debajo de esto está tu console.log("🎯 SNIPER DISPARO...")
-            console.log(`🎯 SNIPER DISPARO [${finalAnalysis.engine}] → [${targetSideLabel}] | Edge: ${(edge*100).toFixed(1)}%`);
+            console.log(`🎯 SNIPER DISPARO [${finalAnalysis.engine}] → [${targetSideLabel}] | Edge: ${(edge*100).toFixed(1)}% | Apuesta: $${dynamicBetAmount.toFixed(2)}`);
 
-            const result = await executeTradeOnChain(marketItem.conditionId, targetTokenId, dynamicBetAmount, livePrice, marketItem.tickSize || "0.01");
+            const result = await executeTradeOnChain(
+                marketItem.conditionId, 
+                targetTokenId, 
+                dynamicBetAmount, 
+                livePrice, 
+                marketItem.tickSize || "0.01"
+            );
 
             if (result?.success) {
                 pendingOrdersCache.add(targetTokenId); 
@@ -1564,12 +1581,11 @@ async function runBot() {
                     reasoning: finalAnalysis.reason
                 });
 
-                // 🔥 Reiniciamos el reloj de Cooldown para este mercado
                 botStatus.lastTrades[targetTokenId] = Date.now();
             }
         }
 
-        // === ACTUALIZAR DASHBOARD CON LA SEÑAL ===
+        // ====================== ACTUALIZAR DASHBOARD ======================
         const signalIndex = botStatus.pendingSignals.findIndex(s => s.tokenId === targetTokenId);
 
         const signalData = {
@@ -1580,7 +1596,7 @@ async function runBot() {
             probability: targetProb || 0,
             reasoning: finalAnalysis.reason || "Evaluado por IA",
             marketPrice: livePrice,
-            suggestedInversion: profile.microBetAmount || 1.0, 
+            suggestedInversion: profile.microBetAmount || 2.0, 
             edge: edge,
             urgency: finalAnalysis.urgency || 5,
             recommendation: finalAnalysis.recommendation || "WAIT",
@@ -1591,7 +1607,7 @@ async function runBot() {
         };
 
         if (signalIndex === -1) {
-            if (!autoExecuted) botStatus.pendingSignals.unshift(signalData);
+            botStatus.pendingSignals.unshift(signalData);
             if (botStatus.pendingSignals.length > 12) botStatus.pendingSignals.pop();
         } else {
             botStatus.pendingSignals[signalIndex] = { ...botStatus.pendingSignals[signalIndex], ...signalData };
@@ -1604,31 +1620,32 @@ async function runBot() {
     }
 }
 
-// === AUTO SELL MANAGER MEJORADO ===
+// ==========================================
+// AUTO SELL MANAGER - PARCHE #5 (TP/SL Independiente para Ballenas)
+// ==========================================
 async function autoSellManager() {
+    if (!botStatus.autoTradeEnabled) return;
+
     for (const pos of botStatus.activePositions) {
         if (pos.status && pos.status.includes('CANJEAR')) continue;
 
         const profit = pos.percentPnl || 0;
         const marketNameShort = (pos.marketName || "Mercado desconocido").substring(0, 45);
 
-        // 👇 FIX CRÍTICO: Verificación más robusta del origen (IA o Ballena)
-        // 1. Verificamos la memoria a corto plazo (si recién lo copiamos)
+        // 👇 Tu detección original (muy buena)
         let isWhaleTrade = botStatus.copiedPositions.some(cp => cp.tokenId === pos.tokenId);
-        
-        // 2. Verificamos la memoria a largo plazo (el historial general de trades)
         if (!isWhaleTrade) {
             isWhaleTrade = botStatus.copiedTrades.some(ct => ct.tokenId === pos.tokenId);
         }
 
         const { config: riskConfig, profileType } = getRiskProfile(pos.marketName, isWhaleTrade);
-        
-        // Para los logs, agregamos una etiqueta visual del origen
         const originTag = isWhaleTrade ? 'WHALE' : 'IA';
+
+        console.log(`📊 [AUTO-SELL #5] ${originTag}-${profileType} | ${marketNameShort} | PnL: ${profit.toFixed(1)}%`);
 
         // ====================== TAKE PROFIT ======================
         if (profit >= riskConfig.takeProfitThreshold) {
-            console.log(`📈 TAKE PROFIT [${originTag}-${profileType}]: ${marketNameShort} (+${profit.toFixed(1)}%)`);
+            console.log(`📈 TAKE PROFIT #5 [${originTag}-${profileType}]: ${marketNameShort} (+${profit.toFixed(1)}%)`);
 
             try {
                 const bookResp = await axios.get(`https://clob.polymarket.com/book?token_id=${pos.tokenId}`, 
@@ -1640,7 +1657,7 @@ async function autoSellManager() {
                 const sharesToSell = parseFloat(pos.exactSize || pos.size || 0);
                 const bestPrice = parseFloat(bids[0].price);
 
-                if (bestPrice <= 0.005) continue; 
+                if (bestPrice <= 0.005) continue;
 
                 const result = await executeSellOnChain(
                     pos.conditionId || null, 
@@ -1650,20 +1667,15 @@ async function autoSellManager() {
                     "0.01"
                 );
 
-                // 🔥 AQUÍ ESTÁ LA MAGIA: El nuevo reporte premium solo cuando hay éxito
                 if (result?.success) {
                     closedPositionsCache.add(pos.tokenId);
-                    
-                    // 1. Actualizamos saldos INMEDIATAMENTE para tener la info real post-venta
                     await updateRealBalances();
 
-                    // 2. Calculamos la Cartera Total sumando MetaMask + Polymarket
                     const metaMaskVal = parseFloat(botStatus.walletOnlyUSDC || 0);
                     const polyVal = parseFloat(botStatus.clobOnlyUSDC || 0);
                     const carteraTotal = (metaMaskVal + polyVal).toFixed(2);
 
-                    // 3. Ensamblamos la alerta premium
-                    const alerta = `✅ *TAKE PROFIT EJECUTADO* ✅\n` +
+                    const alerta = `✅ *TAKE PROFIT #5 EJECUTADO* ✅\n` +
                                    `Origen: [${originTag} ${profileType}]\n\n` +
                                    `📈 Mercado: *${marketNameShort}*\n` +
                                    `💰 Ganancia Asegurada: *+${profit.toFixed(1)}%*\n\n` +
@@ -1672,18 +1684,22 @@ async function autoSellManager() {
                                    `🟢 Disponible (Poly): *$${polyVal.toFixed(2)} USDC*\n` +
                                    `🦊 MetaMask Wallet: *$${metaMaskVal.toFixed(2)} USDC*`;
 
-                    // 4. Disparamos a Telegram
                     await sendAlert(alerta);
+
+                    // 🔥 NUEVO: Si era posición copiada de ballena, la removemos del tracking
+                    if (isWhaleTrade) {
+                        botStatus.copiedPositions = botStatus.copiedPositions.filter(p => p.tokenId !== pos.tokenId);
+                    }
                 }
             } catch (e) {
-                console.error(`❌ Take Profit error:`, e.message);
+                console.error(`❌ Take Profit #5 error:`, e.message);
             }
             continue;
         }
 
-        // ====================== STOP LOSS ======================
+        // ====================== STOP LOSS FORZADO (PARCHE #1 + #5) ======================
         if (profit <= riskConfig.stopLossThreshold) {
-            console.log(`🛑 STOP LOSS DETECTADO [${originTag}-${profileType}]: ${marketNameShort} (${profit.toFixed(1)}%)`);
+            console.log(`🛑 STOP LOSS #5 DETECTADO [${originTag}-${profileType}]: ${marketNameShort} (${profit.toFixed(1)}%)`);
 
             try {
                 const bookResp = await axios.get(`https://clob.polymarket.com/book?token_id=${pos.tokenId}`, 
@@ -1691,37 +1707,35 @@ async function autoSellManager() {
 
                 const bids = bookResp.data?.bids || [];
                 if (bids.length === 0) {
-                    console.log(`⚠️ Orderbook vacío. No hay compradores para hacer Stop Loss.`);
+                    console.log(`⚠️ Orderbook vacío.`);
                     continue;
                 }
 
                 const sharesToSell = parseFloat(pos.exactSize || pos.size || 0);
                 if (sharesToSell <= 0) continue;
 
-                const bestBidPrice = parseFloat(bids[0].price);
+                let bestBidPrice = parseFloat(bids[0].price);
 
-                // Bajamos el límite extremo a 0.001 (0.1 centavos) para intentar rascar lo que sea
+                // 🔥 PARCHE #1: Venta forzada cuando precio es casi cero
                 if (bestBidPrice <= 0.001) {
-                    console.log(`⚠️ Precio es cero absoluto. Manteniendo HOLD por milagro.`);
-                    continue;
+                    console.log(`🔴 PRECIO CASI CERO → VENTA FORZADA`);
+                    bestBidPrice = Math.max(0.001, parseFloat(bids[0].price));
                 }
 
-                let accumulated = 0;
                 let worstPrice = bestBidPrice;
+                let accumulated = 0;
                 for (const bid of bids) {
                     accumulated += parseFloat(bid.size || 0);
                     worstPrice = parseFloat(bid.price);
                     if (accumulated >= sharesToSell) break;
                 }
 
-                // 🔥 USANDO LA VARIABLE DINÁMICA DEL DASHBOARD
                 const slippage = ((bestBidPrice - worstPrice) / bestBidPrice) * 100;
                 const maxPanicSlippage = botStatus.riskSettings.panicSlippage || 40;
 
                 if (slippage > maxPanicSlippage) {
-                    console.log(`⚠️ Slippage del ${slippage.toFixed(0)}% (Límite: ${maxPanicSlippage}%). Ajustando a venta segura.`);
-                    // Descontamos dinámicamente según lo que configuraste en tu panel
-                    worstPrice = bestBidPrice * (1 - (maxPanicSlippage / 100)); 
+                    console.log(`⚠️ Slippage alto (${slippage.toFixed(0)}%). Ajustando...`);
+                    worstPrice = bestBidPrice * (1 - (maxPanicSlippage / 100));
                 }
 
                 const result = await executeSellOnChain(
@@ -1734,26 +1748,28 @@ async function autoSellManager() {
 
                 if (result?.success) {
                     closedPositionsCache.add(pos.tokenId);
-                    
-                    await updateRealBalances(); // 1. Actualizamos saldos
-                    
+                    await updateRealBalances();
+
                     const metaMaskVal = parseFloat(botStatus.walletOnlyUSDC || 0);
                     const polyVal = parseFloat(botStatus.clobOnlyUSDC || 0);
                     const carteraTotal = (metaMaskVal + polyVal).toFixed(2);
                     const rescate = (sharesToSell * worstPrice).toFixed(2);
-                    
+
                     await sendAlert(
-                        `🛑 *STOP LOSS EJECUTADO [${originTag} ${profileType}]*\n` +
+                        `🛑 *STOP LOSS #5 [${originTag} ${profileType}]*\n` +
                         `Mercado: ${marketNameShort}\n` +
-                        `PnL Final: ${profit.toFixed(1)}%\n` +
+                        `PnL: ${profit.toFixed(1)}%\n` +
                         `Rescatado ≈ $${rescate} USDC\n\n` +
-                        `🏦 *NUEVO ESTADO DE CUENTA*\n` +
-                        `Cartera Total: *$${carteraTotal} USDC*\n` +
-                        `Disponible: *$${polyVal.toFixed(2)} USDC*`
+                        `🏦 Cartera Total: *$${carteraTotal} USDC*`
                     );
+
+                    // 🔥 NUEVO: Si era posición copiada, la removemos del tracking
+                    if (isWhaleTrade) {
+                        botStatus.copiedPositions = botStatus.copiedPositions.filter(p => p.tokenId !== pos.tokenId);
+                    }
                 }
             } catch (e) {
-                console.error(`❌ Stop Loss error:`, e.message);
+                console.error(`❌ Stop Loss #5 error:`, e.message);
             }
         }
     }
