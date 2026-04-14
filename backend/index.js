@@ -779,7 +779,7 @@ async function refreshWatchlist() {
 }
 
 // ==========================================
-// 8. EJECUCIÓN DE COMPRA - VERSIÓN OPTIMIZADA PARA $2 BETS
+// 8. EJECUCIÓN DE COMPRA - VERSIÓN CORREGIDA (Mínimo 5 shares)
 // ==========================================
 async function executeTradeOnChain(conditionId, tokenId, amountUsdc, currentPrice, marketTickSize = "0.01") {
     try {
@@ -791,7 +791,7 @@ async function executeTradeOnChain(conditionId, tokenId, amountUsdc, currentPric
         console.log("🧹 Liberando USDC de órdenes anteriores...");
         try { await clobClient.cancelAll(); } catch (e) {}
 
-        // 2. Obtener datos reales del mercado
+        // 2. Datos del mercado
         let trueTickSize = String(marketTickSize);
         let isNegRisk = false;
 
@@ -804,9 +804,7 @@ async function executeTradeOnChain(conditionId, tokenId, amountUsdc, currentPric
                     if (tokenData?.minimum_tick_size) trueTickSize = tokenData.minimum_tick_size;
                 }
             }
-        } catch (e) {
-            console.log("⚠️ No se pudo verificar tick size, usando valor base.");
-        }
+        } catch (e) {}
 
         const safeTickSize = String(trueTickSize);
         const decimales = safeTickSize === "0.001" ? 3 : (safeTickSize === "0.0001" ? 4 : 2);
@@ -815,25 +813,27 @@ async function executeTradeOnChain(conditionId, tokenId, amountUsdc, currentPric
         let basePrice = Number(parseFloat(currentPrice).toFixed(decimales));
 
         if (basePrice < minPriceAllowed) {
-            console.log(`⚠️ Mercado fantasma (Precio: $${basePrice}). Ignorando.`);
-            return { success: false, error: "Precio por debajo del mínimo legal" };
+            console.log(`⚠️ Mercado fantasma ($${basePrice}). Ignorando.`);
+            return { success: false, error: "Precio inválido" };
         }
 
-        // Slippage de entrada (configurable)
+        // Slippage
         const entrySlippagePct = botStatus.riskSettings.entrySlippage || 5;
-        let limitPrice = basePrice * (1 + (entrySlippagePct / 100));
+        let limitPrice = basePrice * (1 + entrySlippagePct / 100);
         if (limitPrice > 0.99) limitPrice = 0.99;
         limitPrice = Number(limitPrice.toFixed(decimales));
 
-        // Cálculo de shares (RESPECTAMOS el monto enviado desde runBot)
-        let numShares = Number((parseFloat(amountUsdc) / limitPrice).toFixed(3));
+        // ====================== CÁLCULO CORREGIDO ======================
+        let targetAmount = parseFloat(amountUsdc);           // lo que queremos gastar ($2 o $3)
+        let numShares = Number((targetAmount / limitPrice).toFixed(3));
 
-        // NUEVO: Mínimo mucho más flexible (ya no forzamos 5 shares)
-        if (numShares < 1) {
-            numShares = 1.0; // mínimo 1 share
+        // FORZAMOS mínimo 5 shares (Polymarket lo exige en casi todos los mercados)
+        if (numShares < 5) {
+            numShares = 5;
+            console.log(`⚠️ Ajustando a mínimo 5 shares → Monto real: $${(5 * limitPrice).toFixed(2)}`);
         }
 
-        console.log(`📡 Orden BUY: ${numShares} shares | Target: $${basePrice} | Max Tolerado: $${limitPrice} | Monto: $${amountUsdc}`);
+        console.log(`📡 Orden BUY: ${numShares} shares | Target: $${basePrice} | Monto real: $${(numShares * limitPrice).toFixed(2)}`);
 
         const response = await clobClient.createAndPostOrder(
             {
