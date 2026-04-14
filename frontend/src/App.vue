@@ -64,7 +64,16 @@ const status = ref({
     serverFreeRamMB: 0,
     uptimeHours: 0,
     cpuLoad: 0
-  }
+  },
+
+  // 🔥 NUEVO: Variables de Riesgo (Vue las llenará al cargar)
+  riskSettings: {
+    entrySlippage: 5,
+    panicSlippage: 40,
+    maxGasPrice: 1.5,
+    tradeCooldownMin: 60
+  },
+
 });
 
 // --- CONTROL DE PESTAÑAS MÓVILES ---
@@ -569,6 +578,35 @@ const copyLogsToClipboard = async () => {
     Swal.fire('Error', 'No se pudo copiar el log', 'error');
   }
   document.body.removeChild(textArea);
+};
+
+const updateRiskSettings = async () => {
+  try {
+    const response = await axios.post(`${API_URL}/settings/advanced-risk`, status.value.riskSettings);
+    if (response.data.success) {
+      Swal.fire({
+        title: '¡Protocolo Actualizado!',
+        text: 'Los parámetros de riesgo han sido sincronizados con el motor Quant.',
+        icon: 'success',
+        background: '#1C1612',
+        color: '#e4e4e7',
+        iconColor: '#D4AF37',
+        confirmButtonColor: '#D4AF37',
+        confirmButtonText: 'ENTENDIDO',
+        customClass: { popup: 'border border-[#D4AF37]/30 rounded-2xl' }
+      });
+    }
+  } catch (error) {
+    console.error("Error sincronizando riesgo:", error);
+    Swal.fire({
+      title: 'Error de Sincronización',
+      text: 'No se pudo contactar con el núcleo del bot.',
+      icon: 'error',
+      background: '#1C1612',
+      color: '#e4e4e7',
+      confirmButtonColor: '#f43f5e'
+    });
+  }
 };
 
 // --- COMPUTED PROPERTIES ---
@@ -1245,7 +1283,6 @@ onUnmounted(() => {
         <!-- ====================== GESTION DE RIESGO SECTION ====================== -->
         <div v-if="status.aiConfig && status.whaleConfig" class="bg-[#111114] border border-[#D4AF37]/30 rounded-[2rem] p-6 lg:p-8 transition-all shadow-2xl mb-8 relative overflow-hidden group">
           <div class="absolute -right-20 -top-20 w-64 h-64 bg-[#D4AF37] rounded-full blur-[100px] opacity-5 pointer-events-none"></div>
-          
           <div class="flex items-center gap-3 mb-6 pb-4 border-b border-zinc-800/80 relative z-10">
             <div class="p-2.5 bg-[#D4AF37]/10 rounded-xl border border-[#D4AF37]/20"><ShieldCheck :size="22" class="text-[#D4AF37]" /></div>
             <div>
@@ -1381,6 +1418,50 @@ onUnmounted(() => {
                 <div class="flex items-center gap-1 w-28 shrink-0 bg-[#09090b] border border-rose-900/30 rounded-xl px-3 py-2">
                   <input type="number" max="-5" step="1" v-model.number="currentRiskSettings.stopLossThreshold" @change="updateRiskSettings" class="w-full bg-transparent text-rose-400 font-mono text-base text-right outline-none" />
                   <span class="text-rose-600 font-bold text-sm">%</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="border-t border-zinc-800/80 my-2"></div>
+
+            <div class="flex flex-col gap-2 p-4 md:p-5 rounded-xl border border-zinc-800/60 bg-[#161619] relative overflow-hidden">
+              <div class="flex justify-between items-center mb-2">
+                <label class="text-[10px] sm:text-xs text-zinc-400 font-black uppercase tracking-[0.2em]">Slippage Entrada (Compras)</label>
+                <span class="text-[8px] sm:text-[10px] font-black px-2 py-1 rounded border text-[#D4AF37] bg-[#D4AF37]/10 border-[#D4AF37]/40">NORMAL</span>
+              </div>
+              <div class="flex items-center gap-4">
+                <input type="range" min="1" max="15" step="1" v-model.number="status.riskSettings.entrySlippage" @change="updateRiskSettings" class="flex-1 accent-[#D4AF37] h-2 bg-zinc-800 rounded-lg appearance-none cursor-pointer" />
+                <div class="flex items-center gap-1 w-28 shrink-0 bg-[#09090b] border border-zinc-700 rounded-xl px-3 py-2">
+                  <input type="number" min="1" max="15" v-model.number="status.riskSettings.entrySlippage" @change="updateRiskSettings" class="w-full bg-transparent text-[#D4AF37] font-mono text-base text-right outline-none" />
+                  <span class="text-zinc-500 font-bold text-sm">%</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="flex flex-col gap-2 p-4 md:p-5 rounded-xl border border-rose-500/20 bg-[#161619] relative overflow-hidden">
+              <div class="flex justify-between items-center mb-2">
+                <label class="text-[10px] sm:text-xs text-rose-400 font-black uppercase tracking-[0.2em]">Slippage Pánico (S.L.)</label>
+                <span class="text-[8px] sm:text-[10px] font-black px-2 py-1 rounded border text-rose-400 bg-rose-500/10 border-rose-500/40">EMERGENCIA</span>
+              </div>
+              <div class="flex items-center gap-4">
+                <input type="range" min="10" max="60" step="1" v-model.number="status.riskSettings.panicSlippage" @change="updateRiskSettings" class="flex-1 accent-rose-500 h-2 bg-zinc-800 rounded-lg appearance-none cursor-pointer" />
+                <div class="flex items-center gap-1 w-28 shrink-0 bg-[#09090b] border border-rose-900/50 rounded-xl px-3 py-2">
+                  <input type="number" min="10" max="60" v-model.number="status.riskSettings.panicSlippage" @change="updateRiskSettings" class="w-full bg-transparent text-rose-400 font-mono text-base text-right outline-none" />
+                  <span class="text-rose-600 font-bold text-sm">%</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="flex flex-col gap-2 p-4 md:p-5 rounded-xl border border-zinc-800/60 bg-[#161619] relative overflow-hidden">
+              <div class="flex justify-between items-center mb-2">
+                <label class="text-[10px] sm:text-xs text-zinc-400 font-black uppercase tracking-[0.2em]">Cooldown (Filtro Spam)</label>
+                <span class="text-[8px] sm:text-[10px] font-black px-2 py-1 rounded border text-zinc-300 bg-zinc-700/30 border-zinc-600/50">TIEMPO</span>
+              </div>
+              <div class="flex items-center gap-4">
+                <input type="range" min="0" max="120" step="5" v-model.number="status.riskSettings.tradeCooldownMin" @change="updateRiskSettings" class="flex-1 accent-zinc-500 h-2 bg-zinc-800 rounded-lg appearance-none cursor-pointer" />
+                <div class="flex items-center gap-1 w-28 shrink-0 bg-[#09090b] border border-zinc-700 rounded-xl px-3 py-2">
+                  <input type="number" min="0" max="120" v-model.number="status.riskSettings.tradeCooldownMin" @change="updateRiskSettings" class="w-full bg-transparent text-white font-mono text-base text-right outline-none" />
+                  <span class="text-zinc-500 font-bold text-sm">Min</span>
                 </div>
               </div>
             </div>

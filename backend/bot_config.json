@@ -82,5 +82,13 @@
       "nickname": "cashy",
       "enabled": true
     }
-  ]
+  ],
+  "riskSettings": {
+    "entrySlippage": 5,
+    "panicSlippage": 40,
+    "maxGasPrice": 1.5,
+    "tradeCooldownMin": 60
+  },
+  "copiedPositions": [],
+  "copiedTrades": []
 }

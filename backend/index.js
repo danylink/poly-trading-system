@@ -163,7 +163,14 @@ let botStatus = {
         sports: false,
         pop: false,
     },
-    customWhales: []
+    customWhales: [],
+    riskSettings: {
+        entrySlippage: 5,       // % máximo para comprar o Take Profit
+        panicSlippage: 40,      // % máximo para Stop Loss (Emergencia)
+        maxGasPrice: 1.5,       // POL máximo por transacción
+        tradeCooldownMin: 60    // Minutos para no repetir un mercado
+    },
+    lastTrades: {} // Objeto para controlar el Cooldown: { tokenId: timestamp }
 };
 
 
@@ -185,12 +192,13 @@ function saveConfigToDisk(origen = "Sistema") {
             maxActiveSportsMarkets: botStatus.maxActiveSportsMarkets,
             useAutoWhales: botStatus.useAutoWhales,
             customWhales: botStatus.customWhales,
-            // 🔥 FIX: Guardar la memoria fotográfica de Copy Trading
             copiedPositions: botStatus.copiedPositions || [],
-            copiedTrades: botStatus.copiedTrades || []
+            copiedTrades: botStatus.copiedTrades || [],
+            // 🔥 NUEVO: Guardado de Riesgo Avanzado
+            riskSettings: botStatus.riskSettings 
         };
         fs.writeFileSync(CONFIG_FILE, JSON.stringify(configToSave, null, 2), 'utf8');
-        console.log(`💾 Configuración guardada en el disco duro. (Origen: ${origen})`);
+        console.log(`💾 Configuración guardada en el disco. (Origen: ${origen})`);
     } catch (err) {
         console.error("❌ Error guardando configuración:", err.message);
     }
@@ -206,19 +214,21 @@ function loadConfigFromDisk() {
             if (savedConfig.aiConfig) botStatus.aiConfig = savedConfig.aiConfig;
             if (savedConfig.whaleConfig) botStatus.whaleConfig = savedConfig.whaleConfig;
             if (savedConfig.marketFilters) botStatus.marketFilters = savedConfig.marketFilters;
-            
             if (savedConfig.autoTradeEnabled !== undefined) botStatus.autoTradeEnabled = savedConfig.autoTradeEnabled;
             if (savedConfig.copyTradingEnabled !== undefined) botStatus.copyTradingEnabled = savedConfig.copyTradingEnabled;
             if (savedConfig.maxWhalesToCopy !== undefined) botStatus.maxWhalesToCopy = savedConfig.maxWhalesToCopy;
             if (savedConfig.maxActiveSportsMarkets !== undefined) botStatus.maxActiveSportsMarkets = savedConfig.maxActiveSportsMarkets;
             if (savedConfig.useAutoWhales !== undefined) botStatus.useAutoWhales = savedConfig.useAutoWhales;
             if (savedConfig.customWhales !== undefined) botStatus.customWhales = savedConfig.customWhales;
-            
-            // 🔥 FIX: Recuperar la memoria fotográfica
             if (savedConfig.copiedPositions) botStatus.copiedPositions = savedConfig.copiedPositions;
             if (savedConfig.copiedTrades) botStatus.copiedTrades = savedConfig.copiedTrades;
+            
+            // 🔥 NUEVO: Recuperar configuración de Riesgo
+            if (savedConfig.riskSettings) {
+                botStatus.riskSettings = { ...botStatus.riskSettings, ...savedConfig.riskSettings };
+            }
 
-            console.log("📂 Configuración y Memoria de Ballenas cargada con éxito.");
+            console.log("📂 Configuración y Memoria cargada con éxito.");
         } else {
             console.log("📝 No hay archivo de configuración. Se creará uno nuevo.");
             saveConfigToDisk("Inicialización"); 
@@ -809,11 +819,13 @@ async function executeTradeOnChain(conditionId, tokenId, amountUsdc, currentPric
             return { success: false, error: "Precio por debajo del mínimo legal" };
         }
 
-        // ⚡ LÓGICA PRO: SLIPPAGE (TOLERANCIA AL DESLIZAMIENTO)
-        // Damos un margen de +2 ticks hacia arriba. 
-        // El servidor siempre cobrará lo más barato, pero esto asegura la ejecución instantánea.
-        let limitPrice = basePrice + (minPriceAllowed * 2);
-        if (limitPrice > 0.99) limitPrice = 0.99; // Límite máximo legal absoluto
+        // ⚡ LÓGICA PRO: SLIPPAGE DE ENTRADA DINÁMICO
+        const entrySlippagePct = botStatus.riskSettings.entrySlippage || 5;
+        
+        // El precio límite es el precio base + el % de slippage que permitas
+        let limitPrice = basePrice * (1 + (entrySlippagePct / 100));
+        
+        if (limitPrice > 0.99) limitPrice = 0.99; // Límite máximo legal absoluto en Polymarket
         limitPrice = Number(limitPrice.toFixed(decimales));
 
         // 4. Cálculo de munición (Calculamos usando el limitPrice para garantizar saldo suficiente)
@@ -1196,6 +1208,15 @@ async function checkAndCopyWhaleTrades() {
                         let limitPrice = price * 1.04;
                         if (limitPrice > 0.99) limitPrice = 0.99;
 
+                        // 🔥 VALIDACIÓN DE COOLDOWN
+                        const lastTradeTime = botStatus.lastTrades[tokenId];
+                        if (lastTradeTime) {
+                            const minutesSince = (Date.now() - lastTradeTime) / 60000;
+                            if (minutesSince < botStatus.riskSettings.tradeCooldownMin) {
+                                console.log(`⏳ COOLDOWN: Esperando ${Math.ceil(botStatus.riskSettings.tradeCooldownMin - minutesSince)}m para re-entrar en ${tokenId}`);
+                                continue; 
+                            }
+                        }
                         console.log(`🔥 [COPY BUY] ${whale.address.substring(0,8)}... → ${title.substring(0,45)}...`);
 
                         const result = await executeTradeOnChain(conditionId, tokenId, montoInversion, limitPrice, "0.01");
@@ -1230,6 +1251,8 @@ async function checkAndCopyWhaleTrades() {
                             botStatus.copyTradingStats.successful = (botStatus.copyTradingStats.successful || 0) + 1;
 
                             await sendAlert(`🐋 *COPY BUY*\nMercado: ${title.substring(0,45)}...\nInversión: $${montoInversion.toFixed(2)}`);
+                            // 🔥 Reiniciamos el reloj de Cooldown para este mercado
+                            botStatus.lastTrades[tokenId] = Date.now();
                         }
                     }
 
@@ -1505,6 +1528,18 @@ async function runBot() {
                 dynamicBetAmount = Math.max(dynamicBetAmount, profile.microBetAmount);
             }
 
+            // 🔥 VALIDACIÓN DE COOLDOWN
+            const lastTradeTime = botStatus.lastTrades[targetTokenId];
+            if (lastTradeTime) {
+                const minutesSince = (Date.now() - lastTradeTime) / 60000;
+                if (minutesSince < botStatus.riskSettings.tradeCooldownMin) {
+                    console.log(`⏳ COOLDOWN: Esperando ${Math.ceil(botStatus.riskSettings.tradeCooldownMin - minutesSince)}m para re-entrar.`);
+                    watchlistIndex = (watchlistIndex + 1) % botStatus.watchlist.length;
+                    return; 
+                }
+            }
+
+            // Justo debajo de esto está tu console.log("🎯 SNIPER DISPARO...")
             console.log(`🎯 SNIPER DISPARO [${finalAnalysis.engine}] → [${targetSideLabel}] | Edge: ${(edge*100).toFixed(1)}%`);
 
             const result = await executeTradeOnChain(marketItem.conditionId, targetTokenId, dynamicBetAmount, livePrice, marketItem.tickSize || "0.01");
@@ -1520,7 +1555,9 @@ async function runBot() {
                     suggestedInversion: dynamicBetAmount, 
                     reasoning: finalAnalysis.reason
                 });
-                autoExecuted = true;
+
+                // 🔥 Reiniciamos el reloj de Cooldown para este mercado
+                botStatus.lastTrades[targetTokenId] = Date.now();
             }
         }
 
@@ -1669,13 +1706,14 @@ async function autoSellManager() {
                     if (accumulated >= sharesToSell) break;
                 }
 
-                // 🔥 EL FIX: Elevamos la tolerancia al slippage al 40% en Stop Loss. 
-                // Prefieres perder un poco más por slippage, que perder el 100% por no vender.
+                // 🔥 USANDO LA VARIABLE DINÁMICA DEL DASHBOARD
                 const slippage = ((bestBidPrice - worstPrice) / bestBidPrice) * 100;
-                if (slippage > 40) {
-                    console.log(`⚠️ Slippage del ${slippage.toFixed(0)}%. Ajustando a venta parcial segura.`);
-                    // Si el slippage es brutal, al menos vendemos lo que el mejor comprador aguante
-                    worstPrice = bestBidPrice * 0.60; 
+                const maxPanicSlippage = botStatus.riskSettings.panicSlippage || 40;
+
+                if (slippage > maxPanicSlippage) {
+                    console.log(`⚠️ Slippage del ${slippage.toFixed(0)}% (Límite: ${maxPanicSlippage}%). Ajustando a venta segura.`);
+                    // Descontamos dinámicamente según lo que configuraste en tu panel
+                    worstPrice = bestBidPrice * (1 - (maxPanicSlippage / 100)); 
                 }
 
                 const result = await executeSellOnChain(
@@ -1973,6 +2011,21 @@ app.post('/api/settings/config', (req, res) => {
     } catch (error) {
         console.error("❌ Error en /api/settings/config:", error);
         res.status(500).json({ success: false, error: "Error interno del servidor" });
+    }
+});
+
+// ==========================================
+// RUTA: ACTUALIZAR RIESGO AVANZADO (SLIPPAGE/COOLDOWN)
+// ==========================================
+app.post('/api/settings/advanced-risk', (req, res) => {
+    try {
+        botStatus.riskSettings = { ...botStatus.riskSettings, ...req.body };
+        saveConfigToDisk("API Advanced Risk");
+        console.log(`🛡️ Variables de Slippage y Cooldown actualizadas y guardadas.`);
+        res.json({ success: true, riskSettings: botStatus.riskSettings });
+    } catch (error) {
+        console.error("❌ Error en /api/settings/advanced-risk:", error);
+        res.status(500).json({ success: false, error: "Error interno" });
     }
 });
 
