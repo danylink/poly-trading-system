@@ -394,13 +394,21 @@ async function updateRealBalances() {
             console.log("⚠️ No se pudieron obtener posiciones:", apiError.message);
         }
 
-        // 🔥 IMPRESIÓN DE BALANCES - Solo cada 4 ciclos (reduce spam)
+        // 🔥 IMPRESIÓN DE BALANCES - Sincronizado con lógica de Dashboard
         if (Math.random() < 0.25) {
             const metaMaskVal = parseFloat(botStatus.walletOnlyUSDC || 0);
             const polyVal = parseFloat(botStatus.clobOnlyUSDC || 0);
-            const carteraTotal = (metaMaskVal + polyVal).toFixed(2);
+            const unclaimedVal = parseFloat(botStatus.unclaimedUSDC || 0);
+            
+            // Sumar valor de posiciones activas (vivas)
+            const activePosValue = botStatus.activePositions.reduce((acc, pos) => {
+                return acc + parseFloat(pos.currentValue || 0);
+            }, 0);
 
-            console.log(`📊 Balances: Cartera Total: $${carteraTotal} | Disponible (Poly): $${polyVal.toFixed(2)} | MetaMask: $${metaMaskVal.toFixed(2)} | Gas: ${botStatus.balancePOL} POL`);
+            // Cálculo real: MetaMask + Disponible + Posiciones + Reclamables
+            const carteraTotalReal = (metaMaskVal + polyVal + activePosValue + unclaimedVal).toFixed(2);
+
+            console.log(`📊 Balances: Cartera Total: $${carteraTotalReal} | Disponible (Poly): $${polyVal.toFixed(2)} | MetaMask: $${metaMaskVal.toFixed(2)} | Gas: ${botStatus.balancePOL} POL`);
         }
 
     } catch (e) { 
