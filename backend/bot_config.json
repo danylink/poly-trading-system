@@ -60,6 +60,98 @@
     "maxGasPrice": 1.5,
     "tradeCooldownMin": 90
   },
+  "customMarketRules": [
+    {
+      "keyword": "Will Trump say",
+      "takeProfitThreshold": 25,
+      "stopLossThreshold": -32
+    },
+    {
+      "keyword": "Trump say",
+      "takeProfitThreshold": 25,
+      "stopLossThreshold": -32
+    },
+    {
+      "keyword": "Up or Down",
+      "takeProfitThreshold": 18,
+      "stopLossThreshold": -25
+    },
+    {
+      "keyword": "Bitcoin Up or Down",
+      "takeProfitThreshold": 20,
+      "stopLossThreshold": -28
+    },
+    {
+      "keyword": "Ethereum Up or Down",
+      "takeProfitThreshold": 20,
+      "stopLossThreshold": -28
+    },
+    {
+      "keyword": "Solana Up or Down",
+      "takeProfitThreshold": 22,
+      "stopLossThreshold": -30
+    },
+    {
+      "keyword": "US x Iran",
+      "takeProfitThreshold": 28,
+      "stopLossThreshold": -35
+    },
+    {
+      "keyword": "meeting by",
+      "takeProfitThreshold": 30,
+      "stopLossThreshold": -35
+    },
+    {
+      "keyword": "Temperature in",
+      "takeProfitThreshold": 22,
+      "stopLossThreshold": -25
+    },
+    {
+      "keyword": "CPI",
+      "takeProfitThreshold": 25,
+      "stopLossThreshold": -30
+    },
+    {
+      "keyword": "interest rate",
+      "takeProfitThreshold": 28,
+      "stopLossThreshold": -32
+    },
+    {
+      "keyword": "Fed",
+      "takeProfitThreshold": 25,
+      "stopLossThreshold": -30
+    },
+    {
+      "keyword": "Elon",
+      "takeProfitThreshold": 22,
+      "stopLossThreshold": -28
+    },
+    {
+      "keyword": "Will there be",
+      "takeProfitThreshold": 20,
+      "stopLossThreshold": -30
+    },
+    {
+      "keyword": "by April",
+      "takeProfitThreshold": 26,
+      "stopLossThreshold": -30
+    },
+    {
+      "keyword": "by May",
+      "takeProfitThreshold": 26,
+      "stopLossThreshold": -30
+    },
+    {
+      "keyword": "Ukraine",
+      "takeProfitThreshold": 30,
+      "stopLossThreshold": -35
+    },
+    {
+      "keyword": "Israel",
+      "takeProfitThreshold": 28,
+      "stopLossThreshold": -35
+    }
+  ],
   "copiedPositions": [],
   "copiedTrades": []
 }

@@ -170,6 +170,7 @@ let botStatus = {
         maxGasPrice: 1.5,       // POL máximo por transacción
         tradeCooldownMin: 60    // Minutos para no repetir un mercado
     },
+    customMarketRules: [],
     lastTrades: {} // Objeto para controlar el Cooldown: { tokenId: timestamp }
 };
 
@@ -195,8 +196,9 @@ function saveConfigToDisk(origen = "Sistema") {
             dailyLossLimit: botStatus.dailyLossLimit,
             copiedPositions: botStatus.copiedPositions || [],
             copiedTrades: botStatus.copiedTrades || [],
-            // 🔥 NUEVO: Guardado de Riesgo Avanzado
-            riskSettings: botStatus.riskSettings 
+            riskSettings: botStatus.riskSettings,
+            // 🔥 NUEVO: Guardamos las reglas personalizadas
+            customMarketRules: botStatus.customMarketRules || []
         };
         fs.writeFileSync(CONFIG_FILE, JSON.stringify(configToSave, null, 2), 'utf8');
         console.log(`💾 Configuración guardada en el disco. (Origen: ${origen})`);
@@ -228,6 +230,14 @@ function loadConfigFromDisk() {
             // 🔥 NUEVO: Recuperar configuración de Riesgo
             if (savedConfig.riskSettings) {
                 botStatus.riskSettings = { ...botStatus.riskSettings, ...savedConfig.riskSettings };
+            }
+
+            // 🔥 NUEVO: Reglas personalizadas por mercado (Parche #8)
+            if (savedConfig.customMarketRules) {
+                botStatus.customMarketRules = savedConfig.customMarketRules;
+                console.log(`📋 Cargadas ${savedConfig.customMarketRules.length} reglas personalizadas de mercado`);
+            } else {
+                botStatus.customMarketRules = []; // Inicializamos vacío si no existe
             }
 
             console.log("📂 Configuración y Memoria cargada con éxito.");
@@ -1279,18 +1289,49 @@ function isMarketAllowed(title = "", slug = "") {
     return true; 
 }
 
-// === NUEVO MOTOR DE PERFILES DE RIESGO ===
+// === NUEVO MOTOR DE PERFILES DE RIESGO + REGLAS PERSONALIZADAS (Parche #8) ===
 function getRiskProfile(marketName = "", isWhale = false) {
     const text = marketName.toLowerCase();
     
-    // Grupo 2 (Volátil): Deportes y Pop
+    // Detectar si es mercado volátil
     const isVolatile = /nba|nfl|mlb|nhl|soccer|tennis|f1|ufc|league|champions|madrid|lakers|sports|pop|movie|oscar|grammy|temperature|temperatura/i.test(text);
     
     const profileType = isVolatile ? 'volatile' : 'standard';
+    let config = isWhale ? botStatus.whaleConfig[profileType] : botStatus.aiConfig[profileType];
+
+    // 🔥 NUEVO: Aplicar reglas personalizadas si existen
+    const customRule = getCustomMarketRules(marketName);
+    if (customRule) {
+        config = { ...config, ...customRule };
+    }
+
     return {
-        config: isWhale ? botStatus.whaleConfig[profileType] : botStatus.aiConfig[profileType],
+        config: config,
         profileType: profileType
     };
+}
+
+// ==========================================
+// NUEVA FUNCIÓN: Reglas personalizadas por mercado (Parche #8 FINAL)
+// ==========================================
+function getCustomMarketRules(marketTitle = "") {
+    if (!botStatus.customMarketRules || botStatus.customMarketRules.length === 0) {
+        return null;
+    }
+
+    const titleLower = marketTitle.toLowerCase();
+
+    for (const rule of botStatus.customMarketRules) {
+        if (titleLower.includes(rule.keyword.toLowerCase())) {
+            console.log(`📋 [CUSTOM RULE] Aplicada → ${marketTitle}`);
+            return {
+                takeProfitThreshold: rule.takeProfitThreshold,
+                stopLossThreshold: rule.stopLossThreshold,
+                microBetAmount: rule.microBetAmount   // ← NUEVO
+            };
+        }
+    }
+    return null;
 }
 
 // ==========================================
@@ -1482,22 +1523,21 @@ async function runBot() {
         if (botStatus.autoTradeEnabled && isStrongSignal) {
             const saldoLibre = parseFloat(botStatus.clobOnlyUSDC || 0);
             
-            // Base = lo que configuramos en el JSON (actualmente $2)
+            // 🔥 NUEVO: Respeta microBetAmount de regla personalizada
             let dynamicBetAmount = profile.microBetAmount || 2.0;
 
-            // Solo aplicamos Kelly si el edge es realmente excepcional
+            // Solo Kelly en edges excepcionales
             if (edge > 0.25 && livePrice > 0 && livePrice < 1) {
                 const kellyFraction = edge / (1 - livePrice);
                 dynamicBetAmount = Math.min(
-                    saldoLibre * kellyFraction * 0.20,   // más conservador
-                    3.0,                                 // ← LÍMITE DURO: nunca más de $3
-                    profile.microBetAmount * 1.5         // máximo 50% más de lo configurado
+                    saldoLibre * kellyFraction * 0.20,
+                    4.0,                                 // ← subí un poco el tope máximo
+                    profile.microBetAmount * 1.5
                 );
             }
 
-            // Nunca bajar de $1 ni superar el saldo disponible
-            dynamicBetAmount = Math.max(dynamicBetAmount, 1.0);
-            dynamicBetAmount = Math.min(dynamicBetAmount, saldoLibre * 0.15); // máximo 15% del balance
+            dynamicBetAmount = Math.max(dynamicBetAmount, 0.5);   // nunca menos de $0.5
+            dynamicBetAmount = Math.min(dynamicBetAmount, saldoLibre * 0.15);
 
             // Cooldown
             const lastTradeTime = botStatus.lastTrades[targetTokenId];
@@ -1510,7 +1550,7 @@ async function runBot() {
                 }
             }
 
-            console.log(`🎯 SNIPER DISPARO [${finalAnalysis.engine}] → [${targetSideLabel}] | Edge: ${(edge*100).toFixed(1)}% | Apuesta: $${dynamicBetAmount.toFixed(2)}`);
+            console.log(`🎯 SNIPER DISPARO [${finalAnalysis.engine}] → [${targetSideLabel}] | Edge: ${(edge*100).toFixed(1)}% | Apuesta: $${dynamicBetAmount.toFixed(2)} ${profile.microBetAmount !== undefined ? '(regla personalizada)' : ''}`);
 
             const result = await executeTradeOnChain(
                 marketItem.conditionId, 
@@ -2361,6 +2401,57 @@ app.delete('/api/custom-whales', (req, res) => {
     botStatus.customWhales = botStatus.customWhales.filter(w => w.address.toLowerCase() !== address.toLowerCase());
     saveConfigToDisk("Custom Whale Eliminada");
     res.json({ success: true, customWhales: botStatus.customWhales });
+});
+
+// ==========================================
+// 🔥 NUEVO: API PARA REGLAS PERSONALIZADAS POR MERCADO (Parche #8)
+// ==========================================
+
+app.get('/api/settings/custom-rules', (req, res) => {
+    res.json({ success: true, customMarketRules: botStatus.customMarketRules || [] });
+});
+
+app.post('/api/settings/custom-rules', (req, res) => {
+    try {
+        const { keyword, takeProfitThreshold, stopLossThreshold } = req.body;
+        
+        if (!keyword || typeof keyword !== 'string') {
+            return res.status(400).json({ success: false, error: "Keyword es obligatorio" });
+        }
+
+        // Evitar duplicados
+        const exists = botStatus.customMarketRules.some(r => 
+            r.keyword.toLowerCase() === keyword.toLowerCase()
+        );
+
+        if (exists) {
+            return res.status(400).json({ success: false, error: "Ya existe una regla con ese keyword" });
+        }
+
+        botStatus.customMarketRules.push({
+            keyword: keyword.trim(),
+            takeProfitThreshold: parseInt(takeProfitThreshold) || 25,
+            stopLossThreshold: parseInt(stopLossThreshold) || -30
+        });
+
+        saveConfigToDisk("Nueva Regla Personalizada");
+        res.json({ success: true, customMarketRules: botStatus.customMarketRules });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.delete('/api/settings/custom-rules', (req, res) => {
+    try {
+        const { keyword } = req.body;
+        botStatus.customMarketRules = botStatus.customMarketRules.filter(r => 
+            r.keyword.toLowerCase() !== keyword.toLowerCase()
+        );
+        saveConfigToDisk("Regla Eliminada");
+        res.json({ success: true, customMarketRules: botStatus.customMarketRules });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
 });
 
 // ==========================================

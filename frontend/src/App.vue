@@ -74,7 +74,14 @@ const status = ref({
     maxGasPrice: 1.5,
     tradeCooldownMin: 60
   },
+  // 🔥 NUEVO: Reglas personalizadas por mercado
+  customMarketRules: [],
 
+  // Variables para el formulario de nueva regla
+  newRuleKeyword: '',
+  newRuleTP: 25,
+  newRuleSL: -30,
+  newRuleBet: 2,
 });
 
 // --- CONTROL DE PESTAÑAS MÓVILES ---
@@ -608,6 +615,47 @@ const updateQuantumRiskSettings = async () => {
       color: '#e4e4e7',
       confirmButtonColor: '#f43f5e'
     });
+  }
+};
+
+// ====================== REGLAS PERSONALIZADAS POR MERCADO ======================
+const addCustomRule = async () => {
+  if (!status.value.newRuleKeyword.trim()) {
+    Swal.fire('Error', 'Debes escribir un keyword', 'error');
+    return;
+  }
+
+  try {
+    await axios.post(`${API_URL}/settings/custom-rules`, {
+      keyword: status.value.newRuleKeyword.trim(),
+      takeProfitThreshold: status.value.newRuleTP,
+      stopLossThreshold: status.value.newRuleSL,
+      microBetAmount: status.value.newRuleBet   // ← NUEVO
+    });
+
+    // Limpiar formulario
+    status.value.newRuleKeyword = '';
+    status.value.newRuleTP = 25;
+    status.value.newRuleSL = -30;
+    status.value.newRuleBet = 2;
+
+    await fetchStatus();
+    Swal.fire('¡Regla agregada!', 'Se aplicará automáticamente', 'success');
+  } catch (error) {
+    Swal.fire('Error', error.response?.data?.error || 'No se pudo agregar', 'error');
+  }
+};
+
+const deleteCustomRule = async (keyword) => {
+  if (!confirm(`¿Eliminar la regla para "${keyword}"?`)) return;
+
+  try {
+    await axios.delete(`${API_URL}/settings/custom-rules`, {
+      data: { keyword }
+    });
+    await fetchStatus();
+  } catch (error) {
+    Swal.fire('Error', 'No se pudo eliminar la regla', 'error');
   }
 };
 
@@ -1488,6 +1536,94 @@ onUnmounted(() => {
               </p>
             </div>
 
+          </div>
+        </div>
+
+        <!-- ====================== REGLAS PERSONALIZADAS POR MERCADO ====================== -->
+        <div class="bg-[#111114] border border-amber-500/30 rounded-[2rem] p-6 lg:p-8 transition-all shadow-2xl hover:border-amber-500/50">
+          <div class="flex items-center gap-3 mb-6 pb-4 border-b border-zinc-800/80">
+            <div class="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400">
+              <Target :size="22" />
+            </div>
+            <div>
+              <h3 class="text-white font-black text-lg tracking-tight">Reglas Personalizadas</h3>
+              <p class="text-xs text-zinc-500">Override de TP / SL / Apuesta por tipo de mercado</p>
+            </div>
+          </div>
+
+          <!-- Formulario para agregar nueva regla -->
+          <div class="bg-[#09090b] border border-amber-500/20 rounded-2xl p-5 mb-6">
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              <!-- Keyword -->
+              <div class="sm:col-span-2">
+                <label class="text-[10px] font-black uppercase text-amber-400 tracking-widest block mb-1">Keyword del mercado</label>
+                <input 
+                  v-model="status.newRuleKeyword" 
+                  placeholder="Trump say / Up or Down / Temperature in"
+                  class="w-full bg-black border border-amber-500/30 rounded-xl px-4 py-3 text-sm font-mono focus:border-amber-400 outline-none"
+                >
+              </div>
+
+              <!-- Take Profit -->
+              <div>
+                <label class="text-[10px] font-black uppercase text-emerald-400 tracking-widest block mb-1">Take Profit</label>
+                <div class="flex items-center gap-2 bg-black border border-emerald-500/30 rounded-xl px-4 py-3">
+                  <input type="number" v-model.number="status.newRuleTP" class="w-full bg-transparent font-mono text-emerald-400 text-lg text-right outline-none">
+                  <span class="text-emerald-400 font-bold">%</span>
+                </div>
+              </div>
+
+              <!-- Stop Loss -->
+              <div>
+                <label class="text-[10px] font-black uppercase text-rose-400 tracking-widest block mb-1">Stop Loss</label>
+                <div class="flex items-center gap-2 bg-black border border-rose-500/30 rounded-xl px-4 py-3">
+                  <input type="number" v-model.number="status.newRuleSL" class="w-full bg-transparent font-mono text-rose-400 text-lg text-right outline-none">
+                  <span class="text-rose-400 font-bold">%</span>
+                </div>
+              </div>
+
+              <!-- Apuesta (microBetAmount) -->
+              <div class="sm:col-span-4 mt-2">
+                <label class="text-[10px] font-black uppercase text-[#D4AF37] tracking-widest block mb-1">Apuesta por operación (USDC)</label>
+                <input 
+                  type="number" 
+                  v-model.number="status.newRuleBet" 
+                  min="0.5" 
+                  max="10" 
+                  step="0.5"
+                  class="w-full bg-black border border-[#D4AF37]/30 rounded-xl px-4 py-3 text-lg font-mono text-[#D4AF37] text-center outline-none"
+                >
+              </div>
+            </div>
+
+            <button 
+              @click="addCustomRule" 
+              class="mt-5 w-full bg-amber-500 hover:bg-amber-400 text-[#3C2A21] font-black py-3.5 rounded-2xl text-sm tracking-widest">
+              + AGREGAR REGLA PERSONALIZADA
+            </button>
+          </div>
+
+          <!-- Lista de reglas existentes -->
+          <div v-if="status.customMarketRules && status.customMarketRules.length > 0" class="space-y-3 max-h-80 overflow-y-auto custom-scroll">
+            <div v-for="(rule, i) in status.customMarketRules" :key="i"
+                 class="flex justify-between items-center bg-[#161619] border border-zinc-700 rounded-2xl p-4 hover:border-amber-500/30">
+              <div class="font-mono text-amber-300 text-sm">{{ rule.keyword }}</div>
+              <div class="flex gap-6 text-xs">
+                <div>TP <span class="font-bold text-emerald-400">{{ rule.takeProfitThreshold }}%</span></div>
+                <div>SL <span class="font-bold text-rose-400">{{ rule.stopLossThreshold }}%</span></div>
+                <div>Bet <span class="font-bold text-[#D4AF37]">${{ rule.microBetAmount }}</span></div>
+              </div>
+              <button 
+                @click="deleteCustomRule(rule.keyword)" 
+                class="text-rose-400 hover:text-rose-500 text-xs px-3 py-1 rounded-lg border border-rose-400/30 hover:border-rose-400">
+                Eliminar
+              </button>
+            </div>
+          </div>
+
+          <div v-else class="text-center py-8 text-zinc-500 italic text-sm border border-dashed border-zinc-700 rounded-2xl">
+            Aún no tienes reglas personalizadas.<br>
+            Todos los mercados usarán los valores globales.
           </div>
         </div>
 
