@@ -224,7 +224,6 @@ function loadConfigFromDisk() {
             if (savedConfig.copyTradingAutoEnabled !== undefined) botStatus.copyTradingAutoEnabled = savedConfig.copyTradingAutoEnabled;
             if (savedConfig.maxWhalesToCopy !== undefined) botStatus.maxWhalesToCopy = savedConfig.maxWhalesToCopy;
             if (savedConfig.maxActiveSportsMarkets !== undefined) botStatus.maxActiveSportsMarkets = savedConfig.maxActiveSportsMarkets;
-            if (savedConfig.useAutoWhales !== undefined) botStatus.useAutoWhales = savedConfig.useAutoWhales;
             if (savedConfig.customWhales !== undefined) botStatus.customWhales = savedConfig.customWhales;
             if (savedConfig.dailyLossLimit !== undefined) botStatus.dailyLossLimit = savedConfig.dailyLossLimit;
             if (savedConfig.copiedPositions) botStatus.copiedPositions = savedConfig.copiedPositions;
@@ -1040,7 +1039,7 @@ async function fetchRealTrades() {
 // AUTO COPY-TRADING - SELECCIÓN AUTOMÁTICA DE WHALES
 // ==========================================
 async function autoSelectTopWhales() {
-    if (!botStatus.copyTradingEnabled) return;
+    if (!botStatus.copyTradingAutoEnabled) return;   // ← Solo se ejecuta si el Auto está ON
 
     console.log(`🔍 [AUTO-WHALE] Seleccionando las mejores ballenas automáticamente...`);
 
@@ -1096,14 +1095,16 @@ async function checkAndCopyWhaleTrades() {
 
     const hasActiveCopiedPositions = (botStatus.copiedPositions || []).length > 0;
 
-    if (!botStatus.copyTradingCustomEnabled && !botStatus.copyTradingAutoEnabled && !hasActiveCopiedPositions) return;
+    if (!botStatus.copyTradingCustomEnabled && 
+        !botStatus.copyTradingAutoEnabled && 
+        !hasActiveCopiedPositions) return;
 
     isScanningWhales = true;
 
     try {
         let allWhales = [];
 
-        if (botStatus.useAutoWhales) {
+        if (botStatus.copyTradingAutoEnabled) {   // ← cambiado
             if (!botStatus.autoSelectedWhales || botStatus.autoSelectedWhales.length === 0 ||
                 !botStatus.lastWhaleSelection || 
                 (Date.now() - new Date(botStatus.lastWhaleSelection).getTime()) > 10 * 60 * 1000) {
@@ -1128,7 +1129,7 @@ async function checkAndCopyWhaleTrades() {
             return;
         }
 
-        console.log(`🔄 [COPY-TRADING] Revisando trades de ${allWhales.length} ballenas (Auto + Custom)...`);
+        console.log(`🔄 [COPY-TRADING] Revisando trades de ${allWhales.length} ballenas (Custom: ${botStatus.copyTradingCustomEnabled ? 'ON' : 'OFF'} | Auto: ${botStatus.copyTradingAutoEnabled ? 'ON' : 'OFF'})...`);
 
         for (const whale of allWhales) {
             try {
@@ -1359,12 +1360,8 @@ function getCustomMarketRules(marketTitle = "") {
 // ==========================================
 let watchlistIndex = 0;
 
-// ==========================================
-// CICLO PRINCIPAL (MOTOR DEL BOT MULTI-AGENTE) - PARCHE #7 FINAL
-// ==========================================
 async function runBot() {
 
-    // 🚨 CANDADO DE PÁNICO (MODO SOLO CIERRE)
     if (botStatus.isPanicStopped) {
         console.log("🚨 [MODO PÁNICO] Compras bloqueadas. Ejecutando únicamente motor de ventas (TP/SL)...");
         try { await autoSellManager(); } catch (e) { console.log("Error autoSell:", e); }
@@ -1374,15 +1371,15 @@ async function runBot() {
     botStatus.lastCheck = new Date().toLocaleTimeString();
 
     try {
-        // 1. Actualizaciones principales
         await fetchRealTrades();
         await updateRealBalances();
 
-        // 2. Copy-Trading (Auto + Custom)
-        if (botStatus.useAutoWhales || botStatus.copyTradingEnabled || 
+        // 2. Copy-Trading (Auto + Custom) → NUEVA LÓGICA
+        if (botStatus.copyTradingCustomEnabled || 
+            botStatus.copyTradingAutoEnabled || 
             (botStatus.copiedPositions && botStatus.copiedPositions.length > 0)) {
             
-            if (botStatus.useAutoWhales) {
+            if (botStatus.copyTradingAutoEnabled) {
                 if (!botStatus.lastWhaleSelection || 
                     (Date.now() - new Date(botStatus.lastWhaleSelection).getTime()) > 15 * 60 * 1000) {
                     await autoSelectTopWhales();
@@ -1398,7 +1395,7 @@ async function runBot() {
             await autoSellManager();
         }
 
-        // 3. Refresh Watchlist (ya filtrado por <48h gracias al Parche #3)
+        // 3. Refresh Watchlist
         if (botStatus.watchlist.length === 0 || watchlistIndex >= botStatus.watchlist.length) {
             await refreshWatchlist();
             watchlistIndex = 0;
@@ -1915,10 +1912,12 @@ async function autoRedeemPositions() {
 // DAILY LOSS LIMIT (Stop-loss global del día)
 // ==========================================
 async function checkDailyLossLimit() {
-    if (!botStatus.copyTradingEnabled && !botStatus.autoTradeEnabled) return;
+    // Solo activamos si hay algún tipo de Copy Trading o AutoTrade
+    if (!botStatus.copyTradingCustomEnabled && 
+        !botStatus.copyTradingAutoEnabled && 
+        !botStatus.autoTradeEnabled) return;
 
     try {
-        // 🔥 FIX QUANT: Calcular valor real de la cartera (Efectivo + Posiciones vivas)
         let activePortfolioValue = 0;
         if (botStatus.activePositions && botStatus.activePositions.length > 0) {
             activePortfolioValue = botStatus.activePositions.reduce((acc, pos) => {
@@ -1928,7 +1927,6 @@ async function checkDailyLossLimit() {
 
         const totalCurrentValue = parseFloat(botStatus.clobOnlyUSDC || 0) + activePortfolioValue;
 
-        // Guardamos el balance inicial del día si es el primer chequeo (o si se reseteó a 0)
         if (botStatus.dailyStartBalance === 0) {
             botStatus.dailyStartBalance = totalCurrentValue;
         }
@@ -1940,7 +1938,6 @@ async function checkDailyLossLimit() {
             ? (dailyPnL / botStatus.dailyStartBalance) * 100 
             : 0;
 
-        // Si se supera el límite de pérdida real -> Panic Stop
         if (lossPercent <= -botStatus.dailyLossLimit && !botStatus.isPanicStopped) {
             console.log(`🚨 [DAILY LIMIT] Stop-loss diario activado (${lossPercent.toFixed(1)}%). Deteniendo bot...`);
             botStatus.isPanicStopped = true;
@@ -2000,19 +1997,24 @@ app.post('/api/settings/autotrade', (req, res) => {
     res.json({ success: true, autoTradeEnabled: botStatus.autoTradeEnabled });
 });
 
-// 3. Toggle Copy-Trading + Top Whales
+// 3. Toggle Copy-Trading (Custom y Auto separados)
 app.post('/api/settings/copytrading', (req, res) => {
-    const { enabled, maxWhalesToCopy } = req.body;
+    const { customEnabled, autoEnabled, maxWhalesToCopy } = req.body;
     
-    if (enabled !== undefined) botStatus.copyTradingEnabled = !!enabled;
+    if (customEnabled !== undefined) botStatus.copyTradingCustomEnabled = !!customEnabled;
+    if (autoEnabled !== undefined) botStatus.copyTradingAutoEnabled = !!autoEnabled;
     
     if (maxWhalesToCopy !== undefined) {
         botStatus.maxWhalesToCopy = parseInt(maxWhalesToCopy) || 5;
-        botStatus.lastWhaleSelection = null; // Forzamos a que busque nuevas ballenas
+        botStatus.lastWhaleSelection = null;
     }
     
     saveConfigToDisk("API CopyTrading Toggle");
-    res.json({ success: true, copyTradingEnabled: botStatus.copyTradingEnabled });
+    res.json({ 
+        success: true, 
+        copyTradingCustomEnabled: botStatus.copyTradingCustomEnabled,
+        copyTradingAutoEnabled: botStatus.copyTradingAutoEnabled 
+    });
 });
 
 

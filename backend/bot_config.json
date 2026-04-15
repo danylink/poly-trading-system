@@ -37,10 +37,10 @@
     "pop": false
   },
   "autoTradeEnabled": true,
-  "copyTradingEnabled": false,
+  "copyTradingCustomEnabled": true, 
+  "copyTradingAutoEnabled": false,
   "maxWhalesToCopy": 5,
   "maxActiveSportsMarkets": 5,
-  "useAutoWhales": false,
   "dailyLossLimit": 15,
   "customWhales": [
     {
