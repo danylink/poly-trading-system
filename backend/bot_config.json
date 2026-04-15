@@ -64,92 +64,110 @@
     {
       "keyword": "Will Trump say",
       "takeProfitThreshold": 25,
-      "stopLossThreshold": -32
+      "stopLossThreshold": -32,
+      "microBetAmount": 1.5
     },
     {
       "keyword": "Trump say",
       "takeProfitThreshold": 25,
-      "stopLossThreshold": -32
+      "stopLossThreshold": -32,
+      "microBetAmount": 1.5
     },
     {
       "keyword": "Up or Down",
       "takeProfitThreshold": 18,
-      "stopLossThreshold": -25
+      "stopLossThreshold": -25,
+      "microBetAmount": 2.0
     },
     {
       "keyword": "Bitcoin Up or Down",
       "takeProfitThreshold": 20,
-      "stopLossThreshold": -28
+      "stopLossThreshold": -28,
+      "microBetAmount": 2.5
     },
     {
       "keyword": "Ethereum Up or Down",
       "takeProfitThreshold": 20,
-      "stopLossThreshold": -28
+      "stopLossThreshold": -28,
+      "microBetAmount": 2.5
     },
     {
       "keyword": "Solana Up or Down",
       "takeProfitThreshold": 22,
-      "stopLossThreshold": -30
+      "stopLossThreshold": -30,
+      "microBetAmount": 2.0
     },
     {
       "keyword": "US x Iran",
       "takeProfitThreshold": 28,
-      "stopLossThreshold": -35
+      "stopLossThreshold": -35,
+      "microBetAmount": 3.0
     },
     {
       "keyword": "meeting by",
       "takeProfitThreshold": 30,
-      "stopLossThreshold": -35
+      "stopLossThreshold": -35,
+      "microBetAmount": 3.0
     },
     {
       "keyword": "Temperature in",
       "takeProfitThreshold": 22,
-      "stopLossThreshold": -25
+      "stopLossThreshold": -25,
+      "microBetAmount": 1.8
     },
     {
       "keyword": "CPI",
       "takeProfitThreshold": 25,
-      "stopLossThreshold": -30
+      "stopLossThreshold": -30,
+      "microBetAmount": 3.0
     },
     {
       "keyword": "interest rate",
       "takeProfitThreshold": 28,
-      "stopLossThreshold": -32
+      "stopLossThreshold": -32,
+      "microBetAmount": 3.0
     },
     {
       "keyword": "Fed",
       "takeProfitThreshold": 25,
-      "stopLossThreshold": -30
+      "stopLossThreshold": -30,
+      "microBetAmount": 3.0
     },
     {
       "keyword": "Elon",
       "takeProfitThreshold": 22,
-      "stopLossThreshold": -28
+      "stopLossThreshold": -28,
+      "microBetAmount": 2.0
     },
     {
       "keyword": "Will there be",
       "takeProfitThreshold": 20,
-      "stopLossThreshold": -30
+      "stopLossThreshold": -30,
+      "microBetAmount": 1.5
     },
     {
       "keyword": "by April",
       "takeProfitThreshold": 26,
-      "stopLossThreshold": -30
+      "stopLossThreshold": -30,
+      "microBetAmount": 2.5
     },
     {
       "keyword": "by May",
       "takeProfitThreshold": 26,
-      "stopLossThreshold": -30
+      "stopLossThreshold": -30,
+      "microBetAmount": 2.5
     },
     {
       "keyword": "Ukraine",
       "takeProfitThreshold": 30,
-      "stopLossThreshold": -35
+      "stopLossThreshold": -35,
+      "microBetAmount": 3.0
     },
     {
       "keyword": "Israel",
       "takeProfitThreshold": 28,
-      "stopLossThreshold": -35
+      "stopLossThreshold": -35,
+      "microBetAmount": 3.0
     }
   ],
   "copiedPositions": [],
