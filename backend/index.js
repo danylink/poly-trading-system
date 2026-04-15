@@ -1129,7 +1129,7 @@ async function checkAndCopyWhaleTrades() {
             return;
         }
 
-        console.log(`🔄 [COPY-TRADING] Revisando trades de ${allWhales.length} ballenas (Custom: ${botStatus.copyTradingCustomEnabled ? 'ON' : 'OFF'} | Auto: ${botStatus.copyTradingAutoEnabled ? 'ON' : 'OFF'})...`);
+        console.log(`🔄 [COPY-TRADING] Revisando trades de ${allWhales.length} ballenas (Custom: ${botStatus.copyTradingCustomEnabled ? '✅ ON' : '❌ OFF'} | Auto: ${botStatus.copyTradingAutoEnabled ? '✅ ON' : '❌ OFF'})...`);
 
         for (const whale of allWhales) {
             try {
@@ -1783,45 +1783,6 @@ async function autoSellManager() {
     }
 }
 
-async function executeAutoSell(pos, profit, tipo) {
-    try {
-        const sharesToSell = parseFloat(pos.exactSize || pos.size || 0);
-        if (sharesToSell <= 0) return;
-
-        const bookResp = await axios.get(`https://clob.polymarket.com/book?token_id=${pos.tokenId}`, 
-            { httpsAgent: agent, timeout: 6000 });
-
-        const bids = bookResp.data?.bids || [];
-        if (bids.length === 0) return;
-
-        const bestBidPrice = parseFloat(bids[0].price);
-        const rescateEstimado = (sharesToSell * bestBidPrice).toFixed(2);
-
-        try { await clobClient.cancelAll(); } catch (e) {}
-
-        await clobClient.createAndPostOrder({
-            tokenID: pos.tokenId,
-            price: bestBidPrice,
-            side: Side.SELL,
-            size: sharesToSell
-        });
-
-        closedPositionsCache.add(pos.tokenId);
-
-        await sendAlert(
-            `${tipo === 'TOMA DE GANANCIAS' ? '📈' : '🛑'} *VENTA AUTOMÁTICA (${tipo})*\n` +
-            `Mercado: ${pos.marketName}\n` +
-            `PnL: ${profit.toFixed(1)}%\n` +
-            `Rescatado ≈ $${rescateEstimado} USDC`
-        );
-
-        await updateRealBalances();
-
-    } catch (e) {
-        console.error("Error en executeAutoSell:", e.message);
-    }
-}
-
 // ==========================================
 // 🚨 VIGILANTE DE PORTAFOLIO (PNL MONITOR)
 // ==========================================
@@ -1949,6 +1910,123 @@ async function checkDailyLossLimit() {
 }
 
 // ==========================================
+// 🤖 AUTO-SELECTOR DE MODELO GEMINI
+// ==========================================
+async function initGemini() {
+    try {
+        console.log("🔍 [GEMINI] Buscando el modelo estable más rápido en la nube...");
+        const API_KEY = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+        const url = `https://generativelanguage.googleapis.com/v1beta/models?key=${API_KEY}`;
+        
+        const response = await axios.get(url);
+        const models = response.data.models;
+
+        let selectedModelName = null;
+
+        for (const model of models) {
+            const shortName = model.name.replace('models/', '');
+            
+            // 🔥 MAGIA QUANT: Expresión regular que busca estrictamente "gemini-X.X-flash"
+            // (Ignorará automáticamente versiones 'pro', 'preview' o 'lite')
+            if (/^gemini-\d+\.\d+-flash$/.test(shortName)) {
+                selectedModelName = shortName;
+                break; // Tomamos el primero de la lista (Google siempre pone el más nuevo arriba)
+            }
+            
+            // Fallback en caso de que Google cambie la convención de nombres
+            if (shortName === 'gemini-flash-latest' && !selectedModelName) {
+                selectedModelName = shortName;
+            }
+        }
+
+        // Fallback duro por seguridad extrema
+        if (!selectedModelName) {
+            selectedModelName = 'gemini-2.5-flash'; 
+        }
+
+        console.log(`✅ [GEMINI] Modelo inicializado exitosamente: ${selectedModelName}`);
+
+        // Inyectamos el modelo seleccionado a la variable global de nuestro bot
+        geminiModel = genAI.getGenerativeModel({ 
+            model: selectedModelName,
+            generationConfig: {
+                responseMimeType: "application/json"
+            }
+        });
+
+    } catch (error) {
+        console.error("❌ [GEMINI] Error en auto-selección, forzando gemini-2.5-flash:", error.message);
+        geminiModel = genAI.getGenerativeModel({ 
+            model: "gemini-2.5-flash",
+            generationConfig: {
+                responseMimeType: "application/json"
+            }
+        });
+    }
+}
+
+// ==========================================
+// 🛡️ GUARDIÁN DE SALUD DEL SERVIDOR (AUTO-HEALING)
+// ==========================================
+let lastHealthAlertTime = 0; 
+
+async function monitorSystemHealth() {
+    try {
+        const now = Date.now();
+        const botRamMB = process.memoryUsage().rss / 1024 / 1024;
+        const cpuLoad = os.loadavg()[0];
+
+        // Umbrales de Peligro
+        const RAM_LIMIT = 700; // Alerta y reinicio si pasa de 700 MB
+        const CPU_LIMIT = 1.5; // Alerta si la carga promedio pasa de 1.5
+
+        let alertMsg = "";
+        let shouldAutoRestart = false;
+
+        // 1. Verificación de RAM (Disparador de Auto-Healing)
+        if (botRamMB > RAM_LIMIT) {
+            alertMsg += `⚠️ *Fuga de Memoria Detectada*\nEl Poly-Bot está consumiendo \`${botRamMB.toFixed(0)} MB\` de RAM.\n\n`;
+            shouldAutoRestart = true; 
+        }
+
+        // 2. Verificación de CPU (Solo Alerta)
+        if (cpuLoad > CPU_LIMIT) {
+            alertMsg += `🔥 *Sobrecarga de Procesador*\nEl CPU de Toronto está al \`${cpuLoad.toFixed(2)}\` (Riesgo de Lag).\n\n`;
+        }
+
+        // 3. Ejecución de Acciones
+        if (alertMsg !== "") {
+            // Evitamos saturar Telegram si no es un reinicio inminente
+            if (now - lastHealthAlertTime < 3600000 && !shouldAutoRestart) return;
+
+            const actionText = shouldAutoRestart 
+                ? `*Acción:* Ejecutando Auto-Reinicio (Auto-Healing) ahora mismo 🔄` 
+                : `*Acción recomendada:* Monitorear o reiniciar manualmente si persiste.`;
+
+            await sendAlert(
+                `🚨 *ALERTA DE INFRAESTRUCTURA* 🚨\n\n` + 
+                `${alertMsg}` +
+                `${actionText}`
+            );
+
+            lastHealthAlertTime = now;
+            console.log(shouldAutoRestart ? "🔄 [SISTEMA] Iniciando Auto-Healing..." : "🚨 [SISTEMA] Alerta de salud enviada.");
+
+            // 🔥 EL CORAZÓN DEL AUTO-HEALING
+            if (shouldAutoRestart) {
+                // Esperamos 3 segundos para asegurar que el mensaje de Telegram se envíe correctamente
+                setTimeout(() => {
+                    console.log("💀 Matando proceso para reinicio limpio por PM2...");
+                    process.exit(1); 
+                }, 3000);
+            }
+        }
+    } catch (error) {
+        console.error("❌ Error en monitorSystemHealth:", error.message);
+    }
+}
+
+// ==========================================
 // 11. RUTAS API DASHBOARD Y ARRANQUE (LIMPIO)
 // ==========================================
 
@@ -2016,7 +2094,6 @@ app.post('/api/settings/copytrading', (req, res) => {
         copyTradingAutoEnabled: botStatus.copyTradingAutoEnabled 
     });
 });
-
 
 app.post('/api/settings/filters', (req, res) => {
     botStatus.marketFilters = { ...botStatus.marketFilters, ...req.body };
@@ -2221,123 +2298,6 @@ app.post('/api/panic', (req, res) => {
     
     res.json({ success: true, isPanicStopped: botStatus.isPanicStopped });
 });
-
-// ==========================================
-// 🤖 AUTO-SELECTOR DE MODELO GEMINI
-// ==========================================
-async function initGemini() {
-    try {
-        console.log("🔍 [GEMINI] Buscando el modelo estable más rápido en la nube...");
-        const API_KEY = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
-        const url = `https://generativelanguage.googleapis.com/v1beta/models?key=${API_KEY}`;
-        
-        const response = await axios.get(url);
-        const models = response.data.models;
-
-        let selectedModelName = null;
-
-        for (const model of models) {
-            const shortName = model.name.replace('models/', '');
-            
-            // 🔥 MAGIA QUANT: Expresión regular que busca estrictamente "gemini-X.X-flash"
-            // (Ignorará automáticamente versiones 'pro', 'preview' o 'lite')
-            if (/^gemini-\d+\.\d+-flash$/.test(shortName)) {
-                selectedModelName = shortName;
-                break; // Tomamos el primero de la lista (Google siempre pone el más nuevo arriba)
-            }
-            
-            // Fallback en caso de que Google cambie la convención de nombres
-            if (shortName === 'gemini-flash-latest' && !selectedModelName) {
-                selectedModelName = shortName;
-            }
-        }
-
-        // Fallback duro por seguridad extrema
-        if (!selectedModelName) {
-            selectedModelName = 'gemini-2.5-flash'; 
-        }
-
-        console.log(`✅ [GEMINI] Modelo inicializado exitosamente: ${selectedModelName}`);
-
-        // Inyectamos el modelo seleccionado a la variable global de nuestro bot
-        geminiModel = genAI.getGenerativeModel({ 
-            model: selectedModelName,
-            generationConfig: {
-                responseMimeType: "application/json"
-            }
-        });
-
-    } catch (error) {
-        console.error("❌ [GEMINI] Error en auto-selección, forzando gemini-2.5-flash:", error.message);
-        geminiModel = genAI.getGenerativeModel({ 
-            model: "gemini-2.5-flash",
-            generationConfig: {
-                responseMimeType: "application/json"
-            }
-        });
-    }
-}
-
-// ==========================================
-// 🛡️ GUARDIÁN DE SALUD DEL SERVIDOR (AUTO-HEALING)
-// ==========================================
-let lastHealthAlertTime = 0; 
-
-async function monitorSystemHealth() {
-    try {
-        const now = Date.now();
-        const botRamMB = process.memoryUsage().rss / 1024 / 1024;
-        const cpuLoad = os.loadavg()[0];
-
-        // Umbrales de Peligro
-        const RAM_LIMIT = 700; // Alerta y reinicio si pasa de 700 MB
-        const CPU_LIMIT = 1.5; // Alerta si la carga promedio pasa de 1.5
-
-        let alertMsg = "";
-        let shouldAutoRestart = false;
-
-        // 1. Verificación de RAM (Disparador de Auto-Healing)
-        if (botRamMB > RAM_LIMIT) {
-            alertMsg += `⚠️ *Fuga de Memoria Detectada*\nEl Poly-Bot está consumiendo \`${botRamMB.toFixed(0)} MB\` de RAM.\n\n`;
-            shouldAutoRestart = true; 
-        }
-
-        // 2. Verificación de CPU (Solo Alerta)
-        if (cpuLoad > CPU_LIMIT) {
-            alertMsg += `🔥 *Sobrecarga de Procesador*\nEl CPU de Toronto está al \`${cpuLoad.toFixed(2)}\` (Riesgo de Lag).\n\n`;
-        }
-
-        // 3. Ejecución de Acciones
-        if (alertMsg !== "") {
-            // Evitamos saturar Telegram si no es un reinicio inminente
-            if (now - lastHealthAlertTime < 3600000 && !shouldAutoRestart) return;
-
-            const actionText = shouldAutoRestart 
-                ? `*Acción:* Ejecutando Auto-Reinicio (Auto-Healing) ahora mismo 🔄` 
-                : `*Acción recomendada:* Monitorear o reiniciar manualmente si persiste.`;
-
-            await sendAlert(
-                `🚨 *ALERTA DE INFRAESTRUCTURA* 🚨\n\n` + 
-                `${alertMsg}` +
-                `${actionText}`
-            );
-
-            lastHealthAlertTime = now;
-            console.log(shouldAutoRestart ? "🔄 [SISTEMA] Iniciando Auto-Healing..." : "🚨 [SISTEMA] Alerta de salud enviada.");
-
-            // 🔥 EL CORAZÓN DEL AUTO-HEALING
-            if (shouldAutoRestart) {
-                // Esperamos 3 segundos para asegurar que el mensaje de Telegram se envíe correctamente
-                setTimeout(() => {
-                    console.log("💀 Matando proceso para reinicio limpio por PM2...");
-                    process.exit(1); 
-                }, 3000);
-            }
-        }
-    } catch (error) {
-        console.error("❌ Error en monitorSystemHealth:", error.message);
-    }
-}
 
 // ====================== CUSTOM WHALES + AUTO TOGGLE ======================
 app.get('/api/custom-whales', (req, res) => res.json(botStatus.customWhales || []));

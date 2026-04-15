@@ -33,15 +33,16 @@ const status = ref({
     sports: false, 
     pop: false 
   },
-  maxActiveSportsMarkets: 2,
+  maxActiveSportsMarkets: 5,
   dailyLossLimit: 15,
 
-  // 2. Copy Trading (Auto + Custom) ← ESTO ES LO QUE FALTABA
-  copyTradingEnabled: false,
-  useAutoWhales: true,                    // ← Controla el botón "Ballenas Automáticas"
-  maxCopySize: 50,
+  // 2. Copy Trading (NUEVA NOMENCLATURA)
+  copyTradingCustomEnabled: false,   // ← Card Custom (tus ballenas)
+  copyTradingAutoEnabled: false,     // ← Card Auto (leaderboard)
+  
+  maxWhalesToCopy: 5,
   autoSelectedWhales: [],
-  customWhales: [],                       // ← Tus ballenas manuales
+  customWhales: [],                  // ← Tus ballenas manuales
   copiedTrades: [],
   copiedPositions: [],
   copyTradingStats: { 
@@ -50,8 +51,8 @@ const status = ref({
   },
   
   aiConfig: {
-    standard: { predictionThreshold: 0.70, edgeThreshold: 0.08, takeProfitThreshold: 40, stopLossThreshold: -40, microBetAmount: 5 },
-    volatile: { predictionThreshold: 0.85, edgeThreshold: 0.12, takeProfitThreshold: 25, stopLossThreshold: -30, microBetAmount: 0.5 }
+    standard: { predictionThreshold: 0.75, edgeThreshold: 0.11, takeProfitThreshold: 35, stopLossThreshold: -35, microBetAmount: 2 },
+    volatile: { predictionThreshold: 0.88, edgeThreshold: 0.15, takeProfitThreshold: 25, stopLossThreshold: -30, microBetAmount: 0.5 }
   },
   whaleConfig: {
     standard: { takeProfitThreshold: 90, stopLossThreshold: -90, maxCopyPercentOfBalance: 8, maxCopySize: 50 },
@@ -67,14 +68,12 @@ const status = ref({
     cpuLoad: 0
   },
 
-  // 🔥 NUEVO: Variables de Riesgo (Vue las llenará al cargar)
   riskSettings: {
     entrySlippage: 5,
     panicSlippage: 40,
     maxGasPrice: 1.5,
-    tradeCooldownMin: 60
+    tradeCooldownMin: 90
   },
-  // 🔥 NUEVO: Reglas personalizadas por mercado
   customMarketRules: [],
 
   // Variables para el formulario de nueva regla
@@ -117,35 +116,6 @@ const filterOrder = ['crypto', 'politics', 'business', 'sports', 'pop'];
 const newWhaleAddress = ref('');
 const newWhaleNickname = ref('');
 
-// Cargar ballenas recomendadas
-/* const loadRecommendedWhalesGrok = async () => {
-  const recommended = [
-    { address: "0x492442eab586f242b53bda933fd5de859c8a3782", nickname: "Multicolored" },
-    { address: "0xc2e7800b5af46e6093872b177b7a5e7f0563be51", nickname: "BeachBoy4" },
-    { address: "0x2a2c53bd278c04da9962fcf96490e17f3dfb9bc1", nickname: "Horizon" },
-    { address: "0xbddf61af533ff524d27154e589d2d7a81510c684", nickname: "Countryside" },
-    { address: "0x2005d16a84ceefa912d4e3b5e8f5e8f5e8f5e8f5", nickname: "TopWhale5" },
-    { address: "0x17db3fcd93ba12d38382a0cade24b200185c5f6d", nickname: "fengdubiying" },
-    { address: "0xdbade4c82fb72780a0db9a38f821d8671aba9c95", nickname: "SwissMiss" },
-    { address: "0x9d84ce0306f8551e02efef1680475fc0f1dc1344", nickname: "ImJustKen" },
-
-  ];
-
-  for (const whale of recommended) {
-    try {
-      await axios.post(`${API_URL}/custom-whales`, whale, {
-        headers: { 
-          'Authorization': authPassword.value || localStorage.getItem('poly_auth') 
-        }
-      });
-    } catch (e) {
-      console.error("Error cargando whale recomendada:", e.response?.data || e.message);
-    }
-  }
-  await fetchStatus();
-  Swal.fire('Listo', '8 ballenas recomendadas cargadas', 'success');
-}; */
-
 // Agregar ballena manual
 const addCustomWhale = async () => {
   if (!newWhaleAddress.value.startsWith('0x') || newWhaleAddress.value.length !== 42) {
@@ -172,7 +142,7 @@ const addCustomWhale = async () => {
   }
 };
 
-// Toggle ballena custom
+// Toggle individual de una ballena custom
 const toggleCustomWhale = async (address) => {
   const whale = status.value.customWhales.find(w => w.address.toLowerCase() === address.toLowerCase());
   if (!whale) return;
@@ -187,7 +157,7 @@ const toggleCustomWhale = async (address) => {
       }
     });
   } catch (e) {
-    console.error("Error al cambiar toggle:", e.response?.data || e.message);
+    console.error("Error al cambiar toggle de ballena:", e.response?.data || e.message);
   }
 };
 
@@ -208,22 +178,6 @@ const deleteCustomWhale = async (address) => {
   }
 };
 
-// Toggle ballenas automáticas
-const toggleAutoWhales = async () => {
-  try {
-    await axios.post(`${API_URL}/auto-whales/toggle`, {
-      // 🔥 FIX: Quitamos el "!" porque v-model ya actualizó la variable al estado correcto
-      enabled: status.value.useAutoWhales 
-    }, {
-      headers: { 
-        'Authorization': authPassword.value || localStorage.getItem('poly_auth') 
-      }
-    });
-    await fetchStatus();
-  } catch (e) {
-    console.error("Error toggle auto whales:", e);
-  }
-};
 
 // --- 🔒 SISTEMA DE LOGIN PREMIUM ---
 const isAuthenticated = ref(!!localStorage.getItem('poly_auth'));
@@ -300,19 +254,6 @@ const updateAutoTrade = async () => {
   }
 };
 
-const updateThreshold = async () => {
-  isThresholdUpdating.value = true;
-  try {
-    await axios.post(`${API_URL}/settings/threshold`, {
-      threshold: parseFloat(status.value.predictionThreshold)
-    });
-  } catch (error) {
-    console.error("❌ Error sincronizando Umbral");
-  } finally {
-    isThresholdUpdating.value = false;
-  }
-};
-
 const executeManualTrade = async (signal) => {
   if (signal.loading) return;
   signal.loading = true;
@@ -340,15 +281,6 @@ const executeManualTrade = async (signal) => {
   } finally {
     signal.loading = false;
   }
-};
-
-const rejectSignal = (id) => {
-  status.value.pendingSignals = status.value.pendingSignals.filter(s => s.id !== id);
-};
-
-const setThreshold = (val) => {
-  status.value.predictionThreshold = val;
-  updateThreshold();
 };
 
 const sellPosition = async (tokenId, exactSize) => {
@@ -489,12 +421,19 @@ const triggerPanicStop = async () => {
   }
 };
 
+// ====================== FUNCIÓN ÚNICA PARA COPY TRADING ======================
 const updateCopyTrading = async () => {
   try {
     await axios.post(`${API_URL}/settings/copytrading`, {
-      enabled: status.value.copyTradingEnabled,
+      customEnabled: status.value.copyTradingCustomEnabled,
+      autoEnabled: status.value.copyTradingAutoEnabled,
       maxWhalesToCopy: status.value.maxWhalesToCopy || 5
+    }, {
+      headers: { 
+        'Authorization': authPassword.value || localStorage.getItem('poly_auth') 
+      }
     });
+    await fetchStatus();
   } catch (error) {
     console.error("❌ Error actualizando Copy Trading", error);
   }
@@ -1805,35 +1744,55 @@ onUnmounted(() => {
               </div>
             </div>
             
+            <!-- Toggle Auto -->
             <label class="relative inline-flex items-center cursor-pointer group/toggle">
               <input 
                 type="checkbox" 
-                v-model="status.useAutoWhales" 
-                @change="toggleAutoWhales" 
+                v-model="status.copyTradingAutoEnabled" 
+                @change="updateCopyTrading" 
                 class="sr-only peer"
               />
               <div class="w-11 h-6 bg-[#09090b] border border-zinc-700 rounded-full peer peer-focus:ring-2 peer-focus:ring-emerald-500/20 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-zinc-400 after:border-zinc-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500 peer-checked:border-emerald-500 group-hover/toggle:shadow-[0_0_15px_rgba(16,185,129,0.3)]"></div>
             </label>
           </div>
 
-          <div v-if="status.useAutoWhales" class="relative z-10 space-y-6">
+          <div v-if="status.copyTradingAutoEnabled" class="relative z-10 space-y-6">
+            
+            <!-- Slider de cantidad de ballenas -->
             <div class="flex flex-col p-5 rounded-2xl bg-[#161619] border border-zinc-800/60 hover:border-zinc-700/80 transition-colors w-full sm:w-1/2 md:w-1/3">
               <div class="flex justify-between items-start mb-4 gap-2">
                 <label class="text-[10px] text-zinc-400 font-bold uppercase tracking-widest leading-snug">Top Whales</label>
                 <span class="text-[9px] font-black px-2 py-1 rounded-md border text-emerald-400 bg-emerald-400/10 border-emerald-400/20 shrink-0">SEG.</span>
               </div>
               <div class="relative w-full mt-auto">
-                <input type="number" min="1" max="20" step="1" v-model.number="status.maxWhalesToCopy" @change="updateCopyTrading" class="w-full h-12 bg-[#09090b] border border-zinc-800/80 rounded-xl pl-4 pr-16 text-white font-mono text-lg font-bold outline-none transition-all placeholder-zinc-700 appearance-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50" />
+                <input 
+                  type="number" 
+                  min="1" 
+                  max="20" 
+                  step="1" 
+                  v-model.number="status.maxWhalesToCopy" 
+                  @change="updateCopyTrading" 
+                  class="w-full h-12 bg-[#09090b] border border-zinc-800/80 rounded-xl pl-4 pr-16 text-white font-mono text-lg font-bold outline-none transition-all placeholder-zinc-700 appearance-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50" 
+                />
                 <span class="absolute right-4 top-1/2 -translate-y-1/2 text-emerald-600/50 font-black pointer-events-none text-xs">USERS</span>
               </div>
-              <input type="range" min="1" max="20" step="1" v-model.number="status.maxWhalesToCopy" @change="updateCopyTrading" class="w-full h-1 mt-4 bg-zinc-800/80 rounded-lg appearance-none cursor-pointer accent-emerald-500" />
+              <input 
+                type="range" 
+                min="1" 
+                max="20" 
+                step="1" 
+                v-model.number="status.maxWhalesToCopy" 
+                @change="updateCopyTrading" 
+                class="w-full h-1 mt-4 bg-zinc-800/80 rounded-lg appearance-none cursor-pointer accent-emerald-500" 
+              />
             </div>
               
+            <!-- Lista de ballenas seleccionadas automáticamente -->
             <div class="pt-2">
               <p class="text-[11px] text-zinc-500 font-bold uppercase tracking-widest mb-3 px-1">Whales seleccionadas automáticamente</p>
               <div class="max-h-52 overflow-y-auto custom-scroll space-y-2 pr-2">
                 <div v-for="(whale, i) in status.autoSelectedWhales || []" :key="i" 
-                    class="bg-[#09090b] border border-zinc-800/80 rounded-xl p-3.5 flex justify-between items-center hover:border-emerald-500/30 transition-colors group">
+                     class="bg-[#09090b] border border-zinc-800/80 rounded-xl p-3.5 flex justify-between items-center hover:border-emerald-500/30 transition-colors group">
                   <div class="font-mono text-emerald-400/80 text-xs font-medium group-hover:text-emerald-400">
                     {{ whale.address.substring(0,12) }}...
                   </div>
@@ -1847,7 +1806,7 @@ onUnmounted(() => {
                   </div>
                 </div>
                 <div v-if="!status.autoSelectedWhales || status.autoSelectedWhales.length === 0" 
-                    class="text-center py-6 border border-dashed border-zinc-800 rounded-xl text-zinc-500 text-xs font-medium">
+                     class="text-center py-6 border border-dashed border-zinc-800 rounded-xl text-zinc-500 text-xs font-medium">
                   Esperando selección automática...
                 </div>
               </div>
@@ -1872,7 +1831,7 @@ onUnmounted(() => {
               <div>
                 <div class="flex items-center gap-3">
                   <h3 class="text-white font-black text-lg tracking-tight">Copy Trading Custom</h3>
-                  <span class="text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-md border hidden sm:block"
+                  <span class="text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-md border"
                         :class="(status.customWhales?.length || 0) >= 10 ? 'bg-rose-500/10 text-rose-400 border-rose-500/30' : 'bg-purple-500/10 text-purple-400 border-purple-500/30'">
                     {{ status.customWhales?.length || 0 }} / 10 MAX
                   </span>
@@ -1882,14 +1841,18 @@ onUnmounted(() => {
             </div>
             
             <label class="relative inline-flex items-center cursor-pointer group/toggle">
-              <input type="checkbox" v-model="status.copyTradingEnabled" @change="updateCopyTrading" class="sr-only peer" />
+              <input 
+                type="checkbox" 
+                v-model="status.copyTradingCustomEnabled" 
+                @change="updateCopyTrading" 
+                class="sr-only peer" 
+              />
               <div class="w-11 h-6 bg-[#09090b] border border-zinc-700 rounded-full peer peer-focus:ring-2 peer-focus:ring-purple-500/20 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-zinc-400 after:border-zinc-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-500 peer-checked:border-purple-500 group-hover/toggle:shadow-[0_0_15px_rgba(168,85,247,0.3)]"></div>
             </label>
           </div>
 
-          <div v-if="status.copyTradingEnabled" class="relative z-10 space-y-8">
-            
-            <!-- ==================== SLIDER LÍMITE POR BALLENA ==================== -->
+          <div v-if="status.copyTradingCustomEnabled" class="relative z-10 space-y-8">
+            <!-- SLIDER LÍMITE POR BALLENA -->
             <div class="bg-[#161619] border border-purple-500/20 p-6 rounded-2xl">
               <div class="flex items-center justify-between mb-4">
                 <h4 class="text-[11px] font-black uppercase tracking-widest text-purple-400">Límite de mercados por ballena</h4>
@@ -1924,7 +1887,7 @@ onUnmounted(() => {
               </p>
             </div>
 
-            <!-- ==================== AGREGAR BALLENAS ==================== -->
+            <!-- Agregar ballena -->
             <div class="flex flex-col sm:flex-row gap-3">
               <input 
                 v-model="newWhaleAddress"
