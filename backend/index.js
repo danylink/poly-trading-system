@@ -2508,18 +2508,22 @@ app.listen(PORT, async () => {
     // 🔥 DISPARAMOS EL AUTO-SELECTOR ANTES DE ARRANCAR EL BOT
     await initGemini();
 
-    // 🟢 RELOJES MAESTROS DE IA Y PORTAFOLIO
-    setInterval(runBot, 60000);            // Escanear IA cada 1 minuto
-    setInterval(monitorPortfolio, 180000); // Vigilar ganancias cada 3 minutos
-    
-    // 🔥 RELOJ ULTRA-RÁPIDO INDEPENDIENTE (COPY TRADING)
-    setInterval(checkAndCopyWhaleTrades, 10000); 
+    // ==================== INTERVALOS RECOMENDADOS ====================
 
-    // 🛡️ NUEVO: RELOJ GUARDIÁN DEL SERVIDOR
-    setInterval(monitorSystemHealth, 60000); // Revisa RAM y CPU cada 1 minuto
+    // 1. Motor principal de IA + Sniper (análisis de mercados)
+    setInterval(runBot, 75000);           // ← 75 segundos (ideal)
+
+    // 2. Vigilancia de ganancias y PnL
+    setInterval(monitorPortfolio, 180000); // 3 minutos → está bien, se puede dejar
+
+    // 3. Copy Trading (el más importante de ajustar)
+    setInterval(checkAndCopyWhaleTrades, 30000); // ← 30 segundos (recomendado)
+
+    // 4. Guardián del servidor (RAM + CPU)
+    setInterval(monitorSystemHealth, 90000); // 90 segundos → suficiente
 
     // Arranque inicial controlado
     updateRealBalances().then(() => {
-        runBot();
+        runBot();   // Primera ejecución inmediata
     });
 });
