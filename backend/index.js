@@ -171,6 +171,8 @@ let botStatus = {
         tradeCooldownMin: 60    // Minutos para no repetir un mercado
     },
     customMarketRules: [],
+    // 🔥 NUEVO: Límite de mercados por ballena (Copy Trading Custom)
+    maxCopyMarketsPerWhale: 1,     // 1 = por defecto (1 mercado por ballena)
     lastTrades: {} // Objeto para controlar el Cooldown: { tokenId: timestamp }
 };
 
@@ -198,7 +200,9 @@ function saveConfigToDisk(origen = "Sistema") {
             copiedTrades: botStatus.copiedTrades || [],
             riskSettings: botStatus.riskSettings,
             // 🔥 NUEVO: Guardamos las reglas personalizadas
-            customMarketRules: botStatus.customMarketRules || []
+            customMarketRules: botStatus.customMarketRules || [],
+            // 🔥 NUEVO: Límite de mercados por ballena
+            maxCopyMarketsPerWhale: botStatus.maxCopyMarketsPerWhale
         };
         fs.writeFileSync(CONFIG_FILE, JSON.stringify(configToSave, null, 2), 'utf8');
         console.log(`💾 Configuración guardada en el disco. (Origen: ${origen})`);
@@ -238,6 +242,12 @@ function loadConfigFromDisk() {
                 console.log(`📋 Cargadas ${savedConfig.customMarketRules.length} reglas personalizadas de mercado`);
             } else {
                 botStatus.customMarketRules = []; // Inicializamos vacío si no existe
+            }
+
+            // 🔥 NUEVO: Límite de mercados por ballena (Parche #9)
+            if (savedConfig.maxCopyMarketsPerWhale !== undefined) {
+                botStatus.maxCopyMarketsPerWhale = savedConfig.maxCopyMarketsPerWhale;
+                console.log(`📋 Límite por ballena cargado: ${savedConfig.maxCopyMarketsPerWhale} mercados`);
             }
 
             console.log("📂 Configuración y Memoria cargada con éxito.");
@@ -1078,7 +1088,7 @@ async function autoSelectTopWhales() {
 
 
 // ==========================================
-// CHECK AND COPY WHALE TRADES - VERSIÓN FINAL CORREGIDA (Auto + Custom)
+// CHECK AND COPY WHALE TRADES - VERSIÓN CON LÍMITE POR BALLENA (Parche #9.1)
 // ==========================================
 let isScanningWhales = false;
 
@@ -1123,6 +1133,18 @@ async function checkAndCopyWhaleTrades() {
 
         for (const whale of allWhales) {
             try {
+                // 🔥 NUEVO: Contar cuántos mercados activos tiene esta ballena
+                const copiedFromThisWhale = botStatus.copiedPositions.filter(p => 
+                    p.whale && p.whale.toLowerCase() === whale.address.toLowerCase()
+                ).length;
+
+                const limitPerWhale = botStatus.maxCopyMarketsPerWhale || 1;
+
+                if (limitPerWhale > 0 && copiedFromThisWhale >= limitPerWhale) {
+                    console.log(`⛔ [COPY LIMIT] Ballena ${whale.address.substring(0,8)}... ya tiene ${copiedFromThisWhale} mercados activos (límite: ${limitPerWhale})`);
+                    continue;
+                }
+
                 const response = await axios.get(
                     `https://data-api.polymarket.com/trades?user=${whale.address}&limit=12`,
                     { httpsAgent: agent, timeout: 8000 }
@@ -1164,11 +1186,9 @@ async function checkAndCopyWhaleTrades() {
 
                         if (alreadyHavePosition || alreadyCopied || alreadyPending) continue;
 
-                        // 🛡️ FIX QUANT 2: Le decimos al motor que SÍ es una ballena (true)
                         const { config: riskConfig } = getRiskProfile(title, true);
                         const currentBalance = parseFloat(botStatus.clobOnlyUSDC || 0);
 
-                        // 🛡️ FIX QUANT 3: Lógica matemática restaurada para el límite de capital
                         const maxPct = riskConfig.maxCopyPercentOfBalance || 8; 
                         const maxAllowedPercent = currentBalance * (maxPct / 100);
                         
@@ -1189,7 +1209,8 @@ async function checkAndCopyWhaleTrades() {
                                 continue; 
                             }
                         }
-                        console.log(`🔥 [COPY BUY] ${whale.address.substring(0,8)}... → ${title.substring(0,45)}...`);
+
+                        console.log(`🔥 [COPY BUY] ${whale.address.substring(0,8)}... → ${title.substring(0,45)}... (Copiados de esta ballena: ${copiedFromThisWhale}/${limitPerWhale})`);
 
                         const result = await executeTradeOnChain(conditionId, tokenId, montoInversion, limitPrice, "0.01");
 
@@ -1222,8 +1243,8 @@ async function checkAndCopyWhaleTrades() {
                             botStatus.copyTradingStats.totalCopied = (botStatus.copyTradingStats.totalCopied || 0) + 1;
                             botStatus.copyTradingStats.successful = (botStatus.copyTradingStats.successful || 0) + 1;
 
-                            await sendAlert(`🐋 *COPY BUY*\nMercado: ${title.substring(0,45)}...\nInversión: $${montoInversion.toFixed(2)}`);
-                            // 🔥 Reiniciamos el reloj de Cooldown para este mercado
+                            await sendAlert(`🐋 *COPY BUY*\nBallena: ${whale.address.substring(0,8)}...\nMercado: ${title.substring(0,45)}...\nInversión: $${montoInversion.toFixed(2)}`);
+
                             botStatus.lastTrades[tokenId] = Date.now();
                         }
                     }
@@ -1247,7 +1268,7 @@ async function checkAndCopyWhaleTrades() {
                             botStatus.copiedPositions.splice(copiedIndex, 1);
                             saveConfigToDisk("Ballena Vendida");
                             const rescateEst = (position.sizeCopied * limitSellPrice).toFixed(2);
-                            await sendAlert(`🛑 *COPY SELL*\nMercado: ${title.substring(0,40)}...\nRescatado ≈ $${rescateEst} USDC`);
+                            await sendAlert(`🛑 *COPY SELL*\nBallena: ${whale.address.substring(0,8)}...\nMercado: ${title.substring(0,40)}...\nRescatado ≈ $${rescateEst} USDC`);
                         }
                     }
                 }
@@ -2449,6 +2470,28 @@ app.delete('/api/settings/custom-rules', (req, res) => {
         );
         saveConfigToDisk("Regla Eliminada");
         res.json({ success: true, customMarketRules: botStatus.customMarketRules });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// ==========================================
+// 🔥 NUEVO: Límite de mercados por ballena (Parche #9)
+// ==========================================
+app.post('/api/settings/copy-limit-per-whale', (req, res) => {
+    try {
+        const { maxCopyMarketsPerWhale } = req.body;
+        
+        if (maxCopyMarketsPerWhale === undefined) {
+            return res.status(400).json({ success: false, error: "Valor requerido" });
+        }
+
+        botStatus.maxCopyMarketsPerWhale = parseInt(maxCopyMarketsPerWhale);
+        saveConfigToDisk("Límite por Ballena Actualizado");
+
+        console.log(`📋 Límite por ballena cambiado a: ${botStatus.maxCopyMarketsPerWhale} mercados`);
+
+        res.json({ success: true, maxCopyMarketsPerWhale: botStatus.maxCopyMarketsPerWhale });
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
     }

@@ -170,6 +170,7 @@
       "microBetAmount": 3.0
     }
   ],
+  "maxCopyMarketsPerWhale": 1,
   "copiedPositions": [],
   "copiedTrades": []
 }

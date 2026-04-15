@@ -500,6 +500,19 @@ const updateCopyTrading = async () => {
   }
 };
 
+// ====================== ACTUALIZAR LÍMITE POR BALLENA ======================
+const updateCopyLimitPerWhale = async () => {
+  try {
+    await axios.post(`${API_URL}/settings/copy-limit-per-whale`, {
+      maxCopyMarketsPerWhale: status.value.maxCopyMarketsPerWhale
+    });
+    console.log(`📋 Límite por ballena actualizado a: ${status.value.maxCopyMarketsPerWhale}`);
+  } catch (error) {
+    console.error("❌ Error actualizando límite por ballena", error);
+    Swal.fire('Error', 'No se pudo actualizar el límite', 'error');
+  }
+};
+
 const updateFilters = async () => {
   try {
     await axios.post(`${API_URL}/settings/filters`, status.value.marketFilters);
@@ -656,6 +669,24 @@ const deleteCustomRule = async (keyword) => {
     await fetchStatus();
   } catch (error) {
     Swal.fire('Error', 'No se pudo eliminar la regla', 'error');
+  }
+};
+
+const saveEditedRule = async (index) => {
+  try {
+    const rule = status.value.customMarketRules[index];
+    
+    await axios.post(`${API_URL}/settings/custom-rules`, {
+      keyword: rule.keyword,
+      takeProfitThreshold: rule.takeProfitThreshold,
+      stopLossThreshold: rule.stopLossThreshold,
+      microBetAmount: rule.microBetAmount
+    });
+
+    await fetchStatus();
+    Swal.fire('¡Regla actualizada!', '', 'success');
+  } catch (error) {
+    Swal.fire('Error', 'No se pudo guardar los cambios', 'error');
   }
 };
 
@@ -1227,6 +1258,138 @@ onUnmounted(() => {
           </div>
         </div>
 
+        <!-- ====================== REGLAS PERSONALIZADAS POR MERCADO (Versión Editable Corregida) ====================== -->
+         <div class="bg-[#111114] border-2 border-amber-500/20 rounded-3xl p-8 mb-8 relative overflow-hidden shadow-[0_0_40px_rgba(245,158,11,0.05)] hover:border-amber-500/40 transition-colors">
+          <div class="absolute -right-20 -bottom-20 w-64 h-64 bg-amber-500 rounded-full blur-[120px] opacity-5 pointer-events-none"></div>
+          
+          <div class="flex items-center gap-4 mb-8 pb-4 border-b border-zinc-800/50 relative z-10">
+            <div class="p-3.5 rounded-2xl border bg-amber-500/10 border-amber-500/20 text-amber-400 shadow-inner">
+              <Target :size="24" />
+            </div>
+            <div>
+              <h3 class="text-white font-black text-xl tracking-tight">Reglas Personalizadas</h3>
+              <p class="text-xs text-zinc-500 font-medium">Control quirúrgico de Take Profit y Stop Loss por Keyword</p>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 xl:grid-cols-12 gap-8 relative z-10">
+            
+            <div class="xl:col-span-5 bg-[#09090b] border border-amber-500/10 rounded-2xl p-6 h-fit">
+              <h4 class="text-amber-500 text-[10px] font-black uppercase tracking-widest mb-4">Nueva Regla</h4>
+              
+              <div class="space-y-4">
+                <div>
+                  <label class="text-[9px] font-black uppercase text-zinc-400 tracking-widest block mb-1.5">Keyword del mercado</label>
+                  <input 
+                    v-model="status.newRuleKeyword" 
+                    placeholder="Ej: Trump say, Temperature in..."
+                    class="w-full bg-black border border-amber-500/20 rounded-xl px-4 py-3 text-sm font-mono focus:border-amber-400 outline-none transition-colors"
+                  >
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                  <div>
+                    <label class="text-[9px] font-black uppercase text-emerald-400 tracking-widest block mb-1.5">Take Profit</label>
+                    <div class="flex items-center gap-2 bg-black border border-emerald-500/20 rounded-xl px-3 py-2.5">
+                      <input type="number" v-model.number="status.newRuleTP" class="w-full min-w-0 bg-transparent font-mono text-emerald-400 text-lg text-right outline-none">
+                      <span class="text-emerald-400 font-bold shrink-0">%</span>
+                    </div>
+                  </div>
+                  <div>
+                    <label class="text-[9px] font-black uppercase text-rose-400 tracking-widest block mb-1.5">Stop Loss</label>
+                    <div class="flex items-center gap-2 bg-black border border-rose-500/20 rounded-xl px-3 py-2.5">
+                      <input type="number" v-model.number="status.newRuleSL" class="w-full min-w-0 bg-transparent font-mono text-rose-400 text-lg text-right outline-none">
+                      <span class="text-rose-400 font-bold shrink-0">%</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <label class="text-[9px] font-black uppercase text-[#D4AF37] tracking-widest block mb-1.5">Tamaño Apuesta (USDC)</label>
+                  <input 
+                    type="number" 
+                    v-model.number="status.newRuleBet" 
+                    min="0.5" max="50" step="0.5"
+                    class="w-full bg-black border border-[#D4AF37]/20 rounded-xl px-4 py-3 text-lg font-mono text-[#D4AF37] text-center outline-none"
+                  >
+                </div>
+              </div>
+
+              <button 
+                @click="addCustomRule" 
+                class="mt-5 w-full bg-amber-500/10 hover:bg-amber-500 text-amber-500 hover:text-white border border-amber-500/30 font-black py-3 rounded-xl text-xs tracking-widest transition-all">
+                AGREGAR REGLA
+              </button>
+            </div>
+
+            <div class="xl:col-span-7">
+              <h4 class="text-zinc-500 text-[10px] font-black uppercase tracking-widest mb-4">Reglas Activas</h4>
+              
+              <div v-if="status.customMarketRules && status.customMarketRules.length > 0" class="max-h-[400px] overflow-y-auto custom-scroll pr-2 space-y-3">
+                
+                <div v-for="(rule, index) in status.customMarketRules" :key="index"
+                     class="bg-[#161619] border border-zinc-700/80 rounded-2xl p-4 hover:border-amber-500/30 transition-colors">
+                  
+                  <div class="flex flex-col sm:flex-row gap-4 mb-3">
+                    <div class="flex-1">
+                      <label class="text-[9px] font-black uppercase text-amber-500 tracking-widest block mb-1">Keyword</label>
+                      <input 
+                        v-model="rule.keyword"
+                        class="w-full bg-black border border-zinc-800 rounded-lg px-3 py-2 text-xs font-mono focus:border-amber-500 outline-none"
+                      >
+                    </div>
+                    <div class="w-full sm:w-24">
+                      <label class="text-[9px] font-black uppercase text-[#D4AF37] tracking-widest block mb-1">Apuesta</label>
+                      <input 
+                        type="number" v-model.number="rule.microBetAmount" min="0.5" step="0.5"
+                        class="w-full bg-black border border-zinc-800 rounded-lg px-3 py-2 text-xs font-mono text-[#D4AF37] text-center outline-none"
+                      >
+                    </div>
+                  </div>
+
+                  <div class="grid grid-cols-2 gap-3 mb-4">
+                    <div>
+                      <div class="flex items-center gap-2 bg-black border border-zinc-800 rounded-lg px-3 py-1.5 focus-within:border-emerald-500/50">
+                        <span class="text-[8px] font-black uppercase text-emerald-500 w-6">TP</span>
+                        <input type="number" v-model.number="rule.takeProfitThreshold" class="w-full min-w-0 bg-transparent font-mono text-emerald-400 text-sm text-right outline-none">
+                        <span class="text-emerald-500 font-bold text-xs shrink-0">%</span>
+                      </div>
+                    </div>
+                    <div>
+                      <div class="flex items-center gap-2 bg-black border border-zinc-800 rounded-lg px-3 py-1.5 focus-within:border-rose-500/50">
+                        <span class="text-[8px] font-black uppercase text-rose-500 w-6">SL</span>
+                        <input type="number" v-model.number="rule.stopLossThreshold" class="w-full min-w-0 bg-transparent font-mono text-rose-400 text-sm text-right outline-none">
+                        <span class="text-rose-500 font-bold text-xs shrink-0">%</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="flex justify-end gap-2 pt-3 border-t border-zinc-800/50">
+                    <button 
+                      @click="saveEditedRule(index)"
+                      class="px-4 py-1.5 text-[9px] font-black uppercase tracking-widest bg-zinc-800 hover:bg-emerald-500/20 text-zinc-300 hover:text-emerald-400 border border-transparent hover:border-emerald-500/30 rounded-lg transition-all">
+                      Guardar
+                    </button>
+                    <button 
+                      @click="deleteCustomRule(rule.keyword)"
+                      class="px-4 py-1.5 text-[9px] font-black uppercase tracking-widest bg-zinc-800 hover:bg-rose-500/20 text-zinc-300 hover:text-rose-400 border border-transparent hover:border-rose-500/30 rounded-lg transition-all">
+                      Borrar
+                    </button>
+                  </div>
+                </div>
+
+              </div>
+
+              <div v-else class="h-full min-h-[250px] flex flex-col items-center justify-center text-center p-8 border border-dashed border-zinc-800 rounded-2xl bg-[#09090b]/50">
+                <Target :size="32" class="text-zinc-700 mb-3" />
+                <p class="text-zinc-500 text-sm font-medium">Aún no tienes reglas específicas.</p>
+                <p class="text-zinc-600 text-xs mt-1">Usa el formulario de la izquierda para agregar excepciones al mercado.</p>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
       </div>
 
       <div class="col-span-12 xl:col-span-4 h-full space-y-6" :class="mobileActiveTab === 'system' ? 'block' : 'hidden xl:block'">
@@ -1539,94 +1702,6 @@ onUnmounted(() => {
           </div>
         </div>
 
-        <!-- ====================== REGLAS PERSONALIZADAS POR MERCADO ====================== -->
-        <div class="bg-[#111114] border border-amber-500/30 rounded-[2rem] p-6 lg:p-8 transition-all shadow-2xl hover:border-amber-500/50">
-          <div class="flex items-center gap-3 mb-6 pb-4 border-b border-zinc-800/80">
-            <div class="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400">
-              <Target :size="22" />
-            </div>
-            <div>
-              <h3 class="text-white font-black text-lg tracking-tight">Reglas Personalizadas</h3>
-              <p class="text-xs text-zinc-500">Override de TP / SL / Apuesta por tipo de mercado</p>
-            </div>
-          </div>
-
-          <!-- Formulario para agregar nueva regla -->
-          <div class="bg-[#09090b] border border-amber-500/20 rounded-2xl p-5 mb-6">
-            <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
-              <!-- Keyword -->
-              <div class="sm:col-span-2">
-                <label class="text-[10px] font-black uppercase text-amber-400 tracking-widest block mb-1">Keyword del mercado</label>
-                <input 
-                  v-model="status.newRuleKeyword" 
-                  placeholder="Trump say / Up or Down / Temperature in"
-                  class="w-full bg-black border border-amber-500/30 rounded-xl px-4 py-3 text-sm font-mono focus:border-amber-400 outline-none"
-                >
-              </div>
-
-              <!-- Take Profit -->
-              <div>
-                <label class="text-[10px] font-black uppercase text-emerald-400 tracking-widest block mb-1">Take Profit</label>
-                <div class="flex items-center gap-2 bg-black border border-emerald-500/30 rounded-xl px-4 py-3">
-                  <input type="number" v-model.number="status.newRuleTP" class="w-full bg-transparent font-mono text-emerald-400 text-lg text-right outline-none">
-                  <span class="text-emerald-400 font-bold">%</span>
-                </div>
-              </div>
-
-              <!-- Stop Loss -->
-              <div>
-                <label class="text-[10px] font-black uppercase text-rose-400 tracking-widest block mb-1">Stop Loss</label>
-                <div class="flex items-center gap-2 bg-black border border-rose-500/30 rounded-xl px-4 py-3">
-                  <input type="number" v-model.number="status.newRuleSL" class="w-full bg-transparent font-mono text-rose-400 text-lg text-right outline-none">
-                  <span class="text-rose-400 font-bold">%</span>
-                </div>
-              </div>
-
-              <!-- Apuesta (microBetAmount) -->
-              <div class="sm:col-span-4 mt-2">
-                <label class="text-[10px] font-black uppercase text-[#D4AF37] tracking-widest block mb-1">Apuesta por operación (USDC)</label>
-                <input 
-                  type="number" 
-                  v-model.number="status.newRuleBet" 
-                  min="0.5" 
-                  max="10" 
-                  step="0.5"
-                  class="w-full bg-black border border-[#D4AF37]/30 rounded-xl px-4 py-3 text-lg font-mono text-[#D4AF37] text-center outline-none"
-                >
-              </div>
-            </div>
-
-            <button 
-              @click="addCustomRule" 
-              class="mt-5 w-full bg-amber-500 hover:bg-amber-400 text-[#3C2A21] font-black py-3.5 rounded-2xl text-sm tracking-widest">
-              + AGREGAR REGLA PERSONALIZADA
-            </button>
-          </div>
-
-          <!-- Lista de reglas existentes -->
-          <div v-if="status.customMarketRules && status.customMarketRules.length > 0" class="space-y-3 max-h-80 overflow-y-auto custom-scroll">
-            <div v-for="(rule, i) in status.customMarketRules" :key="i"
-                 class="flex justify-between items-center bg-[#161619] border border-zinc-700 rounded-2xl p-4 hover:border-amber-500/30">
-              <div class="font-mono text-amber-300 text-sm">{{ rule.keyword }}</div>
-              <div class="flex gap-6 text-xs">
-                <div>TP <span class="font-bold text-emerald-400">{{ rule.takeProfitThreshold }}%</span></div>
-                <div>SL <span class="font-bold text-rose-400">{{ rule.stopLossThreshold }}%</span></div>
-                <div>Bet <span class="font-bold text-[#D4AF37]">${{ rule.microBetAmount }}</span></div>
-              </div>
-              <button 
-                @click="deleteCustomRule(rule.keyword)" 
-                class="text-rose-400 hover:text-rose-500 text-xs px-3 py-1 rounded-lg border border-rose-400/30 hover:border-rose-400">
-                Eliminar
-              </button>
-            </div>
-          </div>
-
-          <div v-else class="text-center py-8 text-zinc-500 italic text-sm border border-dashed border-zinc-700 rounded-2xl">
-            Aún no tienes reglas personalizadas.<br>
-            Todos los mercados usarán los valores globales.
-          </div>
-        </div>
-
         <!-- ====================== FILTRO DE MERCADOS SECTION ====================== -->
         <div class="bg-[#111114] border border-zinc-800/80 rounded-[2rem] p-6 lg:p-8 transition-all duration-500 relative overflow-hidden group shadow-[0_0_50px_rgba(52,211,153,0.02)] hover:border-emerald-500/30">
           <div class="absolute -top-32 -right-32 w-64 h-64 bg-emerald-500 rounded-full blur-[100px] opacity-5 pointer-events-none transition-colors duration-700"></div>
@@ -1812,8 +1887,44 @@ onUnmounted(() => {
             </label>
           </div>
 
-          <div v-if="status.copyTradingEnabled" class="relative z-10 space-y-6">
+          <div v-if="status.copyTradingEnabled" class="relative z-10 space-y-8">
             
+            <!-- ==================== SLIDER LÍMITE POR BALLENA ==================== -->
+            <div class="bg-[#161619] border border-purple-500/20 p-6 rounded-2xl">
+              <div class="flex items-center justify-between mb-4">
+                <h4 class="text-[11px] font-black uppercase tracking-widest text-purple-400">Límite de mercados por ballena</h4>
+                <span class="text-[10px] font-mono font-bold px-3 py-1 rounded-md transition-colors"
+                      :class="status.maxCopyMarketsPerWhale === 0 ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30' : 'bg-purple-500/10 text-purple-400 border border-purple-500/30'">
+                  {{ status.maxCopyMarketsPerWhale === 0 ? 'ILIMITADO' : status.maxCopyMarketsPerWhale + ' MERCADOS' }}
+                </span>
+              </div>
+
+              <div class="flex items-center gap-4">
+                <input 
+                  type="range" 
+                  min="0" 
+                  max="20" 
+                  v-model.number="status.maxCopyMarketsPerWhale"
+                  @change="updateCopyLimitPerWhale" 
+                  class="flex-1 accent-purple-500 h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer"
+                />
+                <button 
+                  @click="status.maxCopyMarketsPerWhale = 0; updateCopyLimitPerWhale()"
+                  class="text-[10px] font-black tracking-widest px-5 py-2.5 rounded-xl transition-all duration-300"
+                  :class="status.maxCopyMarketsPerWhale === 0 ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 shadow-[0_0_10px_rgba(16,185,129,0.1)]' : 'bg-[#161619] text-zinc-500 border border-zinc-800/60 hover:border-purple-500 hover:text-purple-400'"
+                >
+                  AUTO (Ilimitado)
+                </button>
+              </div>
+              
+              <p class="text-[10px] text-zinc-500 mt-4 font-medium">
+                <span class="text-purple-400">•</span> 
+                Valor actual: <strong class="font-mono">{{ status.maxCopyMarketsPerWhale === 0 ? 'Sin límite' : status.maxCopyMarketsPerWhale + ' mercado(s) por ballena' }}</strong><br>
+                <span class="text-[9px]">Ejemplo: Si pones 1, cada ballena solo puede tener 1 posición activa al mismo tiempo.</span>
+              </p>
+            </div>
+
+            <!-- ==================== AGREGAR BALLENAS ==================== -->
             <div class="flex flex-col sm:flex-row gap-3">
               <input 
                 v-model="newWhaleAddress"
@@ -1825,7 +1936,7 @@ onUnmounted(() => {
                 <input 
                   v-model="newWhaleNickname"
                   :disabled="(status.customWhales?.length || 0) >= 10"
-                  placeholder="Nickname (opc)"
+                  placeholder="Nickname (opcional)"
                   class="flex-1 sm:w-36 bg-[#09090b] border border-zinc-700 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-purple-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 />
                 <button 
@@ -1838,6 +1949,7 @@ onUnmounted(() => {
               </div>
             </div>
 
+            <!-- Lista de ballenas -->
             <div v-if="status.customWhales && status.customWhales.length > 0" class="max-h-52 overflow-y-auto custom-scroll space-y-2 pr-2">
               <div v-for="(whale, index) in status.customWhales" :key="index"
                   class="bg-[#09090b] border border-zinc-800/80 rounded-xl p-3.5 flex justify-between items-center hover:border-purple-500/30 transition-colors group">
