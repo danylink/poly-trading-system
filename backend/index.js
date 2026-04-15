@@ -140,8 +140,8 @@ let botStatus = {
     },
 
     autoTradeEnabled: true,
-    copyTradingEnabled: false,
-    useAutoWhales: true,
+    copyTradingCustomEnabled: false,     // ← Card Custom (la que usas)
+    copyTradingAutoEnabled: true,        // ← Card Auto (leaderboard)
     isPanicStopped: false,
     suggestedInversion: 0, 
     potentialROI: 0,
@@ -190,18 +190,16 @@ function saveConfigToDisk(origen = "Sistema") {
             whaleConfig: botStatus.whaleConfig,
             marketFilters: botStatus.marketFilters,
             autoTradeEnabled: botStatus.autoTradeEnabled,
-            copyTradingEnabled: botStatus.copyTradingEnabled,
+            copyTradingCustomEnabled: botStatus.copyTradingCustomEnabled,   // ← nuevo
+            copyTradingAutoEnabled: botStatus.copyTradingAutoEnabled,       // ← nuevo
             maxWhalesToCopy: botStatus.maxWhalesToCopy,
             maxActiveSportsMarkets: botStatus.maxActiveSportsMarkets,
-            useAutoWhales: botStatus.useAutoWhales,
             customWhales: botStatus.customWhales,
             dailyLossLimit: botStatus.dailyLossLimit,
             copiedPositions: botStatus.copiedPositions || [],
             copiedTrades: botStatus.copiedTrades || [],
             riskSettings: botStatus.riskSettings,
-            // 🔥 NUEVO: Guardamos las reglas personalizadas
             customMarketRules: botStatus.customMarketRules || [],
-            // 🔥 NUEVO: Límite de mercados por ballena
             maxCopyMarketsPerWhale: botStatus.maxCopyMarketsPerWhale
         };
         fs.writeFileSync(CONFIG_FILE, JSON.stringify(configToSave, null, 2), 'utf8');
@@ -222,7 +220,8 @@ function loadConfigFromDisk() {
             if (savedConfig.whaleConfig) botStatus.whaleConfig = savedConfig.whaleConfig;
             if (savedConfig.marketFilters) botStatus.marketFilters = savedConfig.marketFilters;
             if (savedConfig.autoTradeEnabled !== undefined) botStatus.autoTradeEnabled = savedConfig.autoTradeEnabled;
-            if (savedConfig.copyTradingEnabled !== undefined) botStatus.copyTradingEnabled = savedConfig.copyTradingEnabled;
+            if (savedConfig.copyTradingCustomEnabled !== undefined) botStatus.copyTradingCustomEnabled = savedConfig.copyTradingCustomEnabled;
+            if (savedConfig.copyTradingAutoEnabled !== undefined) botStatus.copyTradingAutoEnabled = savedConfig.copyTradingAutoEnabled;
             if (savedConfig.maxWhalesToCopy !== undefined) botStatus.maxWhalesToCopy = savedConfig.maxWhalesToCopy;
             if (savedConfig.maxActiveSportsMarkets !== undefined) botStatus.maxActiveSportsMarkets = savedConfig.maxActiveSportsMarkets;
             if (savedConfig.useAutoWhales !== undefined) botStatus.useAutoWhales = savedConfig.useAutoWhales;
@@ -1097,7 +1096,7 @@ async function checkAndCopyWhaleTrades() {
 
     const hasActiveCopiedPositions = (botStatus.copiedPositions || []).length > 0;
 
-    if (!botStatus.useAutoWhales && !botStatus.copyTradingEnabled && !hasActiveCopiedPositions) return;
+    if (!botStatus.copyTradingCustomEnabled && !botStatus.copyTradingAutoEnabled && !hasActiveCopiedPositions) return;
 
     isScanningWhales = true;
 
