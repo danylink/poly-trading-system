@@ -1170,7 +1170,7 @@ async function checkAndCopyWhaleTrades() {
 
                     const title = trade.title || "Mercado desconocido";
 
-                    if (!tokenId || whaleSize < 500) continue;
+                    if (!tokenId || whaleSize < 150) continue;
                     if (Date.now() - timestamp > 15 * 60 * 1000) continue;
 
                     // ==================== COPIA DE COMPRA ====================
