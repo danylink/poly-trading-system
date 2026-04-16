@@ -1274,7 +1274,7 @@ onUnmounted(() => {
                   <input 
                     type="number" 
                     v-model.number="status.newRuleBet" 
-                    min="0.5" max="50" step="0.5"
+                    min="0.5" max="50" step="0.1"
                     class="w-full bg-black border border-[#D4AF37]/20 rounded-xl px-4 py-3 text-lg font-mono text-[#D4AF37] text-center outline-none"
                   >
                 </div>
@@ -1894,7 +1894,7 @@ onUnmounted(() => {
                     type="range" 
                     min="50" 
                     max="500" 
-                    step="5" 
+                    step="1" 
                     v-model.number="status.copyMinWhaleSize" 
                     @change="updateCopyFilters" 
                     class="flex-1 accent-purple-500" 
@@ -1919,7 +1919,7 @@ onUnmounted(() => {
                     type="range" 
                     min="15" 
                     max="90" 
-                    step="5" 
+                    step="1" 
                     v-model.number="status.copyTimeWindowMinutes" 
                     @change="updateCopyFilters" 
                     class="flex-1 accent-purple-500" 
