@@ -1150,11 +1150,22 @@ async function checkAndCopyWhaleTrades() {
 
         console.log(`🔄 [COPY-TRADING] Revisando trades de ${allWhales.length} ballenas (Custom: ${botStatus.copyTradingCustomEnabled ? '✅ ON' : '❌ OFF'} | Auto: ${botStatus.copyTradingAutoEnabled ? '✅ ON' : '❌ OFF'})...`);
 
-        // ====================== HELPER PARA MOSTRAR NOMBRE ======================
+        // ====================== HELPER MEJORADO PARA NICKNAME ======================
         const getWhaleDisplayName = (whale) => {
+            // 1. Si el objeto actual ya tiene nickname → usarlo
             if (whale.nickname && whale.nickname.trim() !== '') {
                 return whale.nickname;
             }
+
+            // 2. Buscar en el config global por dirección (garantía 100%)
+            const configWhale = botStatus.customWhales.find(w => 
+                w.address.toLowerCase() === whale.address.toLowerCase()
+            );
+            if (configWhale && configWhale.nickname && configWhale.nickname.trim() !== '') {
+                return configWhale.nickname;
+            }
+
+            // 3. Fallback final
             return whale.address.substring(0, 8) + "...";
         };
 
