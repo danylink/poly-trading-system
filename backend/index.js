@@ -1236,10 +1236,12 @@ async function checkAndCopyWhaleTrades() {
                         if (result?.success) {
                             pendingOrdersCache.add(tokenId);
 
+                            // 🔥 NUEVO: Guardamos también el nickname
                             botStatus.copiedTrades.unshift({
                                 id: Date.now(),
                                 txHash,
                                 whale: whale.address.substring(0,10) + "...",
+                                nickname: whale.nickname || getWhaleDisplayName(whale),   // ← AQUÍ SE GUARDA EL NICKNAME
                                 tokenId,
                                 size: montoInversion,
                                 price: limitPrice,
@@ -1249,9 +1251,11 @@ async function checkAndCopyWhaleTrades() {
 
                             if (botStatus.copiedTrades.length > 20) botStatus.copiedTrades.pop();
 
+                            // 🔥 NUEVO: Guardamos también el nickname en copiedPositions
                             botStatus.copiedPositions.push({
                                 tokenId,
                                 whale: whale.address,
+                                nickname: whale.nickname || getWhaleDisplayName(whale),   // ← AQUÍ SE GUARDA EL NICKNAME
                                 sizeCopied: montoInversion,
                                 priceEntry: limitPrice,
                                 marketName: title
@@ -1286,7 +1290,7 @@ async function checkAndCopyWhaleTrades() {
                             botStatus.copiedPositions.splice(copiedIndex, 1);
                             saveConfigToDisk("Ballena Vendida");
                             const rescateEst = (position.sizeCopied * limitSellPrice).toFixed(2);
-                            await sendAlert(`🛑 *COPY SELL*\nBallena: ${getWhaleDisplayName(whale)}\nMercado: ${title.substring(0,40)}...\nRescatado ≈ $${rescateEst} USDC`);
+                            await sendAlert(`🛑 *COPY SELL*\nBallena: ${position.nickname || getWhaleDisplayName(whale)}\nMercado: ${title.substring(0,40)}...\nRescatado ≈ $${rescateEst} USDC`);
                         }
                     }
                 }

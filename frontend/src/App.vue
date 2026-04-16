@@ -911,6 +911,12 @@ onUnmounted(() => {
                         class="text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-md border shadow-inner">
                     {{ pos.outcome }}
                   </span>
+
+                  <!-- 🔥 NUEVO: Etiqueta de Ballena con Nickname -->
+                  <span v-if="pos.nickname" 
+                        class="inline-flex items-center gap-1 text-[9px] font-black text-purple-400 bg-purple-500/10 border border-purple-500/30 px-2 py-0.5 rounded-md">
+                    🐋 {{ pos.nickname }}
+                  </span>
                 </div>
                 <span class="text-zinc-200 font-bold text-sm line-clamp-2" :title="pos.marketName">{{ pos.marketName }}</span>
                 <span class="text-[#D4AF37] font-mono text-[10px] mt-1">{{ pos.size }} Acciones</span>
@@ -1082,6 +1088,12 @@ onUnmounted(() => {
                   <span class="text-[9px] font-mono text-purple-400 bg-purple-500/10 px-2 py-1 rounded-lg border border-purple-500/20">
                     {{ trade.time }}
                   </span>
+                </div>
+                
+                <!-- 🔥 NUEVO: Mostrar Nickname -->
+                <div class="flex items-center gap-2 mb-2">
+                  <span class="text-purple-400">🐋</span>
+                  <span class="text-sm font-bold text-purple-300">{{ trade.nickname || trade.whale.substring(0,8) + "..." }}</span>
                 </div>
                 
                 <p class="text-zinc-300 font-bold text-xs leading-tight mb-4 line-clamp-3" :title="trade.market">{{ trade.market }}</p>
