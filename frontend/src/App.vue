@@ -1306,7 +1306,7 @@ onUnmounted(() => {
                     <div class="w-full sm:w-24">
                       <label class="text-[9px] font-black uppercase text-[#D4AF37] tracking-widest block mb-1">Apuesta</label>
                       <input 
-                        type="number" v-model.number="rule.microBetAmount" min="0.5" step="0.5"
+                        type="number" v-model.number="rule.microBetAmount" min="0.5" step="0.1"
                         class="w-full bg-black border border-zinc-800 rounded-lg px-3 py-2 text-xs font-mono text-[#D4AF37] text-center outline-none"
                       >
                     </div>
