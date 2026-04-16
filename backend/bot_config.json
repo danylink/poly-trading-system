@@ -2,7 +2,7 @@
   "aiConfig": {
     "standard": {
       "predictionThreshold": 0.75,
-      "edgeThreshold": 0.11,
+      "edgeThreshold": 0.08,
       "takeProfitThreshold": 35,
       "stopLossThreshold": -35,
       "microBetAmount": 2

@@ -448,7 +448,7 @@ async function updateRealBalances() {
 }
 
 // ==========================================
-// 3A. MOTOR DE IA 1 (CLAUDE) - PARCHE #6
+// 3A. MOTOR DE IA 1 (CLAUDE) - Versión optimizada
 // ==========================================
 async function analyzeMarketWithClaude(marketQuestion, currentNews, retries = 2) {
     for (let attempt = 1; attempt <= retries; attempt++) {
@@ -456,24 +456,28 @@ async function analyzeMarketWithClaude(marketQuestion, currentNews, retries = 2)
             const response = await anthropic.messages.create({
                 model: "claude-sonnet-4-6",
                 max_tokens: 180,
-                system: `Eres un Senior Quant Trader EXTREMADAMENTE ESTRICTO en Polymarket SHORT-TERM (máximo 48 horas).
-Solo recomiendas BUY si hay una ventaja clara y rápida.
+                system: `Eres un Senior Quant Trader especializado en Polymarket SHORT-TERM (muchos mercados <30 min).
+
+Sé estricto pero HONESTO. No fuerces 50% cuando hay ventaja real.
 
 Responde ESTRICTAMENTE en JSON:
 {
   "prob": 0.XX,
-  "strategy": "TIME_EDGE" | "MOMENTUM" | "NEWS_ARBITRAGE" | "REVERSAL" | "WEATHER_EDGE" | "WAIT",
+  "strategy": "TIME_EDGE" | "MOMENTUM" | "NEWS_ARBITRAGE" | "REVERSAL" | "HYPE" | "WAIT",
   "urgency": 1-10,
-  "reason": "Frase corta y clara",
+  "reason": "Frase corta y clara (máx 15 palabras)",
   "edge": 0.XX,
   "recommendation": "STRONG_BUY" | "BUY" | "WAIT" | "SELL"
 }
 
-REGLAS OBLIGATORIAS:
-- Solo BUY si edge > 0.10 y se resuelve en <48h.
-- Si no hay ventaja clara → responde "WAIT".
-- Sé muy conservador. Mejor WAIT que una operación mediocre.`,
-                messages: [{ role: "user", content: `Mercado: ${marketQuestion}\nNoticias: ${currentNews}\nAnaliza ventaja real en las próximas 24-48 horas.` }]
+REGLAS CLAVE:
+- Mercados <30 min → edge > 0.06 ya es válido si hay momentum o hype.
+- Mercados 30-48h → edge > 0.09 es bueno.
+- Si ves noticias recientes, hype en redes o time-edge → reporta el edge real (aunque sea pequeño).
+- Nunca respondas 0.50 por defecto. Sé preciso.
+- Solo "WAIT" cuando realmente no hay ventaja detectable.`,
+
+                messages: [{ role: "user", content: `Mercado: ${marketQuestion}\nNoticias: ${currentNews}\nAnaliza ventaja real en las próximas 24-48h.` }]
             });
 
             const jsonMatch = response.content[0].text.match(/\{.*\}/s);
@@ -501,28 +505,31 @@ REGLAS OBLIGATORIAS:
 }
 
 // ==========================================
-// 3B. MOTOR DE IA 2 (GEMINI) - PARCHE #6
+// 3B. MOTOR DE IA 2 (GEMINI) - Versión más agresiva
 // ==========================================
 async function analyzeMarketWithGemini(marketQuestion, currentNews) {
     console.log("🧠 Gemini Short-Term Analysis...");
     
     try {
-        const prompt = `Eres un Senior Quant Trader EXTREMADAMENTE ESTRICTO especializado en Polymarket SHORT-TERM (máximo 48 horas).
+        const prompt = `Eres un Senior Quant Trader rápido y agresivo en Polymarket SHORT-TERM (muchos <30 min).
+
+Detecta cualquier ventaja real aunque sea pequeña pero rápida.
 
 Responde ESTRICTAMENTE con este JSON:
 {
   "prob": 0.XX,
-  "strategy": "TIME_EDGE" | "MOMENTUM" | "NEWS_ARBITRAGE" | "REVERSAL" | "WEATHER_EDGE" | "WAIT",
+  "strategy": "TIME_EDGE" | "MOMENTUM" | "NEWS_ARBITRAGE" | "REVERSAL" | "HYPE" | "WAIT",
   "urgency": 1-10,
-  "reason": "Frase corta y clara",
+  "reason": "Frase corta y clara (máx 15 palabras)",
   "edge": 0.XX,
   "recommendation": "STRONG_BUY" | "BUY" | "WAIT" | "SELL"
 }
 
-REGLAS OBLIGATORIAS:
-- Solo BUY si hay edge > 0.10 y se resuelve en <48h.
-- Si no estás 100% seguro → responde "WAIT".
-- Sé muy conservador.
+REGLAS:
+- Mercados <30 min → edge > 0.06 ya es suficiente si hay momentum o hype.
+- Mercados >30 min → edge > 0.08 es bueno.
+- Prioriza noticias recientes, hype y patrones rápidos.
+- Sé preciso con la probabilidad. No respondas 0.50 por defecto.
 
 Mercado: ${marketQuestion}
 Noticias recientes: ${currentNews}`;
@@ -531,7 +538,7 @@ Noticias recientes: ${currentNews}`;
         const responseText = result.response.text().trim();
 
         const jsonMatch = responseText.match(/\{.*\}/s);
-        if (!jsonMatch) throw new Error("JSON inválido o respuesta vacía");
+        if (!jsonMatch) throw new Error("JSON inválido");
 
         const data = JSON.parse(jsonMatch[0]);
 
@@ -560,7 +567,7 @@ Noticias recientes: ${currentNews}`;
 }
 
 // ==========================================
-// 3C. MOTOR DE IA 3 (GROK / xAI) - PARCHE #6
+// 3C. MOTOR DE IA 3 (GROK / xAI) - Versión hype/sentiment
 // ==========================================
 async function analyzeMarketWithGrok(marketQuestion, currentNews, retries = 2) {
     console.log("🧠 Grok Short-Term Analysis...");
@@ -572,26 +579,27 @@ async function analyzeMarketWithGrok(marketQuestion, currentNews, retries = 2) {
                 messages: [
                     {
                         role: "system",
-                        content: `Eres un Quant Trader EXTREMADAMENTE ESTRICTO en Polymarket SHORT-TERM.
-Solo recomiendas BUY si hay momentum claro y rápido.
+                        content: `Eres un Quant Trader muy bueno detectando hype y momentum real en Polymarket SHORT-TERM.
 
 Responde ESTRICTAMENTE en JSON:
 {
   "prob": 0.XX,
-  "strategy": "MOMENTUM" | "NEWS_ARBITRAGE" | "WAIT",
+  "strategy": "MOMENTUM" | "NEWS_ARBITRAGE" | "HYPE" | "TIME_EDGE" | "WAIT",
   "urgency": 1-10,
-  "reason": "Frase corta y clara del sentimiento",
+  "reason": "Frase corta y clara",
   "edge": 0.XX,
   "recommendation": "STRONG_BUY" | "BUY" | "WAIT" | "SELL"
 }
+
 REGLAS:
-- Solo BUY si hay hype fuerte o edge claro.
-- Si no hay ventaja clara → responde "WAIT".
-- Sé muy conservador.`
+- En mercados crypto o Trump: prioriza HYPE y MOMENTUM.
+- Edge > 0.05 ya es válido si hay movimiento rápido o noticias frescas.
+- Sé directo y honesto con la probabilidad.
+- Solo "WAIT" cuando realmente no hay nada claro.`
                     },
                     {
                         role: "user",
-                        content: `Mercado: ${marketQuestion}\nNoticias recientes: ${currentNews}\nAnaliza momentum real en las próximas 24h.`
+                        content: `Mercado: ${marketQuestion}\nNoticias recientes: ${currentNews}\nAnaliza momentum y hype real en las próximas horas.`
                     }
                 ],
                 response_format: { type: "json_object" }
