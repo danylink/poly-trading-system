@@ -1221,7 +1221,7 @@ async function checkAndCopyWhaleTrades() {
                             }
                         }
 
-                        console.log(`🔥 [COPY BUY] ${whale.address.substring(0,8)}... → ${title.substring(0,45)}... (Copiados de esta ballena: ${copiedFromThisWhale}/${limitPerWhale})`);
+                        console.log(`🔥 [COPY BUY] ${whale.nickname || whale.address.substring(0,8) + "..."} → ${title.substring(0,45)}... (Copiados de esta ballena: ${copiedFromThisWhale}/${limitPerWhale})`);
 
                         const result = await executeTradeOnChain(conditionId, tokenId, montoInversion, limitPrice, "0.01");
 
@@ -1254,7 +1254,7 @@ async function checkAndCopyWhaleTrades() {
                             botStatus.copyTradingStats.totalCopied = (botStatus.copyTradingStats.totalCopied || 0) + 1;
                             botStatus.copyTradingStats.successful = (botStatus.copyTradingStats.successful || 0) + 1;
 
-                            await sendAlert(`🐋 *COPY BUY*\nBallena: ${whale.address.substring(0,8)}...\nMercado: ${title.substring(0,45)}...\nInversión: $${montoInversion.toFixed(2)}`);
+                            await sendAlert(`🐋 *COPY BUY*\nBallena: ${whale.nickname || whale.address.substring(0,8) + "..."}\nMercado: ${title.substring(0,45)}...\nInversión: $${montoInversion.toFixed(2)}`);
 
                             botStatus.lastTrades[tokenId] = Date.now();
                         }
@@ -1279,7 +1279,7 @@ async function checkAndCopyWhaleTrades() {
                             botStatus.copiedPositions.splice(copiedIndex, 1);
                             saveConfigToDisk("Ballena Vendida");
                             const rescateEst = (position.sizeCopied * limitSellPrice).toFixed(2);
-                            await sendAlert(`🛑 *COPY SELL*\nBallena: ${whale.address.substring(0,8)}...\nMercado: ${title.substring(0,40)}...\nRescatado ≈ $${rescateEst} USDC`);
+                            await sendAlert(`🛑 *COPY SELL*\nBallena: ${whale.nickname || whale.address.substring(0,8) + "..."}\nMercado: ${title.substring(0,40)}...\nRescatado ≈ $${rescateEst} USDC`);
                         }
                     }
                 }
