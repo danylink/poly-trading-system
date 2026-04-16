@@ -101,9 +101,53 @@
       "sizeCopied": 6.7112,
       "priceEntry": 0.6136,
       "marketName": "Will SpaceX IPO by June 30, 2026?"
+    },
+    {
+      "tokenId": "105987781619256106320834214634481569201469680689697403303566741875570620946936",
+      "whale": "0xdbade4c82fb72780a0db9a38f821d8671aba9c95",
+      "sizeCopied": 6.2872,
+      "priceEntry": 0.3460156266666667,
+      "marketName": "Will FISA Section 702 reauthorization become law this year?"
+    },
+    {
+      "tokenId": "6481065406228558365238644843443361794127708339263750609499644517192303031538",
+      "whale": "0xdbade4c82fb72780a0db9a38f821d8671aba9c95",
+      "sizeCopied": 5.8256,
+      "priceEntry": 0.3432,
+      "marketName": "SAVE Act becomes law by December 31, 2026?"
     }
   ],
   "copiedTrades": [
+    {
+      "id": 1776353043169,
+      "txHash": "0x6592e1b602c2b9e3d04abd83bda90a35ee40ddcf3b576cbb160a60cfb03c8f83",
+      "whale": "0xdbade4c8...",
+      "tokenId": "6481065406228558365238644843443361794127708339263750609499644517192303031538",
+      "size": 5.8256,
+      "price": 0.3432,
+      "time": "3:24:03 PM",
+      "market": "SAVE Act becomes law by December 31, 2026?"
+    },
+    {
+      "id": 1776329192669,
+      "txHash": "0x65c3baea5f6064ad9079c8b83b987a2f9db5ac155d85ea550c87dd09847e3630",
+      "whale": "0xdbade4c8...",
+      "tokenId": "105987781619256106320834214634481569201469680689697403303566741875570620946936",
+      "size": 6.2872,
+      "price": 0.3460156266666667,
+      "time": "8:46:32 AM",
+      "market": "Will FISA Section 702 reauthorization become law this year?"
+    },
+    {
+      "id": 1776320881740,
+      "txHash": "0x5c57b7df061c58ad190596b4ee523045377024f6c26fda19e06bb810e010811e",
+      "whale": "0x2a2c53bd...",
+      "tokenId": "90331940038411395172930362249400482695046497967474557272083772488981191567871",
+      "size": 6.2976,
+      "price": 0.364,
+      "time": "6:28:01 AM",
+      "market": "Bitcoin Up or Down - April 16, 2:25AM-2:30AM ET"
+    },
     {
       "id": 1776286227420,
       "txHash": "0x58b131be36fc5c262ba7744d384b484d18421bb34939852b0dc9f488a53f4398",
@@ -232,6 +276,6 @@
     }
   ],
   "maxCopyMarketsPerWhale": 2,
-  "copyMinWhaleSize": 150,
-  "copyTimeWindowMinutes": 45
+  "copyMinWhaleSize": 125,
+  "copyTimeWindowMinutes": 15
 }
