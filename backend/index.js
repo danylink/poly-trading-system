@@ -1115,7 +1115,7 @@ async function checkAndCopyWhaleTrades() {
     try {
         let allWhales = [];
 
-        if (botStatus.copyTradingAutoEnabled) {   // ← cambiado
+        if (botStatus.copyTradingAutoEnabled) {
             if (!botStatus.autoSelectedWhales || botStatus.autoSelectedWhales.length === 0 ||
                 !botStatus.lastWhaleSelection || 
                 (Date.now() - new Date(botStatus.lastWhaleSelection).getTime()) > 10 * 60 * 1000) {
@@ -1142,9 +1142,18 @@ async function checkAndCopyWhaleTrades() {
 
         console.log(`🔄 [COPY-TRADING] Revisando trades de ${allWhales.length} ballenas (Custom: ${botStatus.copyTradingCustomEnabled ? '✅ ON' : '❌ OFF'} | Auto: ${botStatus.copyTradingAutoEnabled ? '✅ ON' : '❌ OFF'})...`);
 
+        // ====================== HELPER PARA MOSTRAR NOMBRE ======================
+        const getWhaleDisplayName = (whale) => {
+            if (whale.nickname && whale.nickname.trim() !== '') {
+                return whale.nickname;
+            }
+            return whale.address.substring(0, 8) + "...";
+        };
+
+        // =======================================================================
+
         for (const whale of allWhales) {
             try {
-                // 🔥 NUEVO: Contar cuántos mercados activos tiene esta ballena
                 const copiedFromThisWhale = botStatus.copiedPositions.filter(p => 
                     p.whale && p.whale.toLowerCase() === whale.address.toLowerCase()
                 ).length;
@@ -1152,7 +1161,7 @@ async function checkAndCopyWhaleTrades() {
                 const limitPerWhale = botStatus.maxCopyMarketsPerWhale || 1;
 
                 if (limitPerWhale > 0 && copiedFromThisWhale >= limitPerWhale) {
-                    console.log(`⛔ [COPY LIMIT] Ballena ${whale.address.substring(0,8)}... ya tiene ${copiedFromThisWhale} mercados activos (límite: ${limitPerWhale})`);
+                    console.log(`⛔ [COPY LIMIT] Ballena ${getWhaleDisplayName(whale)} ya tiene ${copiedFromThisWhale} mercados activos (límite: ${limitPerWhale})`);
                     continue;
                 }
 
@@ -1211,7 +1220,6 @@ async function checkAndCopyWhaleTrades() {
                         let limitPrice = price * 1.04;
                         if (limitPrice > 0.99) limitPrice = 0.99;
 
-                        // 🔥 VALIDACIÓN DE COOLDOWN
                         const lastTradeTime = botStatus.lastTrades[tokenId];
                         if (lastTradeTime) {
                             const minutesSince = (Date.now() - lastTradeTime) / 60000;
@@ -1221,7 +1229,7 @@ async function checkAndCopyWhaleTrades() {
                             }
                         }
 
-                        console.log(`🔥 [COPY BUY] ${whale.address.substring(0,8)}... → ${title.substring(0,45)}... (Copiados de esta ballena: ${copiedFromThisWhale}/${limitPerWhale})`);
+                        console.log(`🔥 [COPY BUY] ${getWhaleDisplayName(whale)} → ${title.substring(0,45)}... (Copiados de esta ballena: ${copiedFromThisWhale}/${limitPerWhale})`);
 
                         const result = await executeTradeOnChain(conditionId, tokenId, montoInversion, limitPrice, "0.01");
 
@@ -1254,7 +1262,7 @@ async function checkAndCopyWhaleTrades() {
                             botStatus.copyTradingStats.totalCopied = (botStatus.copyTradingStats.totalCopied || 0) + 1;
                             botStatus.copyTradingStats.successful = (botStatus.copyTradingStats.successful || 0) + 1;
 
-                            await sendAlert(`🐋 *COPY BUY*\nBallena: ${whale.address.substring(0,8)}...\nMercado: ${title.substring(0,45)}...\nInversión: $${montoInversion.toFixed(2)}`);
+                            await sendAlert(`🐋 *COPY BUY*\nBallena: ${getWhaleDisplayName(whale)}\nMercado: ${title.substring(0,45)}...\nInversión: $${montoInversion.toFixed(2)}`);
 
                             botStatus.lastTrades[tokenId] = Date.now();
                         }
@@ -1268,7 +1276,6 @@ async function checkAndCopyWhaleTrades() {
                         if (copiedIndex === -1) continue;
 
                         const position = botStatus.copiedPositions[copiedIndex];
-                        console.log(`🔥 [COPY SELL] Ballena vendió → Cerrando copia`);
 
                         let limitSellPrice = price * 0.97;
                         if (limitSellPrice < 0.01) limitSellPrice = 0.01;
@@ -1279,13 +1286,13 @@ async function checkAndCopyWhaleTrades() {
                             botStatus.copiedPositions.splice(copiedIndex, 1);
                             saveConfigToDisk("Ballena Vendida");
                             const rescateEst = (position.sizeCopied * limitSellPrice).toFixed(2);
-                            await sendAlert(`🛑 *COPY SELL*\nBallena: ${whale.address.substring(0,8)}...\nMercado: ${title.substring(0,40)}...\nRescatado ≈ $${rescateEst} USDC`);
+                            await sendAlert(`🛑 *COPY SELL*\nBallena: ${getWhaleDisplayName(whale)}\nMercado: ${title.substring(0,40)}...\nRescatado ≈ $${rescateEst} USDC`);
                         }
                     }
                 }
             } catch (err) {
                 if (!err.message.includes('429') && !err.message.includes('timeout')) {
-                    console.error(`❌ Error whale ${whale.address.substring(0,8)}:`, err.message);
+                    console.error(`❌ Error whale ${getWhaleDisplayName(whale)}:`, err.message);
                 }
             }
         }
