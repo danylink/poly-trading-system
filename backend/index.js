@@ -173,6 +173,8 @@ let botStatus = {
     customMarketRules: [],
     // 🔥 NUEVO: Límite de mercados por ballena (Copy Trading Custom)
     maxCopyMarketsPerWhale: 1,     // 1 = por defecto (1 mercado por ballena)
+    copyMinWhaleSize: 150,           // ← Tamaño de Trade Minimo
+    copyTimeWindowMinutes: 45,       // ← Ventana de tiempo para volver a checar los trades
     lastTrades: {} // Objeto para controlar el Cooldown: { tokenId: timestamp }
 };
 
@@ -200,7 +202,9 @@ function saveConfigToDisk(origen = "Sistema") {
             copiedTrades: botStatus.copiedTrades || [],
             riskSettings: botStatus.riskSettings,
             customMarketRules: botStatus.customMarketRules || [],
-            maxCopyMarketsPerWhale: botStatus.maxCopyMarketsPerWhale
+            maxCopyMarketsPerWhale: botStatus.maxCopyMarketsPerWhale,
+            copyMinWhaleSize: botStatus.copyMinWhaleSize,
+            copyTimeWindowMinutes: botStatus.copyTimeWindowMinutes
         };
         fs.writeFileSync(CONFIG_FILE, JSON.stringify(configToSave, null, 2), 'utf8');
         console.log(`💾 Configuración guardada en el disco. (Origen: ${origen})`);
@@ -247,6 +251,13 @@ function loadConfigFromDisk() {
                 botStatus.maxCopyMarketsPerWhale = savedConfig.maxCopyMarketsPerWhale;
                 console.log(`📋 Límite por ballena cargado: ${savedConfig.maxCopyMarketsPerWhale} mercados`);
             }
+
+            if (savedConfig.maxCopyMarketsPerWhale !== undefined) {
+                botStatus.maxCopyMarketsPerWhale = savedConfig.maxCopyMarketsPerWhale;
+            }
+
+            if (savedConfig.copyMinWhaleSize !== undefined) botStatus.copyMinWhaleSize = savedConfig.copyMinWhaleSize;
+            if (savedConfig.copyTimeWindowMinutes !== undefined) botStatus.copyTimeWindowMinutes = savedConfig.copyTimeWindowMinutes;
 
             console.log("📂 Configuración y Memoria cargada con éxito.");
         } else {
@@ -1170,8 +1181,8 @@ async function checkAndCopyWhaleTrades() {
 
                     const title = trade.title || "Mercado desconocido";
 
-                    if (!tokenId || whaleSize < 150) continue;
-                    if (Date.now() - timestamp > 15 * 60 * 1000) continue;
+                    if (!tokenId || whaleSize < botStatus.copyMinWhaleSize) continue;
+                    if (Date.now() - timestamp > botStatus.copyTimeWindowMinutes * 60 * 1000) continue;
 
                     // ==================== COPIA DE COMPRA ====================
                     if (side === "BUY") {
@@ -2092,6 +2103,26 @@ app.post('/api/settings/copytrading', (req, res) => {
         success: true, 
         copyTradingCustomEnabled: botStatus.copyTradingCustomEnabled,
         copyTradingAutoEnabled: botStatus.copyTradingAutoEnabled 
+    });
+});
+
+// ==========================================
+// NUEVO: Configuración de filtros de Copy Trading
+// ==========================================
+app.post('/api/settings/copy-filters', (req, res) => {
+    const { copyMinWhaleSize, copyTimeWindowMinutes } = req.body;
+
+    if (copyMinWhaleSize !== undefined) botStatus.copyMinWhaleSize = parseInt(copyMinWhaleSize);
+    if (copyTimeWindowMinutes !== undefined) botStatus.copyTimeWindowMinutes = parseInt(copyTimeWindowMinutes);
+
+    saveConfigToDisk("Copy Filters Actualizados");
+
+    console.log(`📋 Filtros Copy Trading actualizados → Tamaño mín: ${botStatus.copyMinWhaleSize} | Ventana: ${botStatus.copyTimeWindowMinutes} min`);
+
+    res.json({ 
+        success: true, 
+        copyMinWhaleSize: botStatus.copyMinWhaleSize,
+        copyTimeWindowMinutes: botStatus.copyTimeWindowMinutes 
     });
 });
 

@@ -439,6 +439,20 @@ const updateCopyTrading = async () => {
   }
 };
 
+// ====================== ACTUALIZAR FILTROS DE COPY TRADING ======================
+const updateCopyFilters = async () => {
+  try {
+    await axios.post(`${API_URL}/settings/copy-filters`, {
+      copyMinWhaleSize: status.value.copyMinWhaleSize,
+      copyTimeWindowMinutes: status.value.copyTimeWindowMinutes
+    });
+    console.log(`📋 Filtros de Copy Trading actualizados`);
+  } catch (error) {
+    console.error("❌ Error actualizando filtros de copy trading", error);
+    Swal.fire('Error', 'No se pudieron guardar los filtros', 'error');
+  }
+};
+
 // ====================== ACTUALIZAR LÍMITE POR BALLENA ======================
 const updateCopyLimitPerWhale = async () => {
   try {
@@ -1852,7 +1866,64 @@ onUnmounted(() => {
           </div>
 
           <div v-if="status.copyTradingCustomEnabled" class="relative z-10 space-y-8">
-            <!-- SLIDER LÍMITE POR BALLENA -->
+
+            <!-- ==================== NUEVOS FILTROS CONFIGURABLES ==================== -->
+            <div class="bg-[#161619] border border-purple-500/20 p-6 rounded-2xl space-y-6">
+              <h4 class="text-[11px] font-black uppercase tracking-widest text-purple-400 mb-4">Filtros de Copy Trading</h4>
+              
+              <!-- Tamaño mínimo de trade -->
+              <div>
+                <div class="flex justify-between items-center mb-2">
+                  <label class="text-xs text-zinc-400 font-medium">Tamaño mínimo de trade de ballena</label>
+                  <span class="font-mono text-purple-400">${{ status.copyMinWhaleSize }}</span>
+                </div>
+                <div class="flex items-center gap-4">
+                  <input 
+                    type="range" 
+                    min="50" 
+                    max="500" 
+                    step="25" 
+                    v-model.number="status.copyMinWhaleSize" 
+                    @change="updateCopyFilters" 
+                    class="flex-1 accent-purple-500" 
+                  />
+                  <input 
+                    type="number" 
+                    v-model.number="status.copyMinWhaleSize" 
+                    @change="updateCopyFilters" 
+                    class="w-20 bg-[#09090b] border border-purple-500/30 text-purple-400 font-mono text-center rounded-xl px-3 py-1" 
+                  />
+                </div>
+              </div>
+
+              <!-- Ventana de tiempo -->
+              <div>
+                <div class="flex justify-between items-center mb-2">
+                  <label class="text-xs text-zinc-400 font-medium">Ventana de tiempo (minutos)</label>
+                  <span class="font-mono text-purple-400">{{ status.copyTimeWindowMinutes }} min</span>
+                </div>
+                <div class="flex items-center gap-4">
+                  <input 
+                    type="range" 
+                    min="15" 
+                    max="90" 
+                    step="5" 
+                    v-model.number="status.copyTimeWindowMinutes" 
+                    @change="updateCopyFilters" 
+                    class="flex-1 accent-purple-500" 
+                  />
+                  <input 
+                    type="number" 
+                    v-model.number="status.copyTimeWindowMinutes" 
+                    @change="updateCopyFilters" 
+                    class="w-20 bg-[#09090b] border border-purple-500/30 text-purple-400 font-mono text-center rounded-xl px-3 py-1" 
+                  />
+                </div>
+                <p class="text-[10px] text-zinc-500 mt-1">Tiempo máximo desde que la ballena hizo el trade</p>
+              </div>
+            </div>
+
+            <!-- ==================== SLIDER LÍMITE POR BALLENA ==================== -->
             <div class="bg-[#161619] border border-purple-500/20 p-6 rounded-2xl">
               <div class="flex items-center justify-between mb-4">
                 <h4 class="text-[11px] font-black uppercase tracking-widest text-purple-400">Límite de mercados por ballena</h4>

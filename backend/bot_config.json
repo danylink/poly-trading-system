@@ -231,5 +231,7 @@
       "microBetAmount": 3
     }
   ],
-  "maxCopyMarketsPerWhale": 2
+  "maxCopyMarketsPerWhale": 2,
+  "copyMinWhaleSize": 150,
+  "copyTimeWindowMinutes": 45
 }
