@@ -505,15 +505,14 @@ REGLAS CLAVE:
 }
 
 // ==========================================
-// 3B. MOTOR DE IA 2 (GEMINI) - Versión más agresiva
+// 3B. MOTOR DE IA 2 (GEMINI) - VERSIÓN AGRESIVA (Cambio 2)
 // ==========================================
 async function analyzeMarketWithGemini(marketQuestion, currentNews) {
     console.log("🧠 Gemini Short-Term Analysis...");
-    
-    try {
-        const prompt = `Eres un Senior Quant Trader rápido y agresivo en Polymarket SHORT-TERM (muchos <30 min).
 
-Detecta cualquier ventaja real aunque sea pequeña pero rápida.
+    try {
+        const prompt = `Eres un Senior Quant Trader RÁPIDO y AGRESIVO en Polymarket. 
+Tu objetivo es encontrar cualquier ventaja real, aunque sea pequeña pero rápida.
 
 Responde ESTRICTAMENTE con este JSON:
 {
@@ -525,11 +524,13 @@ Responde ESTRICTAMENTE con este JSON:
   "recommendation": "STRONG_BUY" | "BUY" | "WAIT" | "SELL"
 }
 
-REGLAS:
-- Mercados <30 min → edge > 0.06 ya es suficiente si hay momentum o hype.
-- Mercados >30 min → edge > 0.08 es bueno.
-- Prioriza noticias recientes, hype y patrones rápidos.
-- Sé preciso con la probabilidad. No respondas 0.50 por defecto.
+REGLAS CLAVE (más agresivas):
+- Mercados <30 min → edge > 0.05 ya es suficiente si hay momentum, hype o noticia fresca.
+- Mercados 30min-48h → edge > 0.07 es bueno.
+- Prioriza hype en redes, noticias recientes y patrones de precio.
+- Sé directo: si ves una oportunidad real (aunque sea 54-58%), repórtala.
+- Solo pon "WAIT" cuando realmente no hay nada claro.
+- Nunca fuerces 50%. Sé honesto con la probabilidad.
 
 Mercado: ${marketQuestion}
 Noticias recientes: ${currentNews}`;
@@ -559,7 +560,7 @@ Noticias recientes: ${currentNews}`;
             prob: 0, 
             strategy: "WAIT", 
             urgency: 0, 
-            reason: "Error Gemini en red/API", 
+            reason: "Error Gemini", 
             edge: 0, 
             recommendation: "WAIT" 
         };
