@@ -627,19 +627,35 @@ const deleteCustomRule = async (keyword) => {
 
 const saveEditedRule = async (index) => {
   try {
-    const rule = status.value.customMarketRules[index];
-    
+    // Enviamos TODAS las reglas actualizadas al backend
     await axios.post(`${API_URL}/settings/custom-rules`, {
-      keyword: rule.keyword,
-      takeProfitThreshold: rule.takeProfitThreshold,
-      stopLossThreshold: rule.stopLossThreshold,
-      microBetAmount: rule.microBetAmount
+      rules: status.value.customMarketRules
+    }, {
+      headers: { 'Authorization': authPassword.value || localStorage.getItem('poly_auth') }
     });
 
-    await fetchStatus();
-    Swal.fire('¡Regla actualizada!', '', 'success');
+    await fetchStatus(); // recargamos para confirmar
+
+    // Mensaje de éxito
+    Swal.fire({
+      icon: 'success',
+      title: 'Regla guardada',
+      text: 'Los cambios se guardaron correctamente',
+      timer: 1500,
+      showConfirmButton: false,
+      background: '#111114',
+      color: '#fff'
+    });
+
   } catch (error) {
-    Swal.fire('Error', 'No se pudo guardar los cambios', 'error');
+    console.error("❌ Error guardando regla editada:", error);
+    Swal.fire({
+      icon: 'error',
+      title: 'Error al guardar',
+      text: 'No se pudieron guardar los cambios',
+      background: '#111114',
+      color: '#fff'
+    });
   }
 };
 

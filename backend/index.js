@@ -2455,32 +2455,42 @@ app.get('/api/settings/custom-rules', (req, res) => {
     res.json({ success: true, customMarketRules: botStatus.customMarketRules || [] });
 });
 
+// ==========================================
+// API: Guardar / Editar TODAS las reglas personalizadas
+// ==========================================
 app.post('/api/settings/custom-rules', (req, res) => {
     try {
-        const { keyword, takeProfitThreshold, stopLossThreshold } = req.body;
-        
-        if (!keyword || typeof keyword !== 'string') {
-            return res.status(400).json({ success: false, error: "Keyword es obligatorio" });
+        const { rules } = req.body;
+
+        if (!rules || !Array.isArray(rules)) {
+            return res.status(400).json({ 
+                success: false, 
+                error: "Se esperaba un array de reglas" 
+            });
         }
 
-        // Evitar duplicados
-        const exists = botStatus.customMarketRules.some(r => 
-            r.keyword.toLowerCase() === keyword.toLowerCase()
-        );
-
-        if (exists) {
-            return res.status(400).json({ success: false, error: "Ya existe una regla con ese keyword" });
+        // Limpiamos y validamos cada regla
+        for (const rule of rules) {
+            rule.keyword = (rule.keyword || "").trim();
+            rule.takeProfitThreshold = parseInt(rule.takeProfitThreshold) || 25;
+            rule.stopLossThreshold = parseInt(rule.stopLossThreshold) || -30;
+            rule.microBetAmount = parseFloat(rule.microBetAmount) || 2.0;
         }
 
-        botStatus.customMarketRules.push({
-            keyword: keyword.trim(),
-            takeProfitThreshold: parseInt(takeProfitThreshold) || 25,
-            stopLossThreshold: parseInt(stopLossThreshold) || -30
+        // Reemplazamos completamente el array
+        botStatus.customMarketRules = rules;
+
+        saveConfigToDisk("Reglas personalizadas actualizadas (edición)");
+
+        console.log(`📋 ${rules.length} reglas personalizadas guardadas correctamente`);
+
+        res.json({ 
+            success: true, 
+            customMarketRules: botStatus.customMarketRules 
         });
 
-        saveConfigToDisk("Nueva Regla Personalizada");
-        res.json({ success: true, customMarketRules: botStatus.customMarketRules });
     } catch (error) {
+        console.error("❌ Error en /api/settings/custom-rules:", error.message);
         res.status(500).json({ success: false, error: error.message });
     }
 });
