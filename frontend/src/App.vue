@@ -10,6 +10,9 @@ import Swal from 'sweetalert2';
 // Ahora: Dinámico según el entorno
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 
+// Variable para el Escudo de Área
+const isEditingRules = ref(false);
+
 // --- ESTADO REACTIVO UNIFICADO ---
 const status = ref({
   // 1. Variables Generales del Dashboard
@@ -228,11 +231,16 @@ let pollingInterval = null;
 const isSelling = ref({});
 
 // --- FUNCIONES DE COMUNICACIÓN CON EL BACKEND ---
-
 const fetchStatus = async () => {
+  // 🛑 MODO DEBUG + ESCUDO DE ÁREA
+  if (isEditingRules.value) {
+    //console.log("🛑 [ESCUDO ACTIVO] Auto-refresh bloqueado. El servidor no te interrumpirá.");
+    return; // Aborta la petición por completo
+  }
+
   try {
     const res = await axios.get(`${API_URL}/status`);
-    // Mantenemos la referencia del objeto para no perder reactividad
+    //console.log("🔄 [REFRESH] Datos traídos del servidor con éxito.");
     Object.assign(status.value, res.data);
   } catch (e) { 
     console.error("📡 Error: Backend desconectado"); 
@@ -1240,7 +1248,7 @@ onUnmounted(() => {
         </div>
 
         <!-- ====================== REGLAS PERSONALIZADAS POR MERCADO (Versión Editable Corregida) ====================== -->
-         <div class="bg-[#111114] border-2 border-amber-500/20 rounded-3xl p-8 mb-8 relative overflow-hidden shadow-[0_0_40px_rgba(245,158,11,0.05)] hover:border-amber-500/40 transition-colors">
+        <div @mouseenter="isEditingRules = true" @mouseleave="isEditingRules = false" class="bg-[#111114] border-2 border-amber-500/20 rounded-3xl p-8 mb-8 relative overflow-hidden shadow-[0_0_40px_rgba(245,158,11,0.05)] hover:border-amber-500/40 transition-colors">
           <div class="absolute -right-20 -bottom-20 w-64 h-64 bg-amber-500 rounded-full blur-[120px] opacity-5 pointer-events-none"></div>
           
           <div class="flex items-center gap-4 mb-8 pb-4 border-b border-zinc-800/50 relative z-10">
@@ -1272,14 +1280,14 @@ onUnmounted(() => {
                   <div>
                     <label class="text-[9px] font-black uppercase text-emerald-400 tracking-widest block mb-1.5">Take Profit</label>
                     <div class="flex items-center gap-2 bg-black border border-emerald-500/20 rounded-xl px-3 py-2.5">
-                      <input type="number" v-model.number="status.newRuleTP" class="w-full min-w-0 bg-transparent font-mono text-emerald-400 text-lg text-right outline-none">
+                      <input type="number" step="any" v-model.number="status.newRuleTP" class="w-full min-w-0 bg-transparent font-mono text-emerald-400 text-lg text-right outline-none">
                       <span class="text-emerald-400 font-bold shrink-0">%</span>
                     </div>
                   </div>
                   <div>
                     <label class="text-[9px] font-black uppercase text-rose-400 tracking-widest block mb-1.5">Stop Loss</label>
                     <div class="flex items-center gap-2 bg-black border border-rose-500/20 rounded-xl px-3 py-2.5">
-                      <input type="number" v-model.number="status.newRuleSL" class="w-full min-w-0 bg-transparent font-mono text-rose-400 text-lg text-right outline-none">
+                      <input type="number" step="any" v-model.number="status.newRuleSL" class="w-full min-w-0 bg-transparent font-mono text-rose-400 text-lg text-right outline-none">
                       <span class="text-rose-400 font-bold shrink-0">%</span>
                     </div>
                   </div>
@@ -1287,12 +1295,7 @@ onUnmounted(() => {
 
                 <div>
                   <label class="text-[9px] font-black uppercase text-[#D4AF37] tracking-widest block mb-1.5">Tamaño Apuesta (USDC)</label>
-                  <input 
-                    type="number" 
-                    v-model.number="status.newRuleBet" 
-                    min="0.5" max="50" step="0.1"
-                    class="w-full bg-black border border-[#D4AF37]/20 rounded-xl px-4 py-3 text-lg font-mono text-[#D4AF37] text-center outline-none"
-                  >
+                  <input type="number" step="any" v-model.number="status.newRuleBet" class="w-full bg-black border border-[#D4AF37]/20 rounded-xl px-4 py-3 text-lg font-mono text-[#D4AF37] text-center outline-none">
                 </div>
               </div>
 
@@ -1309,22 +1312,16 @@ onUnmounted(() => {
               <div v-if="status.customMarketRules && status.customMarketRules.length > 0" class="max-h-[400px] overflow-y-auto custom-scroll pr-2 space-y-3">
                 
                 <div v-for="(rule, index) in status.customMarketRules" :key="index"
-                     class="bg-[#161619] border border-zinc-700/80 rounded-2xl p-4 hover:border-amber-500/30 transition-colors">
+                    class="bg-[#161619] border border-zinc-700/80 rounded-2xl p-4 hover:border-amber-500/30 transition-colors">
                   
                   <div class="flex flex-col sm:flex-row gap-4 mb-3">
                     <div class="flex-1">
                       <label class="text-[9px] font-black uppercase text-amber-500 tracking-widest block mb-1">Keyword</label>
-                      <input 
-                        v-model="rule.keyword"
-                        class="w-full bg-black border border-zinc-800 rounded-lg px-3 py-2 text-xs font-mono focus:border-amber-500 outline-none"
-                      >
+                      <input v-model="rule.keyword" class="w-full bg-black border border-zinc-800 rounded-lg px-3 py-2 text-xs font-mono focus:border-amber-500 outline-none">
                     </div>
                     <div class="w-full sm:w-24">
                       <label class="text-[9px] font-black uppercase text-[#D4AF37] tracking-widest block mb-1">Apuesta</label>
-                      <input 
-                        type="number" v-model.number="rule.microBetAmount" min="0.5" step="0.1"
-                        class="w-full bg-black border border-zinc-800 rounded-lg px-3 py-2 text-xs font-mono text-[#D4AF37] text-center outline-none"
-                      >
+                      <input type="number" step="any" v-model.number="rule.microBetAmount" class="w-full bg-black border border-zinc-800 rounded-lg px-3 py-2 text-xs font-mono text-[#D4AF37] text-center outline-none">
                     </div>
                   </div>
 
@@ -1332,28 +1329,24 @@ onUnmounted(() => {
                     <div>
                       <div class="flex items-center gap-2 bg-black border border-zinc-800 rounded-lg px-3 py-1.5 focus-within:border-emerald-500/50">
                         <span class="text-[8px] font-black uppercase text-emerald-500 w-6">TP</span>
-                        <input type="number" v-model.number="rule.takeProfitThreshold" class="w-full min-w-0 bg-transparent font-mono text-emerald-400 text-sm text-right outline-none">
+                        <input type="number" step="any" v-model.number="rule.takeProfitThreshold" class="w-full min-w-0 bg-transparent font-mono text-emerald-400 text-sm text-right outline-none">
                         <span class="text-emerald-500 font-bold text-xs shrink-0">%</span>
                       </div>
                     </div>
                     <div>
                       <div class="flex items-center gap-2 bg-black border border-zinc-800 rounded-lg px-3 py-1.5 focus-within:border-rose-500/50">
                         <span class="text-[8px] font-black uppercase text-rose-500 w-6">SL</span>
-                        <input type="number" v-model.number="rule.stopLossThreshold" class="w-full min-w-0 bg-transparent font-mono text-rose-400 text-sm text-right outline-none">
+                        <input type="number" step="any" v-model.number="rule.stopLossThreshold" class="w-full min-w-0 bg-transparent font-mono text-rose-400 text-sm text-right outline-none">
                         <span class="text-rose-500 font-bold text-xs shrink-0">%</span>
                       </div>
                     </div>
                   </div>
 
                   <div class="flex justify-end gap-2 pt-3 border-t border-zinc-800/50">
-                    <button 
-                      @click="saveEditedRule(index)"
-                      class="px-4 py-1.5 text-[9px] font-black uppercase tracking-widest bg-zinc-800 hover:bg-emerald-500/20 text-zinc-300 hover:text-emerald-400 border border-transparent hover:border-emerald-500/30 rounded-lg transition-all">
+                    <button @click="saveEditedRule(index)" class="px-4 py-1.5 text-[9px] font-black uppercase tracking-widest bg-zinc-800 hover:bg-emerald-500/20 text-zinc-300 hover:text-emerald-400 border border-transparent hover:border-emerald-500/30 rounded-lg transition-all">
                       Guardar
                     </button>
-                    <button 
-                      @click="deleteCustomRule(rule.keyword)"
-                      class="px-4 py-1.5 text-[9px] font-black uppercase tracking-widest bg-zinc-800 hover:bg-rose-500/20 text-zinc-300 hover:text-rose-400 border border-transparent hover:border-rose-500/30 rounded-lg transition-all">
+                    <button @click="deleteCustomRule(rule.keyword)" class="px-4 py-1.5 text-[9px] font-black uppercase tracking-widest bg-zinc-800 hover:bg-rose-500/20 text-zinc-300 hover:text-rose-400 border border-transparent hover:border-rose-500/30 rounded-lg transition-all">
                       Borrar
                     </button>
                   </div>
@@ -1515,7 +1508,12 @@ onUnmounted(() => {
                   <input type="range" min="0.5" max="50" step="0.5" v-model.number="currentRiskSettings.microBetAmount" @change="updateRiskSettings" class="flex-1 accent-blue-500 h-2 bg-zinc-800 rounded-lg appearance-none cursor-pointer" />
                   <div class="flex items-center gap-1 w-28 shrink-0 bg-[#09090b] border border-zinc-700 rounded-xl px-3 py-2">
                     <span class="text-zinc-500 font-bold text-sm">$</span>
-                    <input type="number" min="0.5" max="50" step="0.5" v-model.number="currentRiskSettings.microBetAmount" @change="updateRiskSettings" class="w-full bg-transparent text-white font-mono text-base text-right outline-none" />
+                    <input 
+                      type="number" step="any"
+                      v-model.number="currentRiskSettings.microBetAmount"
+                      @change="updateRiskSettings"
+                      class="w-full bg-transparent text-white font-mono text-base text-right outline-none"
+                    >
                   </div>
                 </div>
               </div>
@@ -1530,7 +1528,12 @@ onUnmounted(() => {
                 <div class="flex items-center gap-4">
                   <input type="range" min="10" max="100" step="1" :value="Math.round((currentRiskSettings.predictionThreshold || 0) * 100)" @input="currentRiskSettings.predictionThreshold = $event.target.value / 100" @change="updateRiskSettings" class="flex-1 accent-[#D4AF37] h-2 bg-zinc-800 rounded-lg appearance-none cursor-pointer" />
                   <div class="flex items-center gap-1 w-28 shrink-0 bg-[#09090b] border border-zinc-700 rounded-xl px-3 py-2">
-                    <input type="number" min="10" max="100" step="1" :value="Math.round((currentRiskSettings.predictionThreshold || 0) * 100)" @change="currentRiskSettings.predictionThreshold = $event.target.value / 100; updateRiskSettings()" class="w-full bg-transparent text-white font-mono text-base text-right outline-none" />
+                    <input 
+                      type="number"
+                      :value="Math.round((currentRiskSettings.predictionThreshold || 0) * 100)"
+                      @change="currentRiskSettings.predictionThreshold = $event.target.value / 100; updateRiskSettings()"
+                      class="w-full bg-transparent text-white font-mono text-base text-right outline-none"
+                    >
                     <span class="text-[#D4AF37] font-bold text-sm">%</span>
                   </div>
                 </div>
@@ -1546,7 +1549,12 @@ onUnmounted(() => {
                 <div class="flex items-center gap-4">
                   <input type="range" min="1" max="50" step="1" :value="Math.round((currentRiskSettings.edgeThreshold || 0) * 100)" @input="currentRiskSettings.edgeThreshold = $event.target.value / 100" @change="updateRiskSettings" class="flex-1 accent-[#D4AF37] h-2 bg-zinc-800 rounded-lg appearance-none cursor-pointer" />
                   <div class="flex items-center gap-1 w-28 shrink-0 bg-[#09090b] border border-zinc-700 rounded-xl px-3 py-2">
-                    <input type="number" min="1" max="50" step="1" :value="Math.round((currentRiskSettings.edgeThreshold || 0) * 100)" @change="currentRiskSettings.edgeThreshold = $event.target.value / 100; updateRiskSettings()" class="w-full bg-transparent text-white font-mono text-base text-right outline-none" />
+                    <input 
+                      type="number"
+                      :value="Math.round((currentRiskSettings.edgeThreshold || 0) * 100)"
+                      @change="currentRiskSettings.edgeThreshold = $event.target.value / 100; updateRiskSettings()"
+                      class="w-full bg-transparent text-white font-mono text-base text-right outline-none"
+                    >
                     <span class="text-[#D4AF37] font-bold text-sm">%</span>
                   </div>
                 </div>
@@ -1594,7 +1602,12 @@ onUnmounted(() => {
               <div class="flex items-center gap-4">
                 <input type="range" min="5" max="100" step="1" v-model.number="currentRiskSettings.takeProfitThreshold" @change="updateRiskSettings" class="flex-1 accent-emerald-500 h-2 bg-zinc-800 rounded-lg appearance-none cursor-pointer" />
                 <div class="flex items-center gap-1 w-28 shrink-0 bg-[#09090b] border border-emerald-900/30 rounded-xl px-3 py-2">
-                  <input type="number" min="5" max="100" step="1" v-model.number="currentRiskSettings.takeProfitThreshold" @change="updateRiskSettings" class="w-full bg-transparent text-emerald-400 font-mono text-base text-right outline-none" />
+                  <input 
+                    type="number" step="any"
+                    v-model.number="currentRiskSettings.takeProfitThreshold"
+                    @change="updateRiskSettings"
+                    class="w-full bg-transparent text-emerald-400 font-mono text-base text-right outline-none"
+                  >
                   <span class="text-emerald-600 font-bold text-sm">%</span>
                 </div>
               </div>
@@ -1610,13 +1623,16 @@ onUnmounted(() => {
               <div class="flex items-center gap-4">
                 <input type="range" min="-100" max="-5" step="1" v-model.number="currentRiskSettings.stopLossThreshold" @change="updateRiskSettings" class="flex-1 accent-rose-500 h-2 bg-zinc-800 rounded-lg appearance-none cursor-pointer" />
                 <div class="flex items-center gap-1 w-28 shrink-0 bg-[#09090b] border border-rose-900/30 rounded-xl px-3 py-2">
-                  <input type="number" max="-5" step="1" v-model.number="currentRiskSettings.stopLossThreshold" @change="updateRiskSettings" class="w-full bg-transparent text-rose-400 font-mono text-base text-right outline-none" />
+                  <input 
+                    type="number" step="any"
+                    v-model.number="currentRiskSettings.stopLossThreshold"
+                    @change="updateRiskSettings"
+                    class="w-full bg-transparent text-rose-400 font-mono text-base text-right outline-none"
+                  >
                   <span class="text-rose-600 font-bold text-sm">%</span>
                 </div>
               </div>
             </div>
-
-            <div class="border-t border-zinc-800/80 my-2"></div>
 
             <div class="flex flex-col gap-2 p-4 md:p-5 rounded-xl border border-zinc-800/60 bg-[#161619] relative overflow-hidden">
               <div class="flex justify-between items-center mb-2">
@@ -1632,16 +1648,16 @@ onUnmounted(() => {
               </div>
             </div>
 
-            <div class="flex flex-col gap-2 p-4 md:p-5 rounded-xl border border-rose-500/20 bg-[#161619] relative overflow-hidden">
+            <div class="flex flex-col gap-2 p-4 md:p-5 rounded-xl border border-zinc-800/60 bg-[#161619] relative overflow-hidden">
               <div class="flex justify-between items-center mb-2">
-                <label class="text-[10px] sm:text-xs text-rose-400 font-black uppercase tracking-[0.2em]">Slippage Pánico (S.L.)</label>
-                <span class="text-[8px] sm:text-[10px] font-black px-2 py-1 rounded border text-rose-400 bg-rose-500/10 border-rose-500/40">EMERGENCIA</span>
+                <label class="text-[10px] sm:text-xs text-zinc-400 font-black uppercase tracking-[0.2em]">Slippage Pánico (Stop Loss)</label>
+                <span class="text-[8px] sm:text-[10px] font-black px-2 py-1 rounded border text-rose-500 bg-rose-500/10 border-rose-500/40">EMERGENCIA</span>
               </div>
               <div class="flex items-center gap-4">
-                <input type="range" min="10" max="60" step="1" v-model.number="status.riskSettings.panicSlippage" @change="updateQuantumRiskSettings" class="flex-1 accent-rose-500 h-2 bg-zinc-800 rounded-lg appearance-none cursor-pointer" />
-                <div class="flex items-center gap-1 w-28 shrink-0 bg-[#09090b] border border-rose-900/50 rounded-xl px-3 py-2">
-                  <input type="number" min="10" max="60" v-model.number="status.riskSettings.panicSlippage" @change="updateQuantumRiskSettings" class="w-full bg-transparent text-rose-400 font-mono text-base text-right outline-none" />
-                  <span class="text-rose-600 font-bold text-sm">%</span>
+                <input type="range" min="10" max="80" step="1" v-model.number="status.riskSettings.panicSlippage" @change="updateQuantumRiskSettings" class="flex-1 accent-rose-500 h-2 bg-zinc-800 rounded-lg appearance-none cursor-pointer" />
+                <div class="flex items-center gap-1 w-28 shrink-0 bg-[#09090b] border border-zinc-700 rounded-xl px-3 py-2">
+                  <input type="number" min="10" max="80" v-model.number="status.riskSettings.panicSlippage" @change="updateQuantumRiskSettings" class="w-full bg-transparent text-rose-500 font-mono text-base text-right outline-none" />
+                  <span class="text-zinc-500 font-bold text-sm">%</span>
                 </div>
               </div>
             </div>
@@ -1649,13 +1665,13 @@ onUnmounted(() => {
             <div class="flex flex-col gap-2 p-4 md:p-5 rounded-xl border border-zinc-800/60 bg-[#161619] relative overflow-hidden">
               <div class="flex justify-between items-center mb-2">
                 <label class="text-[10px] sm:text-xs text-zinc-400 font-black uppercase tracking-[0.2em]">Cooldown (Filtro Spam)</label>
-                <span class="text-[8px] sm:text-[10px] font-black px-2 py-1 rounded border text-zinc-300 bg-zinc-700/30 border-zinc-600/50">TIEMPO</span>
+                <span class="text-[8px] sm:text-[10px] font-black px-2 py-1 rounded border text-purple-400 bg-purple-500/10 border-purple-500/40">TIEMPO</span>
               </div>
               <div class="flex items-center gap-4">
-                <input type="range" min="0" max="120" step="5" v-model.number="status.riskSettings.tradeCooldownMin" @change="updateQuantumRiskSettings" class="flex-1 accent-zinc-500 h-2 bg-zinc-800 rounded-lg appearance-none cursor-pointer" />
+                <input type="range" min="5" max="240" step="5" v-model.number="status.riskSettings.tradeCooldownMin" @change="updateQuantumRiskSettings" class="flex-1 accent-purple-500 h-2 bg-zinc-800 rounded-lg appearance-none cursor-pointer" />
                 <div class="flex items-center gap-1 w-28 shrink-0 bg-[#09090b] border border-zinc-700 rounded-xl px-3 py-2">
-                  <input type="number" min="0" max="120" v-model.number="status.riskSettings.tradeCooldownMin" @change="updateQuantumRiskSettings" class="w-full bg-transparent text-white font-mono text-base text-right outline-none" />
-                  <span class="text-zinc-500 font-bold text-sm">Min</span>
+                  <input type="number" min="5" max="240" v-model.number="status.riskSettings.tradeCooldownMin" @change="updateQuantumRiskSettings" class="w-full bg-transparent text-purple-400 font-mono text-base text-right outline-none" />
+                  <span class="text-zinc-500 font-bold text-sm">MIN</span>
                 </div>
               </div>
             </div>
@@ -1671,7 +1687,12 @@ onUnmounted(() => {
               <div class="flex items-center gap-4 relative z-10">
                 <input type="range" min="5" max="50" step="1" v-model.number="status.dailyLossLimit" @change="updateConfig" class="flex-1 accent-rose-500 h-2 bg-zinc-800 rounded-lg appearance-none cursor-pointer shadow-inner" />
                 <div class="flex items-center gap-1 w-28 shrink-0 bg-[#09090b] border border-rose-900/50 rounded-xl px-3 py-2">
-                  <input type="number" min="5" max="50" v-model.number="status.dailyLossLimit" @change="updateConfig" class="w-full bg-transparent text-rose-400 font-mono text-base text-right outline-none" />
+                  <input 
+                    type="number" step="any"
+                    v-model.number="status.dailyLossLimit"
+                    @change="updateConfig"
+                    class="w-full bg-transparent text-rose-400 font-mono text-base text-right outline-none"
+                  >
                   <span class="text-rose-600 font-bold text-sm">%</span>
                 </div>
               </div>
@@ -1895,11 +1916,10 @@ onUnmounted(() => {
 
           <div v-if="status.copyTradingCustomEnabled" class="relative z-10 space-y-8">
 
-            <!-- ==================== NUEVOS FILTROS CONFIGURABLES ==================== -->
+            <!-- ==================== FILTROS CONFIGURABLES ==================== -->
             <div class="bg-[#161619] border border-purple-500/20 p-6 rounded-2xl space-y-6">
               <h4 class="text-[11px] font-black uppercase tracking-widest text-purple-400 mb-4">Filtros de Copy Trading</h4>
               
-              <!-- Tamaño mínimo de trade -->
               <div>
                 <div class="flex justify-between items-center mb-2">
                   <label class="text-xs text-zinc-400 font-medium">Tamaño mínimo de trade de ballena</label>
@@ -1916,15 +1936,14 @@ onUnmounted(() => {
                     class="flex-1 accent-purple-500" 
                   />
                   <input 
-                    type="number" 
-                    v-model.number="status.copyMinWhaleSize" 
-                    @change="updateCopyFilters" 
-                    class="w-20 bg-[#09090b] border border-purple-500/30 text-purple-400 font-mono text-center rounded-xl px-3 py-1" 
+                    type="number"
+                    v-model.number="status.copyMinWhaleSize"
+                    @change="updateCopyFilters"
+                    class="w-20 bg-[#09090b] border border-purple-500/30 text-purple-400 font-mono text-center rounded-xl px-3 py-1 outline-none focus:border-purple-500" 
                   />
                 </div>
               </div>
 
-              <!-- Ventana de tiempo -->
               <div>
                 <div class="flex justify-between items-center mb-2">
                   <label class="text-xs text-zinc-400 font-medium">Ventana de tiempo (minutos)</label>
@@ -1941,10 +1960,10 @@ onUnmounted(() => {
                     class="flex-1 accent-purple-500" 
                   />
                   <input 
-                    type="number" 
-                    v-model.number="status.copyTimeWindowMinutes" 
-                    @change="updateCopyFilters" 
-                    class="w-20 bg-[#09090b] border border-purple-500/30 text-purple-400 font-mono text-center rounded-xl px-3 py-1" 
+                    type="number"
+                    v-model.number="status.copyTimeWindowMinutes"
+                    @change="updateCopyFilters"
+                    class="w-20 bg-[#09090b] border border-purple-500/30 text-purple-400 font-mono text-center rounded-xl px-3 py-1 outline-none focus:border-purple-500" 
                   />
                 </div>
                 <p class="text-[10px] text-zinc-500 mt-1">Tiempo máximo desde que la ballena hizo el trade</p>
