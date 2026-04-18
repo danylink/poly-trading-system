@@ -1790,12 +1790,18 @@ async function autoSellManager() {
                 if (result?.success) {
                     closedPositionsCache.add(pos.tokenId);
                     
-                    // 🔥 FORZAMOS ACTUALIZACIÓN DE BALANCES ANTES DE ENVIAR EL MENSAJE
                     await updateRealBalances();
 
+                    // 🔥 FIX: Cálculo real de Cartera Total
                     const metaMaskVal = parseFloat(botStatus.walletOnlyUSDC || 0);
                     const polyVal = parseFloat(botStatus.clobOnlyUSDC || 0);
-                    const carteraTotal = (metaMaskVal + polyVal).toFixed(2);
+                    const unclaimedVal = parseFloat(botStatus.unclaimedUSDC || 0);
+                    const activePosValue = botStatus.activePositions.reduce((acc, p) => {
+                        if (p.status && (p.status.includes('CANJEAR') || p.status.includes('PERDIDO'))) return acc;
+                        return acc + parseFloat(p.currentValue || 0);
+                    }, 0);
+
+                    const carteraTotal = (metaMaskVal + polyVal + unclaimedVal + activePosValue).toFixed(2);
 
                     const alerta = `✅ *TAKE PROFIT EJECUTADO* ✅\n` +
                                 `Origen: ${originTag} ${profileType}\n\n` +
@@ -1859,15 +1865,20 @@ async function autoSellManager() {
                 if (result?.success) {
                     closedPositionsCache.add(pos.tokenId);
                     
-                    // 🔥 IMPORTANTE: Actualizamos balances ANTES de construir el mensaje
                     await updateRealBalances();
 
+                    // 🔥 FIX: Cálculo real de Cartera Total
                     const metaMaskVal = parseFloat(botStatus.walletOnlyUSDC || 0);
                     const polyVal = parseFloat(botStatus.clobOnlyUSDC || 0);
-                    const carteraTotal = (metaMaskVal + polyVal).toFixed(2);
+                    const unclaimedVal = parseFloat(botStatus.unclaimedUSDC || 0);
+                    const activePosValue = botStatus.activePositions.reduce((acc, p) => {
+                        if (p.status && (p.status.includes('CANJEAR') || p.status.includes('PERDIDO'))) return acc;
+                        return acc + parseFloat(p.currentValue || 0);
+                    }, 0);
+
+                    const carteraTotal = (metaMaskVal + polyVal + unclaimedVal + activePosValue).toFixed(2);
                     const rescate = (sharesToSell * worstPrice).toFixed(2);
 
-                    // Mensaje homologado y corregido
                     const alerta = `🛑 *STOP LOSS EJECUTADO*\n` +
                                    `Origen: ${originTag} ${profileType}\n\n` +
                                    `📉 Mercado: *${marketNameShort}*\n` +
@@ -1916,8 +1927,9 @@ async function autoRedeemPositions() {
         ]);
 
         for (const pos of [...botStatus.activePositions]) {
-            // 🔥 SOLO PROCESAR POSICIONES QUE ESTÉN LISTAS PARA CANJEAR
-            if (!pos.status || !pos.status.includes('CANJEAR')) continue;
+            // 🔥 CORRECCIÓN: Detecta "CANJEAR", "CANJEAR 🎁", "CANJEADO", etc.
+            const statusLower = (pos.status || "").toLowerCase();
+            if (!statusLower.includes("canjear")) continue;
 
             if (!pos.conditionId) continue;
 
@@ -1939,7 +1951,7 @@ async function autoRedeemPositions() {
 
                 console.log(`✅ [REDEEM] Canjeado correctamente: ${pos.marketName?.substring(0, 50)}...`);
 
-                // Marcamos como canjeado y lo removemos de activePositions
+                // Marcamos como canjeado
                 pos.status = "CANJEADO ✅";
                 redeemedCount++;
 
@@ -2005,8 +2017,11 @@ async function autoRedeemPositionsGasless() {
         const USDC_ADDRESS = "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174";
 
         for (const pos of [...botStatus.activePositions]) {
-            // 🔥 IMPORTANTE: Solo procesar posiciones listas para canjear
-            if (!pos.conditionId || !pos.status || !pos.status.includes('CANJEAR')) continue;
+            // 🔥 CORRECCIÓN: Detecta "CANJEAR", "CANJEAR 🎁", etc.
+            const statusLower = (pos.status || "").toLowerCase();
+            if (!statusLower.includes("canjear")) continue;
+
+            if (!pos.conditionId) continue;
 
             try {
                 const redeemTx = {
@@ -2026,7 +2041,7 @@ async function autoRedeemPositionsGasless() {
                 // Enviar gasless a través del relayer
                 const response = await relayerClient.execute([redeemTx], `Redeem ${pos.marketName?.substring(0, 30) || 'Position'}`);
 
-                // Esperar confirmación (el relayer devuelve una promesa que se resuelve cuando se confirma)
+                // Esperar confirmación
                 await response.wait();
 
                 console.log(`✅ [REDEEM GASLESS] Canjeado: ${pos.marketName?.substring(0, 45)}...`);
@@ -2750,9 +2765,24 @@ async function sendDailySummary(title) {
         const polyBalance = parseFloat(botStatus.clobOnlyUSDC || 0);
         const metaBalance = parseFloat(botStatus.walletOnlyUSDC || 0);
         const unclaimed = parseFloat(botStatus.unclaimedUSDC || 0);
-        const total = (polyBalance + metaBalance + unclaimed).toFixed(2);
 
-        const floatingPnL = botStatus.floatingPnL || 0;
+        // 🔥 FIX QUANT 1: Calcular el valor de las posiciones vivas
+        const activePosValue = botStatus.activePositions ? botStatus.activePositions.reduce((acc, pos) => {
+            if (pos.status && (pos.status.includes('CANJEAR') || pos.status.includes('PERDIDO'))) return acc;
+            return acc + parseFloat(pos.currentValue || 0);
+        }, 0) : 0;
+
+        // 🔥 FIX QUANT 2: Calcular el PnL Flotante matemáticamente
+        let floatingPnL = 0;
+        if (botStatus.activePositions) {
+            floatingPnL = botStatus.activePositions.reduce((acc, pos) => {
+                if (pos.status && (pos.status.includes('CANJEAR') || pos.status.includes('PERDIDO'))) return acc;
+                return acc + parseFloat(pos.cashPnl || 0);
+            }, 0);
+        }
+
+        // Ahora sí, la cartera es 100% precisa
+        const total = (polyBalance + metaBalance + unclaimed + activePosValue).toFixed(2);
         const activeCount = botStatus.activePositions ? botStatus.activePositions.length : 0;
 
         const msg = `${title}\n\n` +
