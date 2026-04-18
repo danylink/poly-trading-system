@@ -18,6 +18,7 @@ import OpenAI from 'openai';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
+import cron from 'node-cron';
 
 const agent = new https.Agent({  
     rejectUnauthorized: false 
@@ -404,7 +405,7 @@ async function updateRealBalances() {
             const positions = await response.json();
             
             botStatus.activePositions = []; 
-            let totalUnclaimed = 0; // 🔥 NUEVO: Sumador de dinero por reclamar
+            let totalUnclaimed = 0; 
             
             if (Array.isArray(positions) && positions.length > 0) {
                 for (const pos of positions) {
@@ -418,19 +419,19 @@ async function updateRealBalances() {
 
                     const isRedeemable = pos.redeemable === true || pos['canjeable'] === true;
 
-                    // 🔥 FIX QUANT: Si es canjeable, lo sumamos a la bóveda de unclaimed y lo ocultamos de posiciones activas
+                    // 🔥 Dejamos que sume al unclaimed, pero ELIMINAMOS el "continue"
+                    // para que la posición siga bajando y se agregue al Dashboard.
                     if (isRedeemable) {
                         totalUnclaimed += valorActual;
                         if (!redeemedCache.has(pos.asset || pos.token_id)) {
                             redeemedCache.add(pos.asset || pos.token_id);
                         }
-                        continue; 
                     }
 
                     // 🔥 DETECTOR DE OUTCOME (YES / NO) PARA EL FRONTEND
                     let outcomeVal = "N/A";
                     if (pos.outcome) {
-                        outcomeVal = String(pos.outcome).toUpperCase(); // Asegura que diga "YES" o "NO" en mayúsculas
+                        outcomeVal = String(pos.outcome).toUpperCase(); 
                     } else if (pos.assetName && typeof pos.assetName === 'string') {
                         if (pos.assetName.toUpperCase().includes("-YES")) outcomeVal = "YES";
                         else if (pos.assetName.toUpperCase().includes("-NO")) outcomeVal = "NO";
@@ -442,35 +443,35 @@ async function updateRealBalances() {
                         size: size.toFixed(2),
                         exactSize: size,
                         marketName: pos.title || pos.market || pos['título'] || "Mercado Desconocido",
-                        status: "ACTIVO 🟢",
+                        // 👇 Etiqueta dinámica: Si es canjeable, cambia visualmente
+                        status: isRedeemable ? "CANJEAR 🎁" : "ACTIVO 🟢",
                         currentValue: valorActual.toFixed(2),
                         cashPnl: cashPnl,
                         percentPnl: percentPnl,
                         category: getMarketCategoryEnhanced(pos.title || pos.market || pos['título'] || ""),
-                        outcome: outcomeVal // 🔥 AQUÍ SE ENVÍA A LA TARJETA
+                        outcome: outcomeVal 
                     });
                 }
             }
             
-            // Guardamos el total reclamable en el estado del bot
             botStatus.unclaimedUSDC = totalUnclaimed.toFixed(2);
 
         } catch (apiError) {
             console.log("⚠️ No se pudieron obtener posiciones:", apiError.message);
         }
 
-        // 🔥 IMPRESIÓN DE BALANCES - Sincronizado con lógica de Dashboard
+        // 🔥 IMPRESIÓN DE BALANCES
         if (Math.random() < 0.25) {
             const metaMaskVal = parseFloat(botStatus.walletOnlyUSDC || 0);
             const polyVal = parseFloat(botStatus.clobOnlyUSDC || 0);
             const unclaimedVal = parseFloat(botStatus.unclaimedUSDC || 0);
             
-            // Sumar valor de posiciones activas (vivas)
+            // 👇 FIX DE DOBLE SUMA: Ignoramos las posiciones canjeables aquí porque ya están en unclaimedVal
             const activePosValue = botStatus.activePositions.reduce((acc, pos) => {
+                if (pos.status === "CANJEAR 🎁") return acc;
                 return acc + parseFloat(pos.currentValue || 0);
             }, 0);
 
-            // Cálculo real: MetaMask + Disponible + Posiciones + Reclamables
             const carteraTotalReal = (metaMaskVal + polyVal + activePosValue + unclaimedVal).toFixed(2);
 
             console.log(`📊 Balances: Cartera Total: $${carteraTotalReal} | Disponible (Poly): $${polyVal.toFixed(2)} | MetaMask: $${metaMaskVal.toFixed(2)} | Gas: ${botStatus.balancePOL} POL`);
@@ -2738,58 +2739,59 @@ app.post('/api/settings/copy-limit-per-whale', (req, res) => {
 });
 
 // ==========================================
-// REPORTES DIARIOS - Versión corregida (Hora México precisa)
+// REPORTES DIARIOS (Motor Cron de Alta Precisión)
 // ==========================================
 const MEXICO_TZ = 'America/Mexico_City';
 
-function getMsUntilTime(hour, minute) {
-    const now = new Date();
-    const target = new Date(now.toLocaleString("en-US", { timeZone: MEXICO_TZ }));
-
-    target.setHours(hour, minute, 0, 0);
-
-    if (target <= now) {
-        target.setDate(target.getDate() + 1);
-    }
-
-    return target.getTime() - now.getTime();
-}
-
 async function sendDailySummary(title) {
-    await updateRealBalances();   // ← Muy importante
+    try {
+        await updateRealBalances();   // ← Muy importante
 
-    const polyBalance = parseFloat(botStatus.clobOnlyUSDC || 0);
-    const metaBalance = parseFloat(botStatus.walletOnlyUSDC || 0);
-    const unclaimed = parseFloat(botStatus.unclaimedUSDC || 0);
-    const total = (polyBalance + metaBalance + unclaimed).toFixed(2);
+        const polyBalance = parseFloat(botStatus.clobOnlyUSDC || 0);
+        const metaBalance = parseFloat(botStatus.walletOnlyUSDC || 0);
+        const unclaimed = parseFloat(botStatus.unclaimedUSDC || 0);
+        const total = (polyBalance + metaBalance + unclaimed).toFixed(2);
 
-    const floatingPnL = botStatus.floatingPnL || 0;
-    const activeCount = botStatus.activePositions ? botStatus.activePositions.length : 0;
+        const floatingPnL = botStatus.floatingPnL || 0;
+        const activeCount = botStatus.activePositions ? botStatus.activePositions.length : 0;
 
-    const msg = `${title}\n\n` +
-                `💰 *Cartera Total:* $${total} USDC\n` +
-                `📈 PnL Flotante: *${floatingPnL >= 0 ? '+' : ''}$${floatingPnL.toFixed(2)} USDC*\n` +
-                `📍 Posiciones Activas: *${activeCount}*\n` +
-                `🕒 Hora México: *${new Date().toLocaleString('es-MX', { timeZone: MEXICO_TZ })}*`;
+        const msg = `${title}\n\n` +
+                    `💰 *Cartera Total:* $${total} USDC\n` +
+                    `📈 PnL Flotante: *${floatingPnL >= 0 ? '+' : ''}$${floatingPnL.toFixed(2)} USDC*\n` +
+                    `📍 Posiciones Activas: *${activeCount}*\n` +
+                    `🕒 Hora: *${new Date().toLocaleString('es-MX', { timeZone: MEXICO_TZ })}*`;
 
-    await sendAlert(msg);
-    console.log(`📧 Reporte enviado: ${title}`);
+        await sendAlert(msg);
+        console.log(`📧 Reporte enviado: ${title}`);
+    } catch (error) {
+        console.error(`❌ Error enviando reporte diario (${title}):`, error.message);
+    }
 }
 
 function scheduleDailyReports() {
-    console.log("⏰ Programando reportes diarios en hora de México (America/Mexico_City)...");
+    console.log("⏰ Motor Cron iniciado: Reportes programados (America/Mexico_City).");
 
-    // Programamos los 3 reportes
-    setTimeout(() => sendDailySummary("🌞 Resumen de Mediodía (12:00 PM MX)"), getMsUntilTime(12, 0));
-    setTimeout(() => sendDailySummary("🌅 Resumen de la Tarde (6:00 PM MX)"), getMsUntilTime(18, 0));
-    setTimeout(() => sendDailySummary("🌙 Resumen Final del Día (11:59 PM MX)"), getMsUntilTime(23, 59));
+    const config = {
+        scheduled: true,
+        timezone: MEXICO_TZ
+    };
 
-    // Reiniciamos cada 24 horas para mantener precisión
-    setInterval(() => {
-        setTimeout(() => sendDailySummary("🌞 Resumen de Mediodía (12:00 PM MX)"), getMsUntilTime(12, 0));
-        setTimeout(() => sendDailySummary("🌅 Resumen de la Tarde (6:00 PM MX)"), getMsUntilTime(18, 0));
-        setTimeout(() => sendDailySummary("🌙 Resumen Final del Día (11:59 PM MX)"), getMsUntilTime(23, 59));
-    }, 24 * 60 * 60 * 1000);
+    // Sintaxis Cron: 'minuto hora * * *' (formato 24h)
+    
+    // 12:00 PM (Mediodía)
+    cron.schedule('0 12 * * *', () => {
+        sendDailySummary("🌞 Resumen de Mediodía (12:00 PM MX)");
+    }, config);
+
+    // 6:00 PM (Tarde)
+    cron.schedule('0 18 * * *', () => {
+        sendDailySummary("🌅 Resumen de la Tarde (6:00 PM MX)");
+    }, config);
+
+    // 11:59 PM (Cierre de día)
+    cron.schedule('59 23 * * *', () => {
+        sendDailySummary("🌙 Resumen Final del Día (11:59 PM MX)");
+    }, config);
 }
 
 // ==========================================
