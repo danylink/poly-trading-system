@@ -1902,19 +1902,17 @@ async function autoSellManager() {
 }
 
 // ==========================================
-// AUTO REDEEM POSITIONS - Versión segura y corregida
-// Solo canjea posiciones marcadas como "CANJEAR" o resueltas
+// AUTO REDEEM POSITIONS - Versión que canjea TODO (ganadoras y perdedoras)
 // ==========================================
 async function autoRedeemPositions() {
     let redeemedCount = 0;
 
     try {
-        console.log("🔄 [AUTO-REDEEM] Revisando posiciones listas para canjear...");
+        console.log("🔄 [AUTO-REDEEM] Revisando TODAS las posiciones marcadas para canjear...");
 
         const CTF_ADDRESS = "0x4D97DCd97eC945f40cF65F87097ACe5EA0476045";
         const USDC_ADDRESS = "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174";
 
-        // Obtener el signer correctamente
         const signer = clobClient.signer || (clobClient.wallet ? clobClient.wallet : null);
 
         if (!signer) {
@@ -1926,8 +1924,13 @@ async function autoRedeemPositions() {
             "function redeemPositions(address collateralToken, bytes32 parentCollectionId, bytes32 conditionId, uint256[] calldata indexSets)"
         ]);
 
+        // Gas price dinámico con margen
+        const feeData = await provider.getFeeData();
+        const gasPrice = feeData.gasPrice 
+            ? feeData.gasPrice.mul(130).div(100) 
+            : ethers.utils.parseUnits("60", "gwei");
+
         for (const pos of [...botStatus.activePositions]) {
-            // 🔥 CORRECCIÓN: Detecta "CANJEAR", "CANJEAR 🎁", "CANJEADO", etc.
             const statusLower = (pos.status || "").toLowerCase();
             if (!statusLower.includes("canjear")) continue;
 
@@ -1938,28 +1941,28 @@ async function autoRedeemPositions() {
                     USDC_ADDRESS,
                     ethers.constants.HashZero,
                     pos.conditionId,
-                    [1, 2]   // Yes + No
+                    [1, 2]
                 ]);
 
                 const tx = await signer.sendTransaction({
                     to: CTF_ADDRESS,
                     data: txData,
-                    gasLimit: 350000
+                    gasLimit: 400000,
+                    gasPrice: gasPrice
                 });
 
-                await tx.wait(1); // Esperamos 1 confirmación
+                await tx.wait(1);
 
-                console.log(`✅ [REDEEM] Canjeado correctamente: ${pos.marketName?.substring(0, 50)}...`);
+                console.log(`✅ [REDEEM] Canjeado: ${pos.marketName?.substring(0, 50)}... (Valor original: $${pos.currentValue})`);
 
-                // Marcamos como canjeado
                 pos.status = "CANJEADO ✅";
                 redeemedCount++;
 
                 await sendAlert(`🔄 *REDEEM EXITOSO*\nMercado: ${pos.marketName?.substring(0, 45)}...\nCanjeado automáticamente`);
 
             } catch (err) {
-                if (!err.message.toLowerCase().includes("not resolved") && 
-                    !err.message.toLowerCase().includes("already redeemed")) {
+                const msg = err.message.toLowerCase();
+                if (!msg.includes("not resolved") && !msg.includes("already redeemed")) {
                     console.error(`❌ Redeem falló en ${pos.marketName?.substring(0, 40)}:`, err.message);
                 }
             }
@@ -1970,7 +1973,7 @@ async function autoRedeemPositions() {
             saveConfigToDisk("Auto Redeem ejecutado");
             console.log(`🎉 [AUTO-REDEEM] ${redeemedCount} posiciones canjeadas`);
         } else {
-            console.log("ℹ️ [AUTO-REDEEM] No había posiciones listas para canjear");
+            console.log("ℹ️ [AUTO-REDEEM] No había posiciones marcadas para canjear");
         }
 
         return redeemedCount;
@@ -1982,7 +1985,7 @@ async function autoRedeemPositions() {
 }
 
 // ==========================================
-// AUTO REDEEM GASLESS - Versión corregida y funcional con Polymarket Relayer
+// AUTO REDEEM GASLESS - Versión final con tus credenciales
 // ==========================================
 async function autoRedeemPositionsGasless() {
     let redeemedCount = 0;
@@ -1990,34 +1993,27 @@ async function autoRedeemPositionsGasless() {
     try {
         console.log("🔄 [AUTO-REDEEM GASLESS] Iniciando canje sin pagar gas...");
 
-        // Importamos dinámicamente para evitar errores si el paquete no está instalado
-        const { RelayClient, BuilderConfig, BuilderApiKeyCreds, RelayerTxType } = 
-            await import('@polymarket/builder-relayer-client');
-
-        if (!process.env.POLY_API_KEY || !process.env.POLY_SECRET || !process.env.POLY_PASSPHRASE) {
-            console.error("❌ Faltan credenciales del Builder Relayer (POLY_BUILDER_KEY, SECRET, PASSPHRASE)");
-            return 0;
-        }
+        const relayerModule = await import('@polymarket/builder-relayer-client');
+        const { RelayClient, BuilderConfig, RelayerTxType } = relayerModule;
 
         const relayerClient = new RelayClient({
             url: "https://relayer-v2.polymarket.com",
-            chainId: 137, // Polygon
-            privateKey: process.env.POLY_PRIVATE_KEY || "", 
+            chainId: 137,
+            privateKey: process.env.POLY_PRIVATE_KEY || "",
             builderConfig: new BuilderConfig({
-                localBuilderCreds: new BuilderApiKeyCreds({
+                localBuilderCreds: {
                     key: process.env.POLY_API_KEY,
                     secret: process.env.POLY_SECRET,
                     passphrase: process.env.POLY_PASSPHRASE,
-                })
+                }
             }),
-            relayTxType: RelayerTxType.SAFE   // Cambia a PROXY si usas proxy wallet
+            relayTxType: RelayerTxType.SAFE
         });
 
         const CTF_ADDRESS = "0x4D97DCd97eC945f40cF65F87097ACe5EA0476045";
         const USDC_ADDRESS = "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174";
 
         for (const pos of [...botStatus.activePositions]) {
-            // 🔥 CORRECCIÓN: Detecta "CANJEAR", "CANJEAR 🎁", etc.
             const statusLower = (pos.status || "").toLowerCase();
             if (!statusLower.includes("canjear")) continue;
 
@@ -2032,16 +2028,17 @@ async function autoRedeemPositionsGasless() {
                             USDC_ADDRESS,
                             ethers.constants.HashZero,
                             pos.conditionId,
-                            [1, 2]   // Yes + No
+                            [1, 2]
                         ]
                     ),
                     value: "0"
                 };
 
-                // Enviar gasless a través del relayer
-                const response = await relayerClient.execute([redeemTx], `Redeem ${pos.marketName?.substring(0, 30) || 'Position'}`);
+                const response = await relayerClient.execute(
+                    [redeemTx], 
+                    `Redeem ${pos.marketName?.substring(0, 30) || 'Position'}`
+                );
 
-                // Esperar confirmación
                 await response.wait();
 
                 console.log(`✅ [REDEEM GASLESS] Canjeado: ${pos.marketName?.substring(0, 45)}...`);
@@ -2053,7 +2050,7 @@ async function autoRedeemPositionsGasless() {
 
             } catch (err) {
                 const msg = err.message.toLowerCase();
-                if (!msg.includes("not resolved") && !msg.includes("already redeemed") && !msg.includes("execution reverted")) {
+                if (!msg.includes("not resolved") && !msg.includes("already redeemed")) {
                     console.error(`❌ Gasless redeem falló en ${pos.marketName?.substring(0, 40)}:`, err.message);
                 }
             }
@@ -2064,7 +2061,7 @@ async function autoRedeemPositionsGasless() {
             saveConfigToDisk("Auto Redeem Gasless ejecutado");
             console.log(`🎉 [AUTO-REDEEM GASLESS] ${redeemedCount} posiciones canjeadas sin gas`);
         } else {
-            console.log("ℹ️ [AUTO-REDEEM GASLESS] No había posiciones listas para canjear");
+            console.log("ℹ️ [AUTO-REDEEM GASLESS] No había posiciones marcadas para canjear");
         }
 
         return redeemedCount;
