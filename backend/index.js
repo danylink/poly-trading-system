@@ -1985,7 +1985,7 @@ async function autoRedeemPositions() {
 }
 
 // ==========================================
-// AUTO REDEEM GASLESS - Versión corregida final (BuilderConfig fix)
+// AUTO REDEEM GASLESS - Versión correcta según documentación oficial
 // ==========================================
 async function autoRedeemPositionsGasless() {
     let redeemedCount = 0;
@@ -1993,24 +1993,33 @@ async function autoRedeemPositionsGasless() {
     try {
         console.log("🔄 [AUTO-REDEEM GASLESS] Iniciando canje sin pagar gas...");
 
-        const relayerModule = await import('@polymarket/builder-relayer-client');
-        const { RelayClient, RelayerTxType } = relayerModule;
+        // Importamos ambos paquetes necesarios
+        const { RelayClient, RelayerTxType } = await import('@polymarket/builder-relayer-client');
+        const { BuilderConfig, BuilderApiKeyCreds } = await import('@polymarket/builder-signing-sdk');
 
         if (!process.env.POLY_API_KEY || !process.env.POLY_SECRET || !process.env.POLY_PASSPHRASE) {
             console.error("❌ Faltan credenciales del Builder Relayer en .env");
             return 0;
         }
 
-        // Nueva forma simplificada recomendada actualmente
-        const relayerClient = new RelayClient({
-            url: "https://relayer-v2.polymarket.com",
-            chainId: 137,
-            privateKey: process.env.POLY_PRIVATE_KEY || "",
-            builderKey: process.env.POLY_API_KEY,
-            builderSecret: process.env.POLY_SECRET,
-            builderPassphrase: process.env.POLY_PASSPHRASE,
-            relayTxType: RelayerTxType.SAFE
+        // Credenciales correctas según la documentación
+        const builderCreds = new BuilderApiKeyCreds({
+            key: process.env.POLY_API_KEY,
+            secret: process.env.POLY_SECRET,
+            passphrase: process.env.POLY_PASSPHRASE,
         });
+
+        const builderConfig = new BuilderConfig({
+            localBuilderCreds: builderCreds
+        });
+
+        const relayerClient = new RelayClient(
+            "https://relayer-v2.polymarket.com",   // relayerUrl
+            137,                                    // chainId (Polygon)
+            clobClient.signer || clobClient.wallet, // wallet / signer
+            builderConfig,                          // builderConfig
+            RelayerTxType.SAFE                      // tipo de transacción
+        );
 
         const CTF_ADDRESS = "0x4D97DCd97eC945f40cF65F87097ACe5EA0476045";
         const USDC_ADDRESS = "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174";
