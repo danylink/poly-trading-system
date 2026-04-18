@@ -1502,7 +1502,6 @@ async function runBot() {
         }
 
         await checkDailyLossLimit();
-        await autoRedeemPositions();
 
         if (botStatus.autoTradeEnabled) {
             await autoSellManager();
