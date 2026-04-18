@@ -361,39 +361,54 @@ const sellPosition = async (tokenId, exactSize) => {
   }
 };
 
-// --- 🛟 BOTÓN DE RESCATE DE FONDOS ---
-const triggerRescue = async () => {
+// --- 🛟 BOTÓN DE RECLAMAR USDC (con opción Gasless) ---
+const triggerRedeem = async () => {
   try {
-    // Como pusimos el endpoint fuera de '/api', le quitamos esa parte a la URL base
     const baseUrl = API_URL.replace('/api', '');
-    
-    // Mostramos estado de carga
+
+    // Preguntamos al usuario si quiere modo gasless (más barato)
+    const result = await Swal.fire({
+      title: '¿Cómo quieres reclamar?',
+      text: 'Gasless = sin pagar gas (recomendado)\nDirecto = más rápido pero paga gas',
+      icon: 'question',
+      background: '#1c1917',
+      color: '#D4AF37',
+      showCancelButton: true,
+      confirmButtonText: '🟢 Gasless (Recomendado)',
+      cancelButtonText: '🔴 Directo (paga gas)',
+      confirmButtonColor: '#10B981',
+      cancelButtonColor: '#EF4444'
+    });
+
+    const useGasless = result.isConfirmed;
+
     Swal.fire({
-      title: 'Rescatando fondos...',
-      text: 'Cancelando órdenes colgadas en Polymarket.',
+      title: 'Reclamando USDC...',
+      text: useGasless ? 'Usando Polymarket Relayer (sin gas)...' : 'Usando transacción directa...',
       background: '#1c1917',
       color: '#D4AF37',
       didOpen: () => { Swal.showLoading(); }
     });
 
-    const res = await axios.get(`${baseUrl}/rescate`);
-    
-    // Mostramos el mensaje de éxito del backend
+    // Llamada al endpoint con parámetro gasless
+    const res = await axios.get(`${baseUrl}/redeem?gasless=${useGasless}`);
+
     Swal.fire({
-      title: '¡Operación Exitosa!',
-      text: res.data,
+      title: '¡Reclamo Completado!',
+      html: `<pre style="text-align:left; font-size:13px; background:#111; padding:12px; border-radius:8px; overflow:auto; max-height:300px;">${res.data}</pre>`,
       icon: 'success',
       background: '#1c1917',
-      color: '#10B981', // Emerald
-      confirmButtonColor: '#D4AF37'
+      color: '#10B981',
+      confirmButtonColor: '#D4AF37',
+      confirmButtonText: 'Cerrar'
     });
-    
-    fetchStatus(); // Refrescamos los números del dashboard al instante
+
+    fetchStatus(); // Refresca balances y posiciones
   } catch (error) {
-    console.error("Error en rescate:", error);
+    console.error("Error en reclamo:", error);
     Swal.fire({
-      title: 'Error de Rescate',
-      text: 'No se pudo contactar al servidor para el rescate.',
+      title: 'Error en el Reclamo',
+      text: error.response?.data || error.message || 'No se pudo completar la operación.',
       icon: 'error',
       background: '#1c1917',
       color: '#EF4444'
@@ -790,9 +805,9 @@ onUnmounted(() => {
       
       <div class="flex items-center gap-3 bg-zinc-900/50 p-2 rounded-full border border-zinc-800 shadow-inner">
         
-        <button @click="triggerRescue" class="flex items-center gap-2.5 bg-amber-950/40 text-amber-500 px-5 py-3 rounded-full text-sm font-bold hover:bg-amber-900/60 transition active:scale-95 border border-amber-500/20 group">
+        <button @click="triggerRedeem" class="flex items-center gap-2.5 bg-amber-950/40 text-amber-500 px-5 py-3 rounded-full text-sm font-bold hover:bg-amber-900/60 transition active:scale-95 border border-amber-500/20 group">
           <LifeBuoy :size="18" class="text-amber-500 group-hover:rotate-180 transition-transform duration-500" />
-          RESCATAR USDC
+          RECLAMAR USDC
         </button>
 
         <button @click="triggerPanicStop" class="flex items-center gap-2.5 px-5 py-3 rounded-full text-sm font-bold transition active:scale-95 group border"

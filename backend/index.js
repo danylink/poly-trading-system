@@ -77,14 +77,48 @@ app.get('/api/logs', (req, res) => {
     res.json(memoryLogs);
 });
 
-// 🛟 BOTÓN DE RESCATE (FUERA DE LA BÓVEDA)
-app.get('/rescate', async (req, res) => {
+// ==========================================
+// RECLAMAR USDC - Endpoint con toggle Gasless / Directo
+// ==========================================
+app.get('/redeem', async (req, res) => {
     try {
-        if (!clobClient) return res.send("Cliente CLOB no está listo.");
-        await clobClient.cancelAll(); // Cancela todas las órdenes colgadas
-        res.send("✅ Todas las órdenes fantasma fueron canceladas. Tus $4.30 han sido liberados.");
-    } catch (e) {
-        res.send("Error: " + e.message);
+        const useGasless = req.query.gasless === 'true' || botStatus.preferGaslessRedeem === true;
+
+        let mensaje = `🔄 **RECLAMANDO USDC**\n`;
+        mensaje += `Modo: ${useGasless ? '🟢 GASLESS (Relayer)' : '🔴 DIRECTO (paga gas)'}\n\n`;
+
+        // 1. Cancelar órdenes abiertas
+        console.log("🧹 Cancelando órdenes abiertas...");
+        await clobClient.cancelAll().catch(() => {});
+        mensaje += "✅ Órdenes abiertas canceladas.\n\n";
+
+        // 2. Ejecutar Redeem según el modo elegido
+        let redeemed = 0;
+        if (useGasless) {
+            redeemed = await autoRedeemPositionsGasless();
+            mensaje += `✅ Gasless Redeem ejecutado (${redeemed} posiciones canjeadas).\n`;
+        } else {
+            redeemed = await autoRedeemPositions(); // versión directa
+            mensaje += `✅ Redeem directo ejecutado (${redeemed} posiciones canjeadas).\n`;
+        }
+
+        // 3. Actualizar balances
+        await updateRealBalances();
+
+        const polyBalance = parseFloat(botStatus.clobOnlyUSDC || 0);
+        const metaBalance = parseFloat(botStatus.walletOnlyUSDC || 0);
+        const total = (polyBalance + metaBalance).toFixed(2);
+
+        mensaje += `\n💰 **Saldo actual:** $${total} USDC\n`;
+        mensaje += `   • Polymarket: $${polyBalance.toFixed(2)}\n`;
+        mensaje += `   • MetaMask: $${metaBalance.toFixed(2)}`;
+
+        console.log(`✅ Reclamo completado (${useGasless ? 'gasless' : 'directo'})`);
+        res.send(mensaje);
+
+    } catch (error) {
+        console.error("❌ Error en /redeem:", error.message);
+        res.send(`❌ Error durante el reclamo:\n${error.message}`);
     }
 });
 
@@ -1850,6 +1884,150 @@ async function autoSellManager() {
                 console.error(`❌ Stop Loss error:`, e.message);
             }
         }
+    }
+}
+
+// ==========================================
+// AUTO REDEEM POSITIONS - Versión real con llamada al contrato CTF
+// ==========================================
+async function autoRedeemPositions() {
+    let redeemedCount = 0;
+
+    try {
+        console.log("🔄 [AUTO-REDEEM] Iniciando canje real de posiciones resueltas...");
+
+        const CTF_ADDRESS = "0x4D97DCd97eC945f40cF65F87097ACe5EA0476045";     // Conditional Tokens Framework
+        const USDC_ADDRESS = "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174";   // USDC.e en Polygon
+
+        for (const pos of [...botStatus.activePositions]) {
+            if (!pos.conditionId || (pos.status && pos.status.includes('CANJEAR'))) continue;
+
+            try {
+                // Llamada real al contrato redeemPositions
+                const redeemTx = {
+                    to: CTF_ADDRESS,
+                    data: ethers.utils.defaultAbiCoder.encode(
+                        ["address", "bytes32", "bytes32", "uint256[]"],
+                        [
+                            USDC_ADDRESS,                    // collateralToken
+                            ethers.constants.HashZero,       // parentCollectionId = 0x00...00
+                            pos.conditionId,                 // conditionId del mercado
+                            [1, 2]                           // indexSets = Yes + No (el perdedor da 0)
+                        ]
+                    ),
+                    value: "0"
+                };
+
+                // Ejecutamos la transacción (usa tu clobClient o signer)
+                const response = await clobClient.execute([redeemTx], "Redeem Positions");
+                await response.wait();   // Esperamos confirmación
+
+                console.log(`✅ [REDEEM] Canjeado: ${pos.marketName?.substring(0, 45)}...`);
+
+                // Marcamos como canjeado
+                pos.status = "CANJEAR ✅";
+                redeemedCount++;
+
+                await sendAlert(`🔄 *REDEEM EXITOSO*\nMercado: ${pos.marketName?.substring(0, 45)}...\nCanjeado automáticamente`);
+
+            } catch (err) {
+                // Ignoramos errores comunes (mercado no resuelto aún o ya canjeado)
+                if (!err.message.includes("not resolved") && !err.message.includes("execution reverted")) {
+                    console.error(`❌ Redeem falló en ${pos.marketName?.substring(0, 30)}:`, err.message);
+                }
+            }
+        }
+
+        if (redeemedCount > 0) {
+            await updateRealBalances();
+            saveConfigToDisk("Auto Redeem ejecutado");
+        }
+
+        return redeemedCount;
+
+    } catch (err) {
+        console.error("❌ Error general en autoRedeemPositions:", err.message);
+        return 0;
+    }
+}
+
+// ==========================================
+// AUTO REDEEM GASLESS - Versión oficial con Polymarket Relayer
+// ==========================================
+async function autoRedeemPositionsGasless() {
+    let redeemedCount = 0;
+
+    try {
+        console.log("🔄 [AUTO-REDEEM GASLESS] Iniciando canje sin gas...");
+
+        // Configuración del Relayer (ajusta con tus credenciales)
+        const { RelayClient, BuilderConfig, BuilderApiKeyCreds, RelayerTxType } = require('@polymarket/builder-relayer-client');
+
+        const relayerClient = new RelayClient({
+            url: "https://relayer-v2.polymarket.com",
+            chainId: 137, // Polygon
+            privateKey: process.env.POLY_PRIVATE_KEY || "", // Tu EOA o proxy key
+            builderConfig: new BuilderConfig({
+                localBuilderCreds: new BuilderApiKeyCreds({
+                    key: process.env.POLY_API_KEY,
+                    secret: process.env.POLY_SECRET,
+                    passphrase: process.env.POLY_PASSPHRASE,
+                })
+            }),
+            relayTxType: RelayerTxType.SAFE // o PROXY según tu wallet
+        });
+
+        const CTF_ADDRESS = "0x4D97DCd97eC945f40cF65F87097ACe5EA0476045";
+        const USDC_ADDRESS = "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174";
+
+        for (const pos of [...botStatus.activePositions]) {
+            if (!pos.conditionId || (pos.status && pos.status.includes('CANJEAR'))) continue;
+
+            try {
+                // Preparar transacción de redeem (redeem both Yes + No)
+                const redeemTx = {
+                    to: CTF_ADDRESS,
+                    data: ethers.utils.defaultAbiCoder.encode(
+                        ["address", "bytes32", "bytes32", "uint256[]"],
+                        [
+                            USDC_ADDRESS,
+                            ethers.constants.HashZero,   // parentCollectionId
+                            pos.conditionId,
+                            [1, 2]                       // indexSets: Yes + No
+                        ]
+                    ),
+                    value: "0"
+                };
+
+                // Enviar a través del relayer (gasless)
+                const response = await relayerClient.execute([redeemTx], `Redeem ${pos.marketName?.substring(0, 30)}`);
+                await response.wait();
+
+                console.log(`✅ [REDEEM GASLESS] Canjeado: ${pos.marketName?.substring(0, 45)}...`);
+
+                pos.status = "CANJEAR ✅";
+                redeemedCount++;
+
+                await sendAlert(`🔄 *REDEEM GASLESS EXITOSO*\nMercado: ${pos.marketName?.substring(0, 45)}...\nCanjeado sin pagar gas`);
+
+            } catch (err) {
+                if (!err.message.toLowerCase().includes("not resolved") && 
+                    !err.message.toLowerCase().includes("already redeemed")) {
+                    console.error(`❌ Gasless redeem falló en ${pos.marketName?.substring(0, 30)}:`, err.message);
+                }
+            }
+        }
+
+        if (redeemedCount > 0) {
+            await updateRealBalances();
+            saveConfigToDisk("Auto Redeem Gasless ejecutado");
+        }
+
+        return redeemedCount;
+
+    } catch (err) {
+        console.error("❌ Error en autoRedeemPositionsGasless:", err.message);
+        return 0;
     }
 }
 
