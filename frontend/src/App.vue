@@ -592,6 +592,45 @@ const updateQuantumRiskSettings = async () => {
   }
 };
 
+// Convertir timestamp o string de hora a formato legible de México
+const formatToMexicoTime = (timeInput) => {
+  if (!timeInput) return '';
+
+  let date;
+  if (typeof timeInput === 'number') {
+    date = new Date(timeInput * 1000);           // Unix timestamp en segundos
+  } else if (timeInput instanceof Date) {
+    date = timeInput;
+  } else {
+    // Intenta parsear strings como "3:24:03 PM" o timestamps ISO
+    date = new Date(timeInput);
+  }
+
+  if (isNaN(date.getTime())) return timeInput; // fallback si no se puede convertir
+
+  return date.toLocaleString('es-MX', {
+    timeZone: 'America/Mexico_City',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+    month: 'short',
+    day: 'numeric'
+  });
+};
+
+// Helper para mostrar nickname o dirección corta
+const getWhaleDisplayName = (whaleAddress) => {
+  if (!whaleAddress) return '—';
+  
+  const whale = status.value.customWhales?.find(w => 
+    w.address.toLowerCase() === whaleAddress.toLowerCase()
+  );
+  
+  return whale && whale.nickname 
+    ? whale.nickname 
+    : whaleAddress.substring(0, 8) + '...';
+};
+
 // ====================== REGLAS PERSONALIZADAS POR MERCADO ======================
 const addCustomRule = async () => {
   if (!status.value.newRuleKeyword.trim()) {
@@ -1084,12 +1123,12 @@ onUnmounted(() => {
           </div>
         </div>
 
-        <!-- ====================== OPERACIONES COPY TRADING WHALES SECTION ====================== -->
+        <!-- ====================== OPERACIONES COPY TRADING (WHALES) ====================== -->
         <div class="bg-[#111114] border-2 border-purple-500/10 rounded-3xl p-8 mb-8">
           <div class="flex items-center justify-between mb-8 pb-4 border-b border-zinc-800/50">
             <h2 class="text-xl font-bold text-white flex items-center gap-3">
-                <Target :size="24" class="text-purple-500" /> 
-                Operaciones Copy Trading (Whales)
+              <Target :size="24" class="text-purple-500" /> 
+              Operaciones Copy Trading (Whales)
             </h2>
             <div class="text-[10px] font-black uppercase tracking-widest bg-purple-500/10 text-purple-400 px-3 py-1 rounded-lg border border-purple-500/20">
               Piloto Automático
@@ -1097,52 +1136,69 @@ onUnmounted(() => {
           </div>
 
           <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            <div v-for="trade in status.copiedTrades" :key="trade.id" class="bg-[#1c1917] border border-purple-500/20 rounded-2xl p-5 hover:border-purple-500/50 transition-all flex flex-col justify-between relative overflow-hidden">
-              
+            <div v-for="trade in status.copiedTrades" :key="trade.id" 
+                class="bg-[#1c1917] border border-purple-500/20 rounded-2xl p-5 hover:border-purple-500/50 transition-all flex flex-col justify-between relative overflow-hidden">
+
               <div class="absolute -right-4 -bottom-4 opacity-5 pointer-events-none">
-                 <Target :size="100" class="text-purple-500" />
+                <Target :size="100" class="text-purple-500" />
               </div>
 
               <div class="relative z-10">
                 <div class="flex justify-between items-start mb-4">
                   <div class="flex flex-col">
                     <span class="text-[8px] font-black text-zinc-500 uppercase tracking-widest">Entrada MKT</span>
-                    <span class="text-xl font-black text-white font-mono">${{ trade.price.toFixed(3) }}</span>
+                    <span class="text-xl font-black text-white font-mono">
+                      ${{ Number(trade.price || 0).toFixed(3) }}
+                    </span>
                   </div>
-                  <span class="text-[9px] font-mono text-purple-400 bg-purple-500/10 px-2 py-1 rounded-lg border border-purple-500/20">
-                    {{ trade.time }}
+
+                  <!-- HORAS: Polymarket + México -->
+                  <div class="text-right">
+                    <div class="text-[10px] font-mono text-purple-400">
+                      {{ trade.time || '—' }} <span class="text-[9px] text-zinc-500">(Polymarket)</span>
+                    </div>
+                    <div v-if="trade.timestamp || trade.time" class="text-[10px] font-mono text-amber-400 mt-0.5">
+                      {{ formatToMexicoTime(trade.timestamp || trade.time) }} 
+                      <span class="text-[9px] text-amber-400/70">(México)</span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Nickname de la ballena -->
+                <div class="flex items-center gap-2 mb-3">
+                  <span class="text-purple-400">🐋</span>
+                  <span class="text-sm font-bold text-purple-300">
+                    {{ trade.nickname || getWhaleDisplayName(trade.whale) }}
                   </span>
                 </div>
-                
-                <!-- 🔥 NUEVO: Mostrar Nickname -->
-                <div class="flex items-center gap-2 mb-2">
-                  <span class="text-purple-400">🐋</span>
-                  <span class="text-sm font-bold text-purple-300">{{ trade.nickname || trade.whale.substring(0,8) + "..." }}</span>
-                </div>
-                
-                <p class="text-zinc-300 font-bold text-xs leading-tight mb-4 line-clamp-3" :title="trade.market">{{ trade.market }}</p>
+
+                <p class="text-zinc-300 font-bold text-xs leading-tight mb-5 line-clamp-3" :title="trade.market">
+                  {{ trade.market }}
+                </p>
               </div>
-              
-              <div class="flex justify-between items-center bg-[#171319] border border-purple-500/10 rounded-xl p-3 relative z-10">
+
+              <div class="flex justify-between items-center bg-[#171319] border border-purple-500/10 rounded-xl p-3 relative z-10 mt-auto">
                 <div class="flex flex-col">
                   <span class="text-[8px] font-black text-zinc-500 uppercase">Whale ID</span>
                   <span class="text-xs font-mono font-bold text-purple-400">
-                    {{ trade.whale.substring(0, 6) }}...{{ trade.whale.substring(trade.whale.length - 4) }}
+                    {{ trade.whale ? trade.whale.substring(0, 6) + '...' + trade.whale.substring(trade.whale.length - 4) : '—' }}
                   </span>
                 </div>
 
                 <div class="flex flex-col items-end">
                   <span class="text-[8px] font-black text-zinc-500 uppercase">Inversión</span>
-                  <span class="text-xs font-mono font-bold text-emerald-400">${{ Number(trade.size).toFixed(2) }}</span>
+                  <span class="text-xs font-mono font-bold text-emerald-400">
+                    ${{ Number(trade.size || trade.inversion || 0).toFixed(2) }}
+                  </span>
                 </div>
               </div>
-
             </div>
 
+            <!-- Placeholder cuando no hay trades -->
             <div v-if="!status.copiedTrades || status.copiedTrades.length === 0" 
-                 class="col-span-full bg-zinc-900/30 border border-zinc-800 border-dashed rounded-2xl p-8 text-center flex flex-col items-center justify-center">
-                 <Target :size="24" class="text-zinc-600 mb-2" />
-                 <p class="text-zinc-500 text-xs font-medium italic">Esperando que las ballenas realicen movimientos...</p>
+                class="col-span-full bg-zinc-900/30 border border-zinc-800 border-dashed rounded-2xl p-12 text-center flex flex-col items-center justify-center">
+              <Target :size="32" class="text-zinc-600 mb-3" />
+              <p class="text-zinc-500 text-sm">Esperando movimientos de las ballenas...</p>
             </div>
           </div>
         </div>

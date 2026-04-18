@@ -1108,6 +1108,37 @@ async function autoSelectTopWhales() {
     }
 }
 
+// ==========================================
+// LIMPIEZA DE ESTADO - Sincronizar copiedTrades vs copiedPositions
+// ==========================================
+async function cleanupCopiedState() {
+    if (!botStatus.copiedTrades || !botStatus.copiedPositions) return;
+
+    const activeTokenIds = new Set(botStatus.copiedPositions.map(p => p.tokenId));
+
+    // Remover de copiedTrades los que ya no están en posiciones activas NI en activePositions reales
+    botStatus.copiedTrades = botStatus.copiedTrades.filter(trade => {
+        const stillActive = activeTokenIds.has(trade.tokenId) ||
+                            botStatus.activePositions.some(pos => pos.tokenId === trade.tokenId);
+        
+        if (!stillActive) {
+            console.log(`🧹 [CLEANUP] Removiendo trade huérfano: ${trade.market.substring(0,40)}...`);
+        }
+        return stillActive;
+    });
+
+    // Opcional: Limpiar duplicados en copiedTrades
+    const seen = new Set();
+    botStatus.copiedTrades = botStatus.copiedTrades.filter(trade => {
+        const key = trade.tokenId + trade.txHash;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+    });
+
+    saveConfigToDisk("Cleanup de copied state");
+}
+
 
 // ==========================================
 // CHECK AND COPY WHALE TRADES - VERSIÓN CON LÍMITE POR BALLENA (Parche #9.1)
@@ -1326,6 +1357,7 @@ async function checkAndCopyWhaleTrades() {
         }
     } finally {
         isScanningWhales = false;
+        await cleanupCopiedState();
     }
 }
 
@@ -1419,6 +1451,7 @@ async function runBot() {
     try {
         await fetchRealTrades();
         await updateRealBalances();
+        await cleanupCopiedState();
 
         // 2. Copy-Trading (Auto + Custom) → NUEVA LÓGICA
         if (botStatus.copyTradingCustomEnabled || 
@@ -1829,6 +1862,8 @@ async function monitorPortfolio() {
         
         // Primero nos aseguramos de tener los saldos más frescos
         await updateRealBalances();
+        // Quitar trades huérfanos (que ya no están activos)
+        await cleanupCopiedState();
 
         if (!botStatus.activePositions || botStatus.activePositions.length === 0) {
             profitAlertCache.clear(); // Si no hay posiciones, limpiamos la memoria
