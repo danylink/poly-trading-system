@@ -1985,7 +1985,7 @@ async function autoRedeemPositions() {
 }
 
 // ==========================================
-// AUTO REDEEM GASLESS - Versión final con tus credenciales
+// AUTO REDEEM GASLESS - Versión corregida final (BuilderConfig fix)
 // ==========================================
 async function autoRedeemPositionsGasless() {
     let redeemedCount = 0;
@@ -1994,19 +1994,21 @@ async function autoRedeemPositionsGasless() {
         console.log("🔄 [AUTO-REDEEM GASLESS] Iniciando canje sin pagar gas...");
 
         const relayerModule = await import('@polymarket/builder-relayer-client');
-        const { RelayClient, BuilderConfig, RelayerTxType } = relayerModule;
+        const { RelayClient, RelayerTxType } = relayerModule;
 
+        if (!process.env.POLY_API_KEY || !process.env.POLY_SECRET || !process.env.POLY_PASSPHRASE) {
+            console.error("❌ Faltan credenciales del Builder Relayer en .env");
+            return 0;
+        }
+
+        // Nueva forma simplificada recomendada actualmente
         const relayerClient = new RelayClient({
             url: "https://relayer-v2.polymarket.com",
             chainId: 137,
             privateKey: process.env.POLY_PRIVATE_KEY || "",
-            builderConfig: new BuilderConfig({
-                localBuilderCreds: {
-                    key: process.env.POLY_API_KEY,
-                    secret: process.env.POLY_SECRET,
-                    passphrase: process.env.POLY_PASSPHRASE,
-                }
-            }),
+            builderKey: process.env.POLY_API_KEY,
+            builderSecret: process.env.POLY_SECRET,
+            builderPassphrase: process.env.POLY_PASSPHRASE,
             relayTxType: RelayerTxType.SAFE
         });
 
@@ -2034,11 +2036,7 @@ async function autoRedeemPositionsGasless() {
                     value: "0"
                 };
 
-                const response = await relayerClient.execute(
-                    [redeemTx], 
-                    `Redeem ${pos.marketName?.substring(0, 30) || 'Position'}`
-                );
-
+                const response = await relayerClient.execute([redeemTx], `Redeem ${pos.marketName?.substring(0, 30) || 'Position'}`);
                 await response.wait();
 
                 console.log(`✅ [REDEEM GASLESS] Canjeado: ${pos.marketName?.substring(0, 45)}...`);
@@ -2061,7 +2059,7 @@ async function autoRedeemPositionsGasless() {
             saveConfigToDisk("Auto Redeem Gasless ejecutado");
             console.log(`🎉 [AUTO-REDEEM GASLESS] ${redeemedCount} posiciones canjeadas sin gas`);
         } else {
-            console.log("ℹ️ [AUTO-REDEEM GASLESS] No había posiciones marcadas para canjear");
+            console.log("ℹ️ [AUTO-REDEEM GASLESS] No había posiciones listas para canjear");
         }
 
         return redeemedCount;
