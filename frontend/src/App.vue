@@ -592,32 +592,6 @@ const updateQuantumRiskSettings = async () => {
   }
 };
 
-// Convertir timestamp o string de hora a formato legible de México
-const formatToMexicoTime = (timeInput) => {
-  if (!timeInput) return '';
-
-  let date;
-  if (typeof timeInput === 'number') {
-    date = new Date(timeInput * 1000);           // Unix timestamp en segundos
-  } else if (timeInput instanceof Date) {
-    date = timeInput;
-  } else {
-    // Intenta parsear strings como "3:24:03 PM" o timestamps ISO
-    date = new Date(timeInput);
-  }
-
-  if (isNaN(date.getTime())) return timeInput; // fallback si no se puede convertir
-
-  return date.toLocaleString('es-MX', {
-    timeZone: 'America/Mexico_City',
-    hour: 'numeric',
-    minute: '2-digit',
-    hour12: true,
-    month: 'short',
-    day: 'numeric'
-  });
-};
-
 // Helper para mostrar nickname o dirección corta
 const getWhaleDisplayName = (whaleAddress) => {
   if (!whaleAddress) return '—';
@@ -1156,10 +1130,6 @@ onUnmounted(() => {
                   <div class="text-right">
                     <div class="text-[10px] font-mono text-purple-400">
                       {{ trade.time || '—' }} <span class="text-[9px] text-zinc-500">(Polymarket)</span>
-                    </div>
-                    <div v-if="trade.timestamp || trade.time" class="text-[10px] font-mono text-amber-400 mt-0.5">
-                      {{ formatToMexicoTime(trade.timestamp || trade.time) }} 
-                      <span class="text-[9px] text-amber-400/70">(México)</span>
                     </div>
                   </div>
                 </div>
