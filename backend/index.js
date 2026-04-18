@@ -1788,20 +1788,21 @@ async function autoSellManager() {
 
                 if (result?.success) {
                     closedPositionsCache.add(pos.tokenId);
+                    
+                    // 🔥 FORZAMOS ACTUALIZACIÓN DE BALANCES ANTES DE ENVIAR EL MENSAJE
                     await updateRealBalances();
 
                     const metaMaskVal = parseFloat(botStatus.walletOnlyUSDC || 0);
                     const polyVal = parseFloat(botStatus.clobOnlyUSDC || 0);
                     const carteraTotal = (metaMaskVal + polyVal).toFixed(2);
 
-                    // Mensaje mejorado y homologado
                     const alerta = `✅ *TAKE PROFIT EJECUTADO* ✅\n` +
-                                   `Origen: ${originTag} ${profileType}\n\n` +
-                                   `📈 Mercado: *${marketNameShort}*\n` +
-                                   `💰 Ganancia en este mercado: *+$${pos.cashPnl ? pos.cashPnl.toFixed(2) : '0.00'} (+${profit.toFixed(1)}%)*\n\n` +
-                                   `💰 *Cartera Total:* $${carteraTotal} USDC\n` +
-                                   `🟢 Disponible (Poly): *$${polyVal.toFixed(2)} USDC*\n` +
-                                   `🦊 MetaMask Wallet: *$${metaMaskVal.toFixed(2)} USDC*`;
+                                `Origen: ${originTag} ${profileType}\n\n` +
+                                `📈 Mercado: *${marketNameShort}*\n` +
+                                `💰 Ganancia en este mercado: *+$${pos.cashPnl ? pos.cashPnl.toFixed(2) : '0.00'} (+${profit.toFixed(1)}%)*\n\n` +
+                                `💰 *Cartera Total:* $${carteraTotal} USDC\n` +
+                                `🟢 Disponible (Poly): *$${polyVal.toFixed(2)} USDC*\n` +
+                                `🦊 MetaMask Wallet: *$${metaMaskVal.toFixed(2)} USDC*`;
 
                     await sendAlert(alerta);
 
@@ -1856,6 +1857,8 @@ async function autoSellManager() {
 
                 if (result?.success) {
                     closedPositionsCache.add(pos.tokenId);
+                    
+                    // 🔥 IMPORTANTE: Actualizamos balances ANTES de construir el mensaje
                     await updateRealBalances();
 
                     const metaMaskVal = parseFloat(botStatus.walletOnlyUSDC || 0);
@@ -1863,7 +1866,7 @@ async function autoSellManager() {
                     const carteraTotal = (metaMaskVal + polyVal).toFixed(2);
                     const rescate = (sharesToSell * worstPrice).toFixed(2);
 
-                    // Mensaje homologado con Take Profit
+                    // Mensaje homologado y corregido
                     const alerta = `🛑 *STOP LOSS EJECUTADO*\n` +
                                    `Origen: ${originTag} ${profileType}\n\n` +
                                    `📉 Mercado: *${marketNameShort}*\n` +
@@ -2735,21 +2738,16 @@ app.post('/api/settings/copy-limit-per-whale', (req, res) => {
 });
 
 // ==========================================
-// REPORTES DIARIOS AUTOMÁTICOS - VERSIÓN CORREGIDA (Hora de México)
+// REPORTES DIARIOS - Versión corregida (Hora México precisa)
 // ==========================================
-const MEXICO_TZ = 'America/Mexico_City'; // Zona horaria de Veracruz/Xalapa
+const MEXICO_TZ = 'America/Mexico_City';
 
-function getMsUntilTime(hour, minute, tz = MEXICO_TZ) {
+function getMsUntilTime(hour, minute) {
     const now = new Date();
-    const target = new Date(now);
-
-    // Convertimos a hora de México
-    const options = { timeZone: tz, hour: 'numeric', minute: 'numeric', hour12: false };
-    const currentHourMin = now.toLocaleString('en-US', options).split(':').map(Number);
+    const target = new Date(now.toLocaleString("en-US", { timeZone: MEXICO_TZ }));
 
     target.setHours(hour, minute, 0, 0);
 
-    // Si ya pasó la hora hoy, programamos para mañana
     if (target <= now) {
         target.setDate(target.getDate() + 1);
     }
@@ -2758,7 +2756,7 @@ function getMsUntilTime(hour, minute, tz = MEXICO_TZ) {
 }
 
 async function sendDailySummary(title) {
-    await updateRealBalances(); // Aseguramos datos frescos
+    await updateRealBalances();   // ← Muy importante
 
     const polyBalance = parseFloat(botStatus.clobOnlyUSDC || 0);
     const metaBalance = parseFloat(botStatus.walletOnlyUSDC || 0);
@@ -2775,7 +2773,7 @@ async function sendDailySummary(title) {
                 `🕒 Hora México: *${new Date().toLocaleString('es-MX', { timeZone: MEXICO_TZ })}*`;
 
     await sendAlert(msg);
-    console.log(`📧 Reporte diario enviado: ${title}`);
+    console.log(`📧 Reporte enviado: ${title}`);
 }
 
 function scheduleDailyReports() {
