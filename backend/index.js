@@ -2091,35 +2091,6 @@ async function monitorPortfolio() {
 }
 
 // ==========================================
-// AUTO-REDEEM (Reclamar ganancias automáticamente)
-// ==========================================
-async function autoRedeemPositions() {
-    if (!botStatus.autoRedeemEnabled) return;
-
-    const redeemable = botStatus.activePositions.filter(p => 
-        p.status && p.status.includes('CANJEAR')
-    );
-
-    if (redeemable.length === 0) return;
-
-    console.log(`♻️ [AUTO-REDEEM] Encontradas ${redeemable.length} posiciones listas para canjear...`);
-
-    for (const pos of redeemable) {
-        try {
-            console.log(`   ♻️ Canjeando: ${pos.marketName} (${pos.size} shares)`);
-            // Aquí iría la llamada real al redeem cuando tengamos el método
-            // Por ahora solo log y quitamos del array
-            await sendAlert(`♻️ *AUTO-REDEEM*\n${pos.marketName}\n${pos.size} shares canjeadas`);
-
-            // Removemos del array de posiciones activas
-            botStatus.activePositions = botStatus.activePositions.filter(p => p.tokenId !== pos.tokenId);
-        } catch (e) {
-            console.error(`Error en auto-redeem de ${pos.tokenId}:`, e.message);
-        }
-    }
-}
-
-// ==========================================
 // DAILY LOSS LIMIT (Stop-loss global del día)
 // ==========================================
 async function checkDailyLossLimit() {
