@@ -361,49 +361,79 @@ const sellPosition = async (tokenId, exactSize) => {
   }
 };
 
-// --- 🛟 BOTÓN DE RECLAMAR USDC (con opción Gasless) ---
+// --- 🛟 BOTÓN DE RECLAMAR USDC (con 3 opciones claras) ---
 const triggerRedeem = async () => {
   try {
     const baseUrl = API_URL.replace('/api', '');
 
-    // Preguntamos al usuario si quiere modo gasless (más barato)
     const result = await Swal.fire({
       title: '¿Cómo quieres reclamar?',
-      text: 'Gasless = sin pagar gas (recomendado)\nDirecto = más rápido pero paga gas',
+      text: 'Elige el método para retirar tus USDC',
       icon: 'question',
       background: '#1c1917',
       color: '#D4AF37',
+      
+      // Activar los 3 botones nativos
+      showConfirmButton: true,
+      showDenyButton: true,
       showCancelButton: true,
+      showCloseButton: true,
+      allowOutsideClick: false,
+      allowEscapeKey: true,
+      
+      // Textos de los botones
       confirmButtonText: '🟢 Gasless (Recomendado)',
-      cancelButtonText: '🔴 Directo (paga gas)',
-      confirmButtonColor: '#10B981',
-      cancelButtonColor: '#EF4444'
+      denyButtonText: '🔴 Directo',
+      cancelButtonText: 'Cancelar',
+
+      // Colores de los botones
+      confirmButtonColor: '#10B981', // Verde esmeralda
+      denyButtonColor: '#EF4444',    // Rojo
+      cancelButtonColor: '#6B7280',  // Gris neutro
+
+      // Forzar un estilo de botón redondeado tipo Tailwind para que coincida con tu panel
+      customClass: {
+        actions: 'flex flex-col gap-3 mt-4 w-full px-6',
+        confirmButton: 'w-full py-4 rounded-2xl font-bold text-base m-0',
+        denyButton: 'w-full py-4 rounded-2xl font-bold text-base m-0',
+        cancelButton: 'w-full py-4 rounded-2xl font-bold text-base m-0 bg-transparent border border-zinc-600 text-zinc-400 hover:bg-zinc-800'
+      }
     });
 
+    // Si el usuario presiona "Cancelar", cierra en la 'X' o presiona Escape
+    if (!result.isConfirmed && !result.isDenied) {
+      console.log("Reclamo cancelado por el usuario");
+      return;
+    }
+
+    // Identificamos la selección nativa de SweetAlert2
+    // isConfirmed = presionó el botón verde (Gasless)
+    // isDenied = presionó el botón rojo (Directo)
     const useGasless = result.isConfirmed;
 
     Swal.fire({
       title: 'Reclamando USDC...',
-      text: useGasless ? 'Usando Polymarket Relayer (sin gas)...' : 'Usando transacción directa...',
+      text: useGasless 
+        ? 'Usando Polymarket Relayer (sin pagar gas)...' 
+        : 'Usando transacción directa (paga gas)...',
       background: '#1c1917',
       color: '#D4AF37',
       didOpen: () => { Swal.showLoading(); }
     });
 
-    // Llamada al endpoint con parámetro gasless
     const res = await axios.get(`${baseUrl}/redeem?gasless=${useGasless}`);
 
     Swal.fire({
       title: '¡Reclamo Completado!',
-      html: `<pre style="text-align:left; font-size:13px; background:#111; padding:12px; border-radius:8px; overflow:auto; max-height:300px;">${res.data}</pre>`,
+      html: `<pre style="text-align:left; font-size:13px; background:#111; padding:12px; border-radius:8px; overflow:auto; max-height:320px;">${res.data}</pre>`,
       icon: 'success',
       background: '#1c1917',
       color: '#10B981',
-      confirmButtonColor: '#D4AF37',
-      confirmButtonText: 'Cerrar'
+      confirmButtonColor: '#D4AF37'
     });
 
-    fetchStatus(); // Refresca balances y posiciones
+    fetchStatus();
+
   } catch (error) {
     console.error("Error en reclamo:", error);
     Swal.fire({
@@ -414,33 +444,75 @@ const triggerRedeem = async () => {
       color: '#EF4444'
     });
   }
-};
+}
 
 // --- 🚨 BOTÓN DE FRENO DE EMERGENCIA / DESBLOQUEO ---
 const triggerPanicStop = async () => {
   try {
-    const action = status.value.isPanicStopped ? 'resume' : 'stop';
+    const isStopped = status.value.isPanicStopped;
+    const action = isStopped ? 'resume' : 'stop';
     
+    // 1. Mostrar diálogo de confirmación antes de hacer nada
+    const confirmResult = await Swal.fire({
+      title: isStopped ? '¿Liberar Candado de Seguridad?' : '¿Activar Freno de Emergencia?',
+      text: isStopped 
+        ? 'El bot volverá a operar en los mercados con normalidad.' 
+        : 'El bot bloqueará inmediatamente todas las compras y ventas.',
+      icon: 'warning',
+      background: '#1c1917',
+      color: '#D4AF37',
+      showCancelButton: true,
+      reverseButtons: true, // Pone el botón de confirmar a la derecha
+      confirmButtonText: isStopped ? '🟢 Sí, Reactivar' : '🔴 Sí, Detener Bot',
+      cancelButtonText: 'Cancelar',
+      confirmButtonColor: isStopped ? '#10B981' : '#EF4444', // Verde si reanuda, Rojo si frena
+      cancelButtonColor: '#3f3f46', // Gris oscuro para cancelar
+      customClass: {
+        confirmButton: 'rounded-xl font-bold px-6 py-3',
+        cancelButton: 'rounded-xl font-bold px-6 py-3'
+      }
+    });
+
+    // 2. Si el usuario presiona "Cancelar", abortamos la función
+    if (!confirmResult.isConfirmed) {
+      return; 
+    }
+
+    // 3. Si confirma, mostramos la pantalla de carga
     Swal.fire({
       title: action === 'stop' ? 'Activando Freno...' : 'Liberando Candado...',
       background: '#1c1917',
       color: '#D4AF37',
+      allowOutsideClick: false,
       didOpen: () => { Swal.showLoading(); }
     });
 
+    // 4. Ejecutamos la orden en el backend
     await axios.post(`${API_URL}/panic`, { action });
     await fetchStatus(); 
     
+    // 5. Mostramos el resultado final
     Swal.fire({
       title: action === 'stop' ? 'SISTEMA DETENIDO' : 'SISTEMA REACTIVADO',
       text: action === 'stop' ? 'El bot no comprará ni venderá nada.' : 'El bot vuelve a operar con normalidad.',
       icon: action === 'stop' ? 'warning' : 'success',
       background: '#1c1917',
       color: '#fff',
-      confirmButtonColor: '#D4AF37'
+      confirmButtonColor: '#D4AF37',
+      customClass: {
+        confirmButton: 'rounded-xl font-bold px-8 py-3'
+      }
     });
   } catch (error) {
     console.error("Error en panic stop:", error);
+    Swal.fire({
+      title: 'Error de Comunicación',
+      text: 'No se pudo contactar al servidor para cambiar el estado del bot.',
+      icon: 'error',
+      background: '#1c1917',
+      color: '#EF4444',
+      confirmButtonColor: '#D4AF37'
+    });
   }
 };
 
