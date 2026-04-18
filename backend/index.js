@@ -448,7 +448,7 @@ async function updateRealBalances() {
 }
 
 // ==========================================
-// 3A. MOTOR DE IA 1 (CLAUDE) - Versión optimizada
+// 3A. MOTOR DE IA 1 (CLAUDE) - Versión Mejorada
 // ==========================================
 async function analyzeMarketWithClaude(marketQuestion, currentNews, retries = 2) {
     for (let attempt = 1; attempt <= retries; attempt++) {
@@ -456,9 +456,10 @@ async function analyzeMarketWithClaude(marketQuestion, currentNews, retries = 2)
             const response = await anthropic.messages.create({
                 model: "claude-sonnet-4-6",
                 max_tokens: 180,
-                system: `Eres un Senior Quant Trader especializado en Polymarket SHORT-TERM (muchos mercados <30 min).
+                system: `Eres un Senior Quant Trader especializado en Polymarket.
 
-Sé estricto pero HONESTO. No fuerces 50% cuando hay ventaja real.
+Prioriza primero mercados de política, business, eventos de Trump, Fed, CPI y similares, ya que suelen tener mejor edge y menos ruido.
+Solo después considera mercados crypto cortos con momentum o hype claro.
 
 Responde ESTRICTAMENTE en JSON:
 {
@@ -471,13 +472,13 @@ Responde ESTRICTAMENTE en JSON:
 }
 
 REGLAS CLAVE:
-- Mercados <30 min → edge > 0.06 ya es válido si hay momentum o hype.
-- Mercados 30-48h → edge > 0.09 es bueno.
-- Si ves noticias recientes, hype en redes o time-edge → reporta el edge real (aunque sea pequeño).
-- Nunca respondas 0.50 por defecto. Sé preciso.
-- Solo "WAIT" cuando realmente no hay ventaja detectable.`,
+- Mercados de política/business/Trump (hasta 72 horas): edge > 0.08 es bueno.
+- Mercados crypto cortos (<30 min): edge > 0.06 es válido solo si hay momentum o hype fuerte.
+- Prefiere calidad sobre cantidad. Mejor una buena señal de política que muchas marginales de 5 minutos.
+- Sé honesto con la probabilidad. Nunca fuerces 50% si ves ventaja real.
+- Solo responde "WAIT" cuando realmente no hay edge claro.`,
 
-                messages: [{ role: "user", content: `Mercado: ${marketQuestion}\nNoticias: ${currentNews}\nAnaliza ventaja real en las próximas 24-48h.` }]
+                messages: [{ role: "user", content: `Mercado: ${marketQuestion}\nNoticias: ${currentNews}\nAnaliza ventaja real en las próximas 72 horas.` }]
             });
 
             const jsonMatch = response.content[0].text.match(/\{.*\}/s);
@@ -505,14 +506,16 @@ REGLAS CLAVE:
 }
 
 // ==========================================
-// 3B. MOTOR DE IA 2 (GEMINI) - VERSIÓN AGRESIVA (Cambio 2)
+// 3B. MOTOR DE IA 2 (GEMINI) - Versión Equilibrada
 // ==========================================
 async function analyzeMarketWithGemini(marketQuestion, currentNews) {
     console.log("🧠 Gemini Short-Term Analysis...");
 
     try {
-        const prompt = `Eres un Senior Quant Trader RÁPIDO y AGRESIVO en Polymarket. 
-Tu objetivo es encontrar cualquier ventaja real, aunque sea pequeña pero rápida.
+        const prompt = `Eres un Senior Quant Trader especializado en Polymarket.
+
+Prioriza primero mercados de política, business, eventos de Trump, Fed, CPI y similares (hasta 72 horas), porque suelen tener mejor edge y menos ruido.
+Solo después considera mercados crypto cortos con momentum o hype.
 
 Responde ESTRICTAMENTE con este JSON:
 {
@@ -524,13 +527,11 @@ Responde ESTRICTAMENTE con este JSON:
   "recommendation": "STRONG_BUY" | "BUY" | "WAIT" | "SELL"
 }
 
-REGLAS CLAVE (más agresivas):
-- Mercados <30 min → edge > 0.05 ya es suficiente si hay momentum, hype o noticia fresca.
-- Mercados 30min-48h → edge > 0.07 es bueno.
-- Prioriza hype en redes, noticias recientes y patrones de precio.
-- Sé directo: si ves una oportunidad real (aunque sea 54-58%), repórtala.
-- Solo pon "WAIT" cuando realmente no hay nada claro.
-- Nunca fuerces 50%. Sé honesto con la probabilidad.
+REGLAS CLAVE:
+- Mercados política/business/Trump (hasta 72h): edge > 0.08 es bueno.
+- Mercados crypto cortos (<30 min): edge > 0.06 es válido si hay hype fuerte.
+- Prefiere calidad. Mejor una señal sólida de política que muchas marginales de 5 minutos.
+- Sé honesto con la probabilidad.
 
 Mercado: ${marketQuestion}
 Noticias recientes: ${currentNews}`;
@@ -568,7 +569,7 @@ Noticias recientes: ${currentNews}`;
 }
 
 // ==========================================
-// 3C. MOTOR DE IA 3 (GROK / xAI) - Versión hype/sentiment
+// 3C. MOTOR DE IA 3 (GROK / xAI) - Versión Mejorada
 // ==========================================
 async function analyzeMarketWithGrok(marketQuestion, currentNews, retries = 2) {
     console.log("🧠 Grok Short-Term Analysis...");
@@ -580,7 +581,10 @@ async function analyzeMarketWithGrok(marketQuestion, currentNews, retries = 2) {
                 messages: [
                     {
                         role: "system",
-                        content: `Eres un Quant Trader muy bueno detectando hype y momentum real en Polymarket SHORT-TERM.
+                        content: `Eres un Quant Trader especializado en Polymarket.
+
+Primero prioriza mercados de política, business, eventos de Trump, Fed y CPI (hasta 72 horas), ya que suelen tener mejor edge.
+Después considera crypto corto con momentum o hype fuerte.
 
 Responde ESTRICTAMENTE en JSON:
 {
@@ -593,14 +597,14 @@ Responde ESTRICTAMENTE en JSON:
 }
 
 REGLAS:
-- En mercados crypto o Trump: prioriza HYPE y MOMENTUM.
-- Edge > 0.05 ya es válido si hay movimiento rápido o noticias frescas.
-- Sé directo y honesto con la probabilidad.
-- Solo "WAIT" cuando realmente no hay nada claro.`
+- Política/business/Trump (hasta 72h): edge > 0.08 es bueno.
+- Crypto corto: edge > 0.06 es válido solo si hay hype claro.
+- Prefiere calidad sobre cantidad.
+- Sé honesto con la probabilidad.`
                     },
                     {
                         role: "user",
-                        content: `Mercado: ${marketQuestion}\nNoticias recientes: ${currentNews}\nAnaliza momentum y hype real en las próximas horas.`
+                        content: `Mercado: ${marketQuestion}\nNoticias recientes: ${currentNews}\nAnaliza ventaja real en las próximas 72 horas.`
                     }
                 ],
                 response_format: { type: "json_object" }
@@ -1671,7 +1675,7 @@ async function runBot() {
 }
 
 // ==========================================
-// AUTO SELL MANAGER - PARCHE #5 (TP/SL Independiente para Ballenas)
+// AUTO SELL MANAGER - VERSIÓN FINAL MEJORADA (TP + SL Homologados)
 // ==========================================
 async function autoSellManager() {
     if (!botStatus.autoTradeEnabled) return;
@@ -1682,7 +1686,6 @@ async function autoSellManager() {
         const profit = pos.percentPnl || 0;
         const marketNameShort = (pos.marketName || "Mercado desconocido").substring(0, 45);
 
-        // 👇 Tu detección original (muy buena)
         let isWhaleTrade = botStatus.copiedPositions.some(cp => cp.tokenId === pos.tokenId);
         if (!isWhaleTrade) {
             isWhaleTrade = botStatus.copiedTrades.some(ct => ct.tokenId === pos.tokenId);
@@ -1691,11 +1694,11 @@ async function autoSellManager() {
         const { config: riskConfig, profileType } = getRiskProfile(pos.marketName, isWhaleTrade);
         const originTag = isWhaleTrade ? 'WHALE' : 'IA';
 
-        console.log(`📊 [AUTO-SELL #5] ${originTag}-${profileType} | ${marketNameShort} | PnL: ${profit.toFixed(1)}%`);
+        console.log(`📊 [AUTO-SELL] ${originTag}-${profileType} | ${marketNameShort} | PnL: ${profit.toFixed(1)}%`);
 
         // ====================== TAKE PROFIT ======================
         if (profit >= riskConfig.takeProfitThreshold) {
-            console.log(`📈 TAKE PROFIT #5 [${originTag}-${profileType}]: ${marketNameShort} (+${profit.toFixed(1)}%)`);
+            console.log(`📈 TAKE PROFIT EJECUTADO [${originTag}-${profileType}]: ${marketNameShort} (+${profit.toFixed(1)}%)`);
 
             try {
                 const bookResp = await axios.get(`https://clob.polymarket.com/book?token_id=${pos.tokenId}`, 
@@ -1725,52 +1728,42 @@ async function autoSellManager() {
                     const polyVal = parseFloat(botStatus.clobOnlyUSDC || 0);
                     const carteraTotal = (metaMaskVal + polyVal).toFixed(2);
 
-                    const alerta = `✅ *TAKE PROFIT #5 EJECUTADO* ✅\n` +
-                                   `Origen: [${originTag} ${profileType}]\n\n` +
+                    // Mensaje mejorado y homologado
+                    const alerta = `✅ *TAKE PROFIT EJECUTADO* ✅\n` +
+                                   `Origen: ${originTag} ${profileType}\n\n` +
                                    `📈 Mercado: *${marketNameShort}*\n` +
-                                   `💰 Ganancia Asegurada: *+${profit.toFixed(1)}%*\n\n` +
-                                   `🏦 *NUEVO ESTADO DE CUENTA*\n` +
-                                   `Cartera Total: *$${carteraTotal} USDC*\n` +
+                                   `💰 Ganancia en este mercado: *+$${pos.cashPnl ? pos.cashPnl.toFixed(2) : '0.00'} (+${profit.toFixed(1)}%)*\n\n` +
+                                   `💰 *Cartera Total:* $${carteraTotal} USDC\n` +
                                    `🟢 Disponible (Poly): *$${polyVal.toFixed(2)} USDC*\n` +
                                    `🦊 MetaMask Wallet: *$${metaMaskVal.toFixed(2)} USDC*`;
 
                     await sendAlert(alerta);
 
-                    // 🔥 NUEVO: Si era posición copiada de ballena, la removemos del tracking
                     if (isWhaleTrade) {
                         botStatus.copiedPositions = botStatus.copiedPositions.filter(p => p.tokenId !== pos.tokenId);
                     }
                 }
             } catch (e) {
-                console.error(`❌ Take Profit #5 error:`, e.message);
+                console.error(`❌ Take Profit error:`, e.message);
             }
             continue;
         }
 
-        // ====================== STOP LOSS FORZADO (PARCHE #1 + #5) ======================
+        // ====================== STOP LOSS ======================
         if (profit <= riskConfig.stopLossThreshold) {
-            console.log(`🛑 STOP LOSS #5 DETECTADO [${originTag}-${profileType}]: ${marketNameShort} (${profit.toFixed(1)}%)`);
+            console.log(`🛑 STOP LOSS DETECTADO [${originTag}-${profileType}]: ${marketNameShort} (${profit.toFixed(1)}%)`);
 
             try {
                 const bookResp = await axios.get(`https://clob.polymarket.com/book?token_id=${pos.tokenId}`, 
                     { httpsAgent: agent, timeout: 6500 });
 
                 const bids = bookResp.data?.bids || [];
-                if (bids.length === 0) {
-                    console.log(`⚠️ Orderbook vacío.`);
-                    continue;
-                }
+                if (bids.length === 0) continue;
 
                 const sharesToSell = parseFloat(pos.exactSize || pos.size || 0);
-                if (sharesToSell <= 0) continue;
-
                 let bestBidPrice = parseFloat(bids[0].price);
 
-                // 🔥 PARCHE #1: Venta forzada cuando precio es casi cero
-                if (bestBidPrice <= 0.001) {
-                    console.log(`🔴 PRECIO CASI CERO → VENTA FORZADA`);
-                    bestBidPrice = Math.max(0.001, parseFloat(bids[0].price));
-                }
+                if (bestBidPrice <= 0.001) bestBidPrice = 0.001;
 
                 let worstPrice = bestBidPrice;
                 let accumulated = 0;
@@ -1784,7 +1777,6 @@ async function autoSellManager() {
                 const maxPanicSlippage = botStatus.riskSettings.panicSlippage || 40;
 
                 if (slippage > maxPanicSlippage) {
-                    console.log(`⚠️ Slippage alto (${slippage.toFixed(0)}%). Ajustando...`);
                     worstPrice = bestBidPrice * (1 - (maxPanicSlippage / 100));
                 }
 
@@ -1805,21 +1797,24 @@ async function autoSellManager() {
                     const carteraTotal = (metaMaskVal + polyVal).toFixed(2);
                     const rescate = (sharesToSell * worstPrice).toFixed(2);
 
-                    await sendAlert(
-                        `🛑 *STOP LOSS #5 [${originTag} ${profileType}]*\n` +
-                        `Mercado: ${marketNameShort}\n` +
-                        `PnL: ${profit.toFixed(1)}%\n` +
-                        `Rescatado ≈ $${rescate} USDC\n\n` +
-                        `🏦 Cartera Total: *$${carteraTotal} USDC*`
-                    );
+                    // Mensaje homologado con Take Profit
+                    const alerta = `🛑 *STOP LOSS EJECUTADO*\n` +
+                                   `Origen: ${originTag} ${profileType}\n\n` +
+                                   `📉 Mercado: *${marketNameShort}*\n` +
+                                   `💰 Pérdida en este mercado: *$${pos.cashPnl ? pos.cashPnl.toFixed(2) : '0.00'} (${profit.toFixed(1)}%)*\n` +
+                                   `💸 Rescatado ≈ *$${rescate} USDC*\n\n` +
+                                   `💰 *Cartera Total:* $${carteraTotal} USDC\n` +
+                                   `🟢 Disponible (Poly): *$${polyVal.toFixed(2)} USDC*\n` +
+                                   `🦊 MetaMask Wallet: *$${metaMaskVal.toFixed(2)} USDC*`;
 
-                    // 🔥 NUEVO: Si era posición copiada, la removemos del tracking
+                    await sendAlert(alerta);
+
                     if (isWhaleTrade) {
                         botStatus.copiedPositions = botStatus.copiedPositions.filter(p => p.tokenId !== pos.tokenId);
                     }
                 }
             } catch (e) {
-                console.error(`❌ Stop Loss #5 error:`, e.message);
+                console.error(`❌ Stop Loss error:`, e.message);
             }
         }
     }
@@ -2531,6 +2526,66 @@ app.post('/api/settings/copy-limit-per-whale', (req, res) => {
 });
 
 // ==========================================
+// REPORTES DIARIOS AUTOMÁTICOS - VERSIÓN CORREGIDA (Hora de México)
+// ==========================================
+const MEXICO_TZ = 'America/Mexico_City'; // Zona horaria de Veracruz/Xalapa
+
+function getMsUntilTime(hour, minute, tz = MEXICO_TZ) {
+    const now = new Date();
+    const target = new Date(now);
+
+    // Convertimos a hora de México
+    const options = { timeZone: tz, hour: 'numeric', minute: 'numeric', hour12: false };
+    const currentHourMin = now.toLocaleString('en-US', options).split(':').map(Number);
+
+    target.setHours(hour, minute, 0, 0);
+
+    // Si ya pasó la hora hoy, programamos para mañana
+    if (target <= now) {
+        target.setDate(target.getDate() + 1);
+    }
+
+    return target.getTime() - now.getTime();
+}
+
+async function sendDailySummary(title) {
+    await updateRealBalances(); // Aseguramos datos frescos
+
+    const polyBalance = parseFloat(botStatus.clobOnlyUSDC || 0);
+    const metaBalance = parseFloat(botStatus.walletOnlyUSDC || 0);
+    const unclaimed = parseFloat(botStatus.unclaimedUSDC || 0);
+    const total = (polyBalance + metaBalance + unclaimed).toFixed(2);
+
+    const floatingPnL = botStatus.floatingPnL || 0;
+    const activeCount = botStatus.activePositions ? botStatus.activePositions.length : 0;
+
+    const msg = `${title}\n\n` +
+                `💰 *Cartera Total:* $${total} USDC\n` +
+                `📈 PnL Flotante: *${floatingPnL >= 0 ? '+' : ''}$${floatingPnL.toFixed(2)} USDC*\n` +
+                `📍 Posiciones Activas: *${activeCount}*\n` +
+                `🕒 Hora México: *${new Date().toLocaleString('es-MX', { timeZone: MEXICO_TZ })}*`;
+
+    await sendAlert(msg);
+    console.log(`📧 Reporte diario enviado: ${title}`);
+}
+
+function scheduleDailyReports() {
+    console.log("⏰ Programando reportes diarios en hora de México (America/Mexico_City)...");
+
+    // Programamos los 3 reportes
+    setTimeout(() => sendDailySummary("🌞 Resumen de Mediodía (12:00 PM MX)"), getMsUntilTime(12, 0));
+    setTimeout(() => sendDailySummary("🌅 Resumen de la Tarde (6:00 PM MX)"), getMsUntilTime(18, 0));
+    setTimeout(() => sendDailySummary("🌙 Resumen Final del Día (11:59 PM MX)"), getMsUntilTime(23, 59));
+
+    // Reiniciamos cada 24 horas para mantener precisión
+    setInterval(() => {
+        setTimeout(() => sendDailySummary("🌞 Resumen de Mediodía (12:00 PM MX)"), getMsUntilTime(12, 0));
+        setTimeout(() => sendDailySummary("🌅 Resumen de la Tarde (6:00 PM MX)"), getMsUntilTime(18, 0));
+        setTimeout(() => sendDailySummary("🌙 Resumen Final del Día (11:59 PM MX)"), getMsUntilTime(23, 59));
+    }, 24 * 60 * 60 * 1000);
+}
+
+// ==========================================
 // 11. INICIO DEL MOTOR DEL SNIPER
 // ==========================================
 app.listen(PORT, async () => {
@@ -2554,6 +2609,9 @@ app.listen(PORT, async () => {
 
     // 4. Guardián del servidor (RAM + CPU)
     setInterval(monitorSystemHealth, 90000); // 90 segundos → suficiente
+
+    // 🔥 Reportes diarios automáticos (12:00 PM, 6:00 PM y 11:59 PM)
+    scheduleDailyReports();
 
     // Arranque inicial controlado
     updateRealBalances().then(() => {
