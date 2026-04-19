@@ -1652,22 +1652,36 @@ async function runBot() {
 
         // ====================== EJECUCIÓN DEL SNIPER ======================
         if (botStatus.autoTradeEnabled && isStrongSignal) {
+
+            // 🔥 FILTRO GLOBAL OBLIGATORIO (primero siempre)
+            const globalProbOk = (targetProb || 0) >= botStatus.aiConfig.standard.predictionThreshold;
+            const globalEdgeOk = (edge || 0) >= botStatus.aiConfig.standard.edgeThreshold;
+
+            if (!globalProbOk || !globalEdgeOk) {
+                console.log(`⛔ [GLOBAL FILTER] Rechazado → Prob: ${(targetProb*100).toFixed(0)}% | Edge: ${(edge*100).toFixed(1)}% (mínimo: ${botStatus.aiConfig.standard.predictionThreshold*100}% / ${botStatus.aiConfig.standard.edgeThreshold*100}%)`);
+                watchlistIndex = (watchlistIndex + 1) % botStatus.watchlist.length;
+                return;
+            }
+
+            // Si pasó el filtro global → ahora sí obtenemos perfil (con posible regla personalizada)
+            const { config: riskConfig, usedCustomRule } = getRiskProfile(marketTitle, false);
+
             const saldoLibre = parseFloat(botStatus.clobOnlyUSDC || 0);
             
-            // 🔥 NUEVO: Respeta microBetAmount de regla personalizada
-            let dynamicBetAmount = profile.microBetAmount || 2.0;
+            // Usamos el microBetAmount que venga (global o de regla personalizada)
+            let dynamicBetAmount = riskConfig.microBetAmount || 2.0;
 
-            // Solo Kelly en edges excepcionales
+            // Kelly solo en edges muy buenos
             if (edge > 0.25 && livePrice > 0 && livePrice < 1) {
                 const kellyFraction = edge / (1 - livePrice);
                 dynamicBetAmount = Math.min(
                     saldoLibre * kellyFraction * 0.20,
-                    4.0,                                 // ← subí un poco el tope máximo
-                    profile.microBetAmount * 1.5
+                    4.0,
+                    riskConfig.microBetAmount * 1.5
                 );
             }
 
-            dynamicBetAmount = Math.max(dynamicBetAmount, 0.5);   // nunca menos de $0.5
+            dynamicBetAmount = Math.max(dynamicBetAmount, 0.5);
             dynamicBetAmount = Math.min(dynamicBetAmount, saldoLibre * 0.15);
 
             // Cooldown
@@ -1681,7 +1695,7 @@ async function runBot() {
                 }
             }
 
-            console.log(`🎯 SNIPER DISPARO [${finalAnalysis.engine}] → [${targetSideLabel}] | Edge: ${(edge*100).toFixed(1)}% | Apuesta: $${dynamicBetAmount.toFixed(2)} ${profile.microBetAmount !== undefined ? '(regla personalizada)' : ''}`);
+            console.log(`🎯 SNIPER DISPARO [${finalAnalysis.engine}] → [${targetSideLabel}] | Edge: ${(edge*100).toFixed(1)}% | Apuesta: $${dynamicBetAmount.toFixed(2)} ${usedCustomRule ? '(regla personalizada)' : '(global)'}`);
 
             const result = await executeTradeOnChain(
                 marketItem.conditionId, 
