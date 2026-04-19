@@ -1581,7 +1581,7 @@ onUnmounted(() => {
         </div>        
 
         <!-- ====================== GESTION DE RIESGO SECTION ====================== -->
-        <div v-if="status.aiConfig && status.whaleConfig" class="bg-[#111114] border border-[#D4AF37]/30 rounded-[2rem] p-6 lg:p-8 transition-all shadow-2xl mb-8 relative overflow-hidden group">
+        <div v-if="status.aiConfig && status.whaleConfig" @mouseenter="isEditingRules = true" @mouseleave="isEditingRules = false" class="bg-[#111114] border border-[#D4AF37]/30 rounded-[2rem] p-6 lg:p-8 transition-all shadow-2xl mb-8 relative overflow-hidden group">
           <div class="absolute -right-20 -top-20 w-64 h-64 bg-[#D4AF37] rounded-full blur-[100px] opacity-5 pointer-events-none"></div>
           <div class="flex items-center gap-3 mb-6 pb-4 border-b border-zinc-800/80 relative z-10">
             <div class="p-2.5 bg-[#D4AF37]/10 rounded-xl border border-[#D4AF37]/20"><ShieldCheck :size="22" class="text-[#D4AF37]" /></div>
