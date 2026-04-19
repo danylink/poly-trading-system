@@ -369,9 +369,8 @@ async function conectarClob() {
 conectarClob();
 
 // ==========================================
-// 2. ACTUALIZACIÓN DE SALDOS (NATIVA CLOB)
+// 2. ACTUALIZACIÓN DE SALDOS (NATIVA CLOB) - VERSIÓN LIMPIA PARA DASHBOARD
 // ==========================================
-
 async function updateRealBalances() {
     try {
         // 1. Balance de Gas (POL)
@@ -389,15 +388,11 @@ async function updateRealBalances() {
             await clobClient.updateBalanceAllowance({ asset_type: "COLLATERAL" });
             const balanceData = await clobClient.getBalanceAllowance({ asset_type: "COLLATERAL" });
             const clobMonto = parseFloat(balanceData.balance || 0) / 1000000;
-            
-            if (clobMonto === 0) {
-                await clobClient.updateBalanceAllowance({ asset_type: "COLLATERAL" });
-            }
             botStatus.clobOnlyUSDC = clobMonto.toFixed(2);
             botStatus.balanceUSDC = botStatus.clobOnlyUSDC;
         }
 
-        // 4. Posiciones activas (Data API)
+        // 4. Posiciones activas + CANJEAR (FIX FINAL)
         try {
             const userAddress = process.env.POLY_PROXY_ADDRESS || "0x876E00CBF5c4fe22F4FA263F4cb713650cB758d2";
             
@@ -405,33 +400,29 @@ async function updateRealBalances() {
             const positions = await response.json();
             
             botStatus.activePositions = []; 
-            let totalUnclaimed = 0; 
-            
+            let totalUnclaimed = 0;
+
             if (Array.isArray(positions) && positions.length > 0) {
                 for (const pos of positions) {
-                    const size = parseFloat(pos.size || pos['tamaño'] || 0);
-                    
-                    if (size < 0.1) continue; 
+                    const size = parseFloat(pos.size || 0);
+                    if (size < 0.1) continue;
 
-                    const cashPnl = parseFloat(pos.cashPnl || pos['ganancias en efectivo'] || 0);
-                    const percentPnl = parseFloat(pos.percentPnl || pos['porcentaje de ganancias'] || 0);
-                    const valorActual = parseFloat(pos.currentValue || pos.current_value || pos.value || 0);
+                    const cashPnl = parseFloat(pos.cashPnl || 0);
+                    const percentPnl = parseFloat(pos.percentPnl || 0);
+                    const valorActual = parseFloat(pos.currentValue || pos.value || 0);
 
                     const isRedeemable = pos.redeemable === true || pos['canjeable'] === true;
 
-                    // 🔥 Dejamos que sume al unclaimed, pero ELIMINAMOS el "continue"
-                    // para que la posición siga bajando y se agregue al Dashboard.
+                    // 🔥 CLAVE: Si está lista para canjear, NO la mostramos en activePositions
                     if (isRedeemable) {
                         totalUnclaimed += valorActual;
-                        if (!redeemedCache.has(pos.asset || pos.token_id)) {
-                            redeemedCache.add(pos.asset || pos.token_id);
-                        }
+                        continue;   // ← Ocultamos del dashboard
                     }
 
-                    // 🔥 DETECTOR DE OUTCOME (YES / NO) PARA EL FRONTEND
+                    // Solo agregamos posiciones realmente activas
                     let outcomeVal = "N/A";
                     if (pos.outcome) {
-                        outcomeVal = String(pos.outcome).toUpperCase(); 
+                        outcomeVal = String(pos.outcome).toUpperCase();
                     } else if (pos.assetName && typeof pos.assetName === 'string') {
                         if (pos.assetName.toUpperCase().includes("-YES")) outcomeVal = "YES";
                         else if (pos.assetName.toUpperCase().includes("-NO")) outcomeVal = "NO";
@@ -442,14 +433,13 @@ async function updateRealBalances() {
                         conditionId: pos.conditionId || pos.condition_id,
                         size: size.toFixed(2),
                         exactSize: size,
-                        marketName: pos.title || pos.market || pos['título'] || "Mercado Desconocido",
-                        // 👇 Etiqueta dinámica: Si es canjeable, cambia visualmente
-                        status: isRedeemable ? "CANJEAR 🎁" : "ACTIVO 🟢",
+                        marketName: pos.title || pos.market || "Mercado Desconocido",
+                        status: "ACTIVO 🟢",
                         currentValue: valorActual.toFixed(2),
                         cashPnl: cashPnl,
                         percentPnl: percentPnl,
-                        category: getMarketCategoryEnhanced(pos.title || pos.market || pos['título'] || ""),
-                        outcome: outcomeVal 
+                        category: getMarketCategoryEnhanced(pos.title || pos.market || ""),
+                        outcome: outcomeVal
                     });
                 }
             }
@@ -457,21 +447,15 @@ async function updateRealBalances() {
             botStatus.unclaimedUSDC = totalUnclaimed.toFixed(2);
 
         } catch (apiError) {
-            console.log("⚠️ No se pudieron obtener posiciones:", apiError.message);
+            console.log("⚠️ Error al obtener posiciones:", apiError.message);
         }
 
-        // 🔥 IMPRESIÓN DE BALANCES
+        // Log de balances
         if (Math.random() < 0.25) {
             const metaMaskVal = parseFloat(botStatus.walletOnlyUSDC || 0);
             const polyVal = parseFloat(botStatus.clobOnlyUSDC || 0);
             const unclaimedVal = parseFloat(botStatus.unclaimedUSDC || 0);
-            
-            // 👇 FIX DE DOBLE SUMA: Ignoramos las posiciones canjeables aquí porque ya están en unclaimedVal
-            const activePosValue = botStatus.activePositions.reduce((acc, pos) => {
-                if (pos.status === "CANJEAR 🎁") return acc;
-                return acc + parseFloat(pos.currentValue || 0);
-            }, 0);
-
+            const activePosValue = botStatus.activePositions.reduce((acc, p) => acc + parseFloat(p.currentValue || 0), 0);
             const carteraTotalReal = (metaMaskVal + polyVal + activePosValue + unclaimedVal).toFixed(2);
 
             console.log(`📊 Balances: Cartera Total: $${carteraTotalReal} | Disponible (Poly): $${polyVal.toFixed(2)} | MetaMask: $${metaMaskVal.toFixed(2)} | Gas: ${botStatus.balancePOL} POL`);
@@ -1908,7 +1892,7 @@ async function autoRedeemPositions() {
     let redeemedCount = 0;
 
     try {
-        console.log("🔄 [AUTO-REDEEM] Revisando TODAS las posiciones marcadas para canjear...");
+        console.log("🔄 [AUTO-REDEEM] Revisando posiciones marcadas para canjear...");
 
         const CTF_ADDRESS = "0x4D97DCd97eC945f40cF65F87097ACe5EA0476045";
         const USDC_ADDRESS = "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174";
@@ -1924,7 +1908,6 @@ async function autoRedeemPositions() {
             "function redeemPositions(address collateralToken, bytes32 parentCollectionId, bytes32 conditionId, uint256[] calldata indexSets)"
         ]);
 
-        // Gas price dinámico con margen
         const feeData = await provider.getFeeData();
         const gasPrice = feeData.gasPrice 
             ? feeData.gasPrice.mul(130).div(100) 
@@ -1953,8 +1936,9 @@ async function autoRedeemPositions() {
 
                 await tx.wait(1);
 
-                console.log(`✅ [REDEEM] Canjeado: ${pos.marketName?.substring(0, 50)}... (Valor original: $${pos.currentValue})`);
+                console.log(`✅ [REDEEM] Canjeado: ${pos.marketName?.substring(0, 50)}...`);
 
+                // Marcamos como canjeado (aunque ya no aparecerá en el próximo refresh)
                 pos.status = "CANJEADO ✅";
                 redeemedCount++;
 
@@ -1973,7 +1957,7 @@ async function autoRedeemPositions() {
             saveConfigToDisk("Auto Redeem ejecutado");
             console.log(`🎉 [AUTO-REDEEM] ${redeemedCount} posiciones canjeadas`);
         } else {
-            console.log("ℹ️ [AUTO-REDEEM] No había posiciones marcadas para canjear");
+            console.log("ℹ️ [AUTO-REDEEM] No había posiciones listas para canjear");
         }
 
         return redeemedCount;
@@ -2841,6 +2825,9 @@ app.listen(PORT, async () => {
 
     // 4. Guardián del servidor (RAM + CPU)
     setInterval(monitorSystemHealth, 90000); // 90 segundos → suficiente
+
+    // Auto Redeem cada 5 minutos
+    setInterval(autoRedeemPositions, 300000);   // 5 minutos
 
     // 🔥 Reportes diarios automáticos (12:00 PM, 6:00 PM y 11:59 PM)
     scheduleDailyReports();

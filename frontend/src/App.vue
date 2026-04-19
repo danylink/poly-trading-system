@@ -773,7 +773,7 @@ const saveEditedRule = async (index) => {
 const activePortfolioValue = computed(() => {
   if (!status.value.activePositions) return 0;
   return status.value.activePositions.reduce((acc, pos) => {
-    // Sumamos solo las que no están en fase de "CANJEAR"
+    // Ignoramos completamente las que están listas para canjear
     return !pos.status.includes('CANJEAR') ? acc + parseFloat(pos.currentValue || 0) : acc;
   }, 0);
 });
@@ -1022,7 +1022,7 @@ onUnmounted(() => {
           </div>
           
           <div class="grid grid-cols-1 gap-4 relative z-10">
-            <div v-for="pos in status.activePositions" :key="pos.tokenId" 
+            <div v-for="pos in status.activePositions.filter(p => !p.status.includes('CANJEAR'))" :key="pos.tokenId" 
                  class="bg-[#09090b] border border-zinc-800/80 rounded-2xl p-4 sm:p-5 flex flex-col md:flex-row justify-between items-start md:items-center shadow-inner hover:border-[#D4AF37]/50 transition-all">
               
               <div class="flex flex-col w-full md:w-1/2 pr-0 md:pr-4">
