@@ -475,27 +475,29 @@ async function analyzeMarketWithClaude(marketQuestion, currentNews, retries = 2)
             const response = await anthropic.messages.create({
                 model: "claude-sonnet-4-6",
                 max_tokens: 180,
-                system: `Eres un Senior Quant Trader especializado en Polymarket.
+                system: `Eres un Senior Quant Trader EXTREMADAMENTE DISCIPLINADO en Polymarket.
 
-Prioriza primero mercados de política, business, eventos de Trump, Fed, CPI y similares, ya que suelen tener mejor edge y menos ruido.
-Solo después considera mercados crypto cortos con momentum o hype claro.
+                **Prioridad clara:**
+                1. Primero: Mercados de **Política, Trump, Fed, CPI, interés rates, Geopolítica (Irán, Ukraine, Israel)** y Business (hasta 72 horas). Estos suelen tener mejor edge y menos ruido.
+                2. Segundo: Solo si hay hype muy fuerte o news clara, considera crypto corto.
 
-Responde ESTRICTAMENTE en JSON:
-{
-  "prob": 0.XX,
-  "strategy": "TIME_EDGE" | "MOMENTUM" | "NEWS_ARBITRAGE" | "REVERSAL" | "HYPE" | "WAIT",
-  "urgency": 1-10,
-  "reason": "Frase corta y clara (máx 15 palabras)",
-  "edge": 0.XX,
-  "recommendation": "STRONG_BUY" | "BUY" | "WAIT" | "SELL"
-}
+                **Nunca** fuerces señales en "Up or Down", "above X" o "BNB/Solana/Ethereum Up or Down" de menos de 30 minutos a menos que el edge sea excelente (>0.12).
 
-REGLAS CLAVE:
-- Mercados de política/business/Trump (hasta 72 horas): edge > 0.08 es bueno.
-- Mercados crypto cortos (<30 min): edge > 0.06 es válido solo si hay momentum o hype fuerte.
-- Prefiere calidad sobre cantidad. Mejor una buena señal de política que muchas marginales de 5 minutos.
-- Sé honesto con la probabilidad. Nunca fuerces 50% si ves ventaja real.
-- Solo responde "WAIT" cuando realmente no hay edge claro.`,
+                Responde ESTRICTAMENTE en JSON:
+                {
+                "prob": 0.XX,
+                "strategy": "TIME_EDGE" | "MOMENTUM" | "NEWS_ARBITRAGE" | "REVERSAL" | "HYPE" | "WAIT",
+                "urgency": 1-10,
+                "reason": "Frase corta y clara (máx 15 palabras)",
+                "edge": 0.XX,
+                "recommendation": "STRONG_BUY" | "BUY" | "WAIT" | "SELL"
+                }
+
+                REGLAS OBLIGATORIAS:
+                - Política/Trump/Fed/Geopolítica: edge > 0.09 es bueno.
+                - Crypto corto (<30 min): solo si edge > 0.12 y hay catalizador claro. De lo contrario → WAIT.
+                - Sé muy conservador. Mejor 3 señales buenas al día que 15 marginales.
+                - Si no ves ventaja clara → responde "WAIT".`,
 
                 messages: [{ role: "user", content: `Mercado: ${marketQuestion}\nNoticias: ${currentNews}\nAnaliza ventaja real en las próximas 72 horas.` }]
             });
@@ -533,27 +535,24 @@ async function analyzeMarketWithGemini(marketQuestion, currentNews) {
     try {
         const prompt = `Eres un Senior Quant Trader especializado en Polymarket.
 
-Prioriza primero mercados de política, business, eventos de Trump, Fed, CPI y similares (hasta 72 horas), porque suelen tener mejor edge y menos ruido.
-Solo después considera mercados crypto cortos con momentum o hype.
+        **Orden de prioridad:**
+        1. Mercados de política, Trump, Fed, CPI, tasas de interés, geopolítica (Irán, Ukraine, Israel) y business (hasta 72 horas). Estos tienen mejor edge.
+        2. Solo después, y solo si hay momentum o news muy fuerte, considera crypto corto.
 
-Responde ESTRICTAMENTE con este JSON:
-{
-  "prob": 0.XX,
-  "strategy": "TIME_EDGE" | "MOMENTUM" | "NEWS_ARBITRAGE" | "REVERSAL" | "HYPE" | "WAIT",
-  "urgency": 1-10,
-  "reason": "Frase corta y clara (máx 15 palabras)",
-  "edge": 0.XX,
-  "recommendation": "STRONG_BUY" | "BUY" | "WAIT" | "SELL"
-}
+        Responde ESTRICTAMENTE con este JSON:
+        {
+        "prob": 0.XX,
+        "strategy": "TIME_EDGE" | "MOMENTUM" | "NEWS_ARBITRAGE" | "REVERSAL" | "HYPE" | "WAIT",
+        "urgency": 1-10,
+        "reason": "Frase corta y clara (máx 15 palabras)",
+        "edge": 0.XX,
+        "recommendation": "STRONG_BUY" | "BUY" | "WAIT" | "SELL"
+        }
 
-REGLAS CLAVE:
-- Mercados política/business/Trump (hasta 72h): edge > 0.08 es bueno.
-- Mercados crypto cortos (<30 min): edge > 0.06 es válido si hay hype fuerte.
-- Prefiere calidad. Mejor una señal sólida de política que muchas marginales de 5 minutos.
-- Sé honesto con la probabilidad.
-
-Mercado: ${marketQuestion}
-Noticias recientes: ${currentNews}`;
+        REGLAS:
+        - Política/business/Trump: edge > 0.09 es aceptable.
+        - Crypto corto (<30 min): edge > 0.12 y catalizador claro. De lo contrario WAIT.
+        - Prefiere calidad sobre cantidad. Mejor WAIT que una señal mediocre.`;
 
         const result = await geminiModel.generateContent(prompt);
         const responseText = result.response.text().trim();
@@ -588,11 +587,11 @@ Noticias recientes: ${currentNews}`;
 }
 
 // ==========================================
-// 3C. MOTOR DE IA 3 (GROK / xAI) - Versión Mejorada
+// 3C. MOTOR DE IA 3 (GROK / xAI) - Versión Optimizada y Disciplinada
 // ==========================================
 async function analyzeMarketWithGrok(marketQuestion, currentNews, retries = 2) {
     console.log("🧠 Grok Short-Term Analysis...");
-    
+
     for (let attempt = 1; attempt <= retries; attempt++) {
         try {
             const response = await grokClient.chat.completions.create({
@@ -600,26 +599,29 @@ async function analyzeMarketWithGrok(marketQuestion, currentNews, retries = 2) {
                 messages: [
                     {
                         role: "system",
-                        content: `Eres un Quant Trader especializado en Polymarket.
+                        content: `Eres un Senior Quant Trader EXTREMADAMENTE DISCIPLINADO especializado en Polymarket.
 
-Primero prioriza mercados de política, business, eventos de Trump, Fed y CPI (hasta 72 horas), ya que suelen tener mejor edge.
-Después considera crypto corto con momentum o hype fuerte.
+**Orden de prioridad estricto:**
+1. Primero: Mercados de **política, eventos de Trump, Fed, CPI, tasas de interés, geopolítica (Irán, Ukraine, Israel)** y **business** (hasta 72 horas). Estos suelen tener mejor edge y menos ruido.
+2. Solo después, y **solo si hay hype o catalizador muy claro**, considera mercados crypto cortos.
 
-Responde ESTRICTAMENTE en JSON:
+**Nunca** fuerces señales en mercados "Up or Down", "above X" o crypto de menos de 30 minutos a menos que el edge sea excelente (> 0.12).
+
+Responde **ESTRICTAMENTE** en JSON:
 {
   "prob": 0.XX,
-  "strategy": "MOMENTUM" | "NEWS_ARBITRAGE" | "HYPE" | "TIME_EDGE" | "WAIT",
+  "strategy": "TIME_EDGE" | "MOMENTUM" | "NEWS_ARBITRAGE" | "REVERSAL" | "HYPE" | "WAIT",
   "urgency": 1-10,
-  "reason": "Frase corta y clara",
+  "reason": "Frase corta y clara (máx 15 palabras)",
   "edge": 0.XX,
   "recommendation": "STRONG_BUY" | "BUY" | "WAIT" | "SELL"
 }
 
-REGLAS:
-- Política/business/Trump (hasta 72h): edge > 0.08 es bueno.
-- Crypto corto: edge > 0.06 es válido solo si hay hype claro.
-- Prefiere calidad sobre cantidad.
-- Sé honesto con la probabilidad.`
+REGLAS OBLIGATORIAS:
+- Política / Trump / Fed / Geopolítica: edge > 0.09 es bueno.
+- Crypto corto (<30 min): edge > 0.12 **y** catalizador fuerte. De lo contrario → WAIT.
+- Prefiere calidad sobre cantidad. Mejor una buena señal de política que 10 marginales de crypto.
+- Sé muy honesto con la probabilidad. Si no ves ventaja clara → responde "WAIT".`
                     },
                     {
                         role: "user",
@@ -636,7 +638,7 @@ REGLAS:
                 prob: parseFloat(data.prob) || 0,
                 strategy: data.strategy || "WAIT",
                 urgency: data.urgency || 5,
-                reason: data.reason || "Sin momentum claro",
+                reason: data.reason || "Sin ventaja clara",
                 edge: parseFloat(data.edge) || 0,
                 recommendation: data.recommendation || "WAIT"
             };
@@ -649,7 +651,15 @@ REGLAS:
                 continue; 
             }
             console.error("❌ Error en motor Grok:", error.message);
-            return { isError: true, prob: 0, strategy: "WAIT", urgency: 0, reason: "Error Grok API", edge: 0, recommendation: "WAIT" };
+            return { 
+                isError: true, 
+                prob: 0, 
+                strategy: "WAIT", 
+                urgency: 0, 
+                reason: "Error Grok API", 
+                edge: 0, 
+                recommendation: "WAIT" 
+            };
         }
     }
 }
@@ -758,65 +768,63 @@ function getMarketCategoryEnhanced(title) {
 }
 
 // ==========================================
-// 7. ACTUALIZACIÓN DE WATCHLIST (PARCHE #3)
+// 7. ACTUALIZACIÓN DE WATCHLIST - VERSIÓN MEJORADA (Prioridad Real)
 // ==========================================
 async function refreshWatchlist() {
     try {
-        botStatus.currentTopic = 'Buscando solo mercados que cierran en <48h...';
-        console.log(`\n⏰ [SNIPER] Escaneando SOLO mercados cortos (<48h)...`);
+        botStatus.currentTopic = 'Buscando oportunidades de alta calidad...';
+        console.log(`\n⏰ [SNIPER] Escaneando mercado con prioridad en Política y Business...`);
 
         const res = await axios.get(
-            'https://gamma-api.polymarket.com/markets?active=true&closed=false&limit=500&order=volume&dir=desc',
+            'https://gamma-api.polymarket.com/markets?active=true&closed=false&limit=1000&order=volume&dir=desc',
             { httpsAgent: agent }
         );
 
         const now = Date.now();
-
-        // 🔥 PARCHE #3: FILTRO MUY ESTRICTO
         const futureMarkets = res.data.filter(m => {
             if (!m.conditionId || !m.endDate) return false;
-            
-            const hoursLeft = hoursUntilClose(m.endDate);
-            const volume = parseFloat(m.volume || 0);
-
-            // Solo aceptamos mercados que cierren en máximo 48 horas
-            return new Date(m.endDate).getTime() > now && hoursLeft <= 48;
+            const endTime = new Date(m.endDate).getTime();
+            const hoursLeft = (endTime - now) / (1000 * 60 * 60);
+            return endTime > now && hoursLeft <= 72;   // máximo 72 horas
         });
 
-        const targetedMarkets = futureMarkets.map(m => ({
+        // Categorizamos
+        const marketsWithCategory = futureMarkets.map(m => ({
             ...m,
             category: getMarketCategoryEnhanced(m.question)
-        })).filter(m => m.category !== null);
+        }));
 
-        // Ordenamos por tiempo restante (los que cierran antes primero)
-        targetedMarkets.sort((a, b) => {
-            const hrsA = hoursUntilClose(a.endDate);
-            const hrsB = hoursUntilClose(b.endDate);
-            return hrsA - hrsB;
-        });
+        // ==================== FILTRADO INTELIGENTE ====================
+        let highQuality = [];   // Política, Trump, Fed, Geopolítica, Business
+        let shortTermCrypto = []; // Crypto corto y Up or Down
 
-        const finalPool = [];
-        const cats = ['SHORT_TERM', 'CRYPTO', 'GEOPOLITICS', 'BUSINESS']; // quitamos SOCIAL si quieres ser más conservador
-        let idx = 0;
+        for (const market of marketsWithCategory) {
+            const cat = market.category || "";
 
-        // Máximo 12 mercados en el pool (más calidad, menos ruido)
-        while (finalPool.length < 12 && targetedMarkets.length > 0) {
-            const cat = cats[idx % cats.length];
-            const match = targetedMarkets.findIndex(m => m.category === cat);
-            if (match !== -1) {
-                finalPool.push(targetedMarkets[match]);
-                targetedMarkets.splice(match, 1);
-            } else if (targetedMarkets.length > 0) {
-                finalPool.push(targetedMarkets.shift());
+            if (["POLITICS", "BUSINESS", "GEOPOLITICS", "TRUMP", "FED", "CPI", "IRAN", "UKRAINE", "ISRAEL"].includes(cat)) {
+                highQuality.push(market);
+            } 
+            else if (cat === "CRYPTO" || cat === "SHORT_TERM" || market.question.toLowerCase().includes("up or down") || market.question.toLowerCase().includes("above")) {
+                shortTermCrypto.push(market);
             }
-            idx++;
         }
 
+        // Ordenamos highQuality por volumen descendente
+        highQuality.sort((a, b) => parseFloat(b.volume || 0) - parseFloat(a.volume || 0));
+
+        // Limitamos fuertemente los crypto cortos
+        shortTermCrypto.sort((a, b) => parseFloat(b.volume || 0) - parseFloat(a.volume || 0));
+        shortTermCrypto = shortTermCrypto.slice(0, 4);   // Máximo 4 mercados crypto corto
+
+        // Armamos el pool final: primero alta calidad, luego pocos crypto
+        const finalPool = [...highQuality.slice(0, 11), ...shortTermCrypto];  // máximo ~15 mercados
+
+        // Convertimos al formato que usa el bot
         const rawTrends = finalPool.map(market => {
             const hrs = hoursUntilClose(market.endDate);
             const tokens = JSON.parse(market.clobTokenIds || "[]");
             const prices = JSON.parse(market.outcomePrices || "[]");
-            
+
             return {
                 title: market.question,
                 category: market.category,
@@ -825,7 +833,7 @@ async function refreshWatchlist() {
                 tokenNo: tokens[1] || null,
                 priceYes: parseFloat(prices[0] || 0),
                 priceNo: parseFloat(prices[1] || 0),
-                tokenId: tokens[0] || null, 
+                tokenId: tokens[0] || null,
                 marketPrice: parseFloat(prices[0] || 0),
                 endsIn: hrs < 1 ? `${Math.round(hrs*60)}m` : `${hrs.toFixed(1)}h`,
                 tickSize: market.minimum_tick_size || "0.01",
@@ -834,7 +842,8 @@ async function refreshWatchlist() {
         });
 
         botStatus.watchlist = rawTrends;
-        console.log(`🎯 Pool seleccionado: ${rawTrends.length} mercados (TODOS cierran en <48h)`);
+
+        console.log(`🎯 Pool seleccionado: ${rawTrends.length} mercados (${highQuality.length} Alta Calidad + ${shortTermCrypto.length} Crypto Corto)`);
 
     } catch (e) {
         console.error('❌ Error refreshWatchlist:', e.message);
