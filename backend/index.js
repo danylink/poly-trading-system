@@ -1407,25 +1407,42 @@ function isMarketAllowed(title = "", slug = "") {
     return true; 
 }
 
-// === NUEVO MOTOR DE PERFILES DE RIESGO + REGLAS PERSONALIZADAS (Parche #8) ===
+// ==========================================
+// GET RISK PROFILE - VERSIÓN CORREGIDA (Filtros globales primero)
+// ==========================================
 function getRiskProfile(marketName = "", isWhale = false) {
-    const text = marketName.toLowerCase();
-    
+    const text = (marketName || "").toLowerCase();
+
     // Detectar si es mercado volátil
     const isVolatile = /nba|nfl|mlb|nhl|soccer|tennis|f1|ufc|league|champions|madrid|lakers|sports|pop|movie|oscar|grammy|temperature|temperatura/i.test(text);
     
     const profileType = isVolatile ? 'volatile' : 'standard';
-    let config = isWhale ? botStatus.whaleConfig[profileType] : botStatus.aiConfig[profileType];
+    
+    // Perfil base (global)
+    let config = isWhale 
+        ? botStatus.whaleConfig[profileType] 
+        : botStatus.aiConfig[profileType];
 
-    // 🔥 NUEVO: Aplicar reglas personalizadas si existen
+    // 🔥 Buscar regla personalizada (solo para TP, SL y apuesta)
     const customRule = getCustomMarketRules(marketName);
+    
     if (customRule) {
-        config = { ...config, ...customRule };
+        console.log(`📋 [CUSTOM RULE] Aplicada → ${marketName}`);
+        
+        // SOLO sobrescribimos TP, SL y microBetAmount
+        // predictionThreshold y edgeThreshold siguen siendo los GLOBALES
+        config = {
+            ...config,
+            takeProfitThreshold: customRule.takeProfitThreshold,
+            stopLossThreshold: customRule.stopLossThreshold,
+            microBetAmount: customRule.microBetAmount || config.microBetAmount
+        };
     }
 
     return {
         config: config,
-        profileType: profileType
+        profileType: profileType,
+        usedCustomRule: !!customRule
     };
 }
 
