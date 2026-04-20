@@ -470,7 +470,7 @@ async function updateRealBalances() {
 }
 
 // ==========================================
-// 3A. MOTOR DE IA 1 (CLAUDE) - Versión Mejorada
+// 3A. MOTOR DE IA 1 (CLAUDE) - Versión Equilibrada
 // ==========================================
 async function analyzeMarketWithClaude(marketQuestion, currentNews, retries = 2) {
     for (let attempt = 1; attempt <= retries; attempt++) {
@@ -478,29 +478,27 @@ async function analyzeMarketWithClaude(marketQuestion, currentNews, retries = 2)
             const response = await anthropic.messages.create({
                 model: "claude-sonnet-4-6",
                 max_tokens: 180,
-                system: `Eres un Senior Quant Trader EXTREMADAMENTE DISCIPLINADO en Polymarket.
+                system: `Eres un Senior Quant Trader especializado en Polymarket.
 
-                **Prioridad clara:**
-                1. Primero: Mercados de **Política, Trump, Fed, CPI, interés rates, Geopolítica (Irán, Ukraine, Israel)** y Business (hasta 96 horas). Estos suelen tener mejor edge y menos ruido.
-                2. Segundo: Solo si hay hype muy fuerte o news clara, considera crypto corto.
+**Prioridad clara:**
+1. Primero: Mercados de **Política, Trump, Fed, CPI, tasas de interés, Geopolítica (Irán, Ukraine, Israel)** y Business (hasta 96 horas). Estos suelen tener mejor edge.
+2. Después: Mercados crypto cortos ("Up or Down", "above X", etc.) si tienen momentum o catalizador claro.
 
-                **Nunca** fuerces señales en "Up or Down", "above X" o "BNB/Solana/Ethereum Up or Down" de menos de 30 minutos a menos que el edge sea excelente (>0.12).
+Responde **ESTRICTAMENTE** en JSON:
+{
+  "prob": 0.XX,
+  "strategy": "TIME_EDGE" | "MOMENTUM" | "NEWS_ARBITRAGE" | "REVERSAL" | "HYPE" | "WAIT",
+  "urgency": 1-10,
+  "reason": "Frase corta y clara (máx 15 palabras)",
+  "edge": 0.XX,
+  "recommendation": "STRONG_BUY" | "BUY" | "WAIT" | "SELL"
+}
 
-                Responde ESTRICTAMENTE en JSON:
-                {
-                "prob": 0.XX,
-                "strategy": "TIME_EDGE" | "MOMENTUM" | "NEWS_ARBITRAGE" | "REVERSAL" | "HYPE" | "WAIT",
-                "urgency": 1-10,
-                "reason": "Frase corta y clara (máx 15 palabras)",
-                "edge": 0.XX,
-                "recommendation": "STRONG_BUY" | "BUY" | "WAIT" | "SELL"
-                }
-
-                REGLAS OBLIGATORIAS:
-                - Política/Trump/Fed/Geopolítica: edge > 0.09 es bueno.
-                - Crypto corto (<30 min): solo si edge > 0.12 y hay catalizador claro. De lo contrario → WAIT.
-                - Sé muy conservador. Mejor 3 señales buenas al día que 15 marginales.
-                - Si no ves ventaja clara → responde "WAIT".`,
+REGLAS IMPORTANTES:
+- Política/Trump/Fed/Geopolítica: edge > 0.08 es bueno.
+- Crypto corto ("Up or Down", "above X", etc.): edge > 0.06 es aceptable si hay momentum. No fuerces WAIT si cumple los umbrales globales.
+- Sé honesto con la probabilidad. Si ves ventaja real, responde BUY o STRONG_BUY.
+- Prefiere calidad, pero no bloquees completamente los mercados cortos.`,
 
                 messages: [{ role: "user", content: `Mercado: ${marketQuestion}\nNoticias: ${currentNews}\nAnaliza ventaja real en las próximas 96 horas.` }]
             });
@@ -534,35 +532,32 @@ async function analyzeMarketWithClaude(marketQuestion, currentNews, retries = 2)
 // ==========================================
 async function analyzeMarketWithGemini(marketQuestion, currentNews) {
     console.log("🧠 Gemini Short-Term Analysis...");
-
     try {
         const prompt = `Eres un Senior Quant Trader especializado en Polymarket.
 
-        **Orden de prioridad:**
-        1. Mercados de política, Trump, Fed, CPI, tasas de interés, geopolítica (Irán, Ukraine, Israel) y business (hasta 96 horas). Estos tienen mejor edge.
-        2. Solo después, y solo si hay momentum o news muy fuerte, considera crypto corto.
+**Orden de prioridad:**
+1. Primero: Mercados de política, Trump, Fed, CPI, tasas de interés, geopolítica y business.
+2. Después: Mercados crypto cortos ("Up or Down", "above X", etc.) si tienen momentum claro.
 
-        Responde ESTRICTAMENTE con este JSON:
-        {
-        "prob": 0.XX,
-        "strategy": "TIME_EDGE" | "MOMENTUM" | "NEWS_ARBITRAGE" | "REVERSAL" | "HYPE" | "WAIT",
-        "urgency": 1-10,
-        "reason": "Frase corta y clara (máx 15 palabras)",
-        "edge": 0.XX,
-        "recommendation": "STRONG_BUY" | "BUY" | "WAIT" | "SELL"
-        }
+Responde ESTRICTAMENTE con este JSON:
+{
+  "prob": 0.XX,
+  "strategy": "TIME_EDGE" | "MOMENTUM" | "NEWS_ARBITRAGE" | "REVERSAL" | "HYPE" | "WAIT",
+  "urgency": 1-10,
+  "reason": "Frase corta y clara (máx 15 palabras)",
+  "edge": 0.XX,
+  "recommendation": "STRONG_BUY" | "BUY" | "WAIT" | "SELL"
+}
 
-        REGLAS:
-        - Política/business/Trump: edge > 0.09 es aceptable.
-        - Crypto corto (<30 min): edge > 0.12 y catalizador claro. De lo contrario WAIT.
-        - Prefiere calidad sobre cantidad. Mejor WAIT que una señal mediocre.`;
+REGLAS:
+- Política/business/Trump: edge > 0.08 es bueno.
+- Crypto corto: edge > 0.06 es aceptable si hay momentum. No bloquees si cumple los umbrales globales.
+- Prefiere calidad, pero permite señales válidas de crypto corto.`;
 
         const result = await geminiModel.generateContent(prompt);
         const responseText = result.response.text().trim();
-
         const jsonMatch = responseText.match(/\{.*\}/s);
         if (!jsonMatch) throw new Error("JSON inválido");
-
         const data = JSON.parse(jsonMatch[0]);
 
         return {
@@ -574,27 +569,17 @@ async function analyzeMarketWithGemini(marketQuestion, currentNews) {
             edge: parseFloat(data.edge) || 0,
             recommendation: data.recommendation || "WAIT"
         };
-
     } catch (error) {
         console.error("❌ Error en motor Gemini:", error.message);
-        return { 
-            isError: true, 
-            prob: 0, 
-            strategy: "WAIT", 
-            urgency: 0, 
-            reason: "Error Gemini", 
-            edge: 0, 
-            recommendation: "WAIT" 
-        };
+        return { isError: true, prob: 0, strategy: "WAIT", urgency: 0, reason: "Error Gemini", edge: 0, recommendation: "WAIT" };
     }
 }
 
 // ==========================================
-// 3C. MOTOR DE IA 3 (GROK / xAI) - Versión Optimizada y Disciplinada
+// 3C. MOTOR DE IA 3 (GROK) - Versión Optimizada
 // ==========================================
 async function analyzeMarketWithGrok(marketQuestion, currentNews, retries = 2) {
     console.log("🧠 Grok Short-Term Analysis...");
-
     for (let attempt = 1; attempt <= retries; attempt++) {
         try {
             const response = await grokClient.chat.completions.create({
@@ -602,15 +587,13 @@ async function analyzeMarketWithGrok(marketQuestion, currentNews, retries = 2) {
                 messages: [
                     {
                         role: "system",
-                        content: `Eres un Senior Quant Trader EXTREMADAMENTE DISCIPLINADO especializado en Polymarket.
+                        content: `Eres un Senior Quant Trader especializado en Polymarket.
 
-**Orden de prioridad estricto:**
-1. Primero: Mercados de **política, eventos de Trump, Fed, CPI, tasas de interés, geopolítica (Irán, Ukraine, Israel)** y **business** (hasta 96 horas). Estos suelen tener mejor edge y menos ruido.
-2. Solo después, y **solo si hay hype o catalizador muy claro**, considera mercados crypto cortos.
+**Orden de prioridad:**
+1. Primero: Mercados de política, Trump, Fed, CPI, geopolítica y business.
+2. Después: Mercados crypto cortos ("Up or Down", "above X", etc.) si tienen momentum o hype claro.
 
-**Nunca** fuerces señales en mercados "Up or Down", "above X" o crypto de menos de 30 minutos a menos que el edge sea excelente (> 0.12).
-
-Responde **ESTRICTAMENTE** en JSON:
+Responde ESTRICTAMENTE en JSON:
 {
   "prob": 0.XX,
   "strategy": "TIME_EDGE" | "MOMENTUM" | "NEWS_ARBITRAGE" | "REVERSAL" | "HYPE" | "WAIT",
@@ -620,11 +603,10 @@ Responde **ESTRICTAMENTE** en JSON:
   "recommendation": "STRONG_BUY" | "BUY" | "WAIT" | "SELL"
 }
 
-REGLAS OBLIGATORIAS:
-- Política / Trump / Fed / Geopolítica: edge > 0.09 es bueno.
-- Crypto corto (<30 min): edge > 0.12 **y** catalizador fuerte. De lo contrario → WAIT.
-- Prefiere calidad sobre cantidad. Mejor una buena señal de política que 10 marginales de crypto.
-- Sé muy honesto con la probabilidad. Si no ves ventaja clara → responde "WAIT".`
+REGLAS:
+- Política/Trump/Fed: edge > 0.08 es bueno.
+- Crypto corto: edge > 0.06 es aceptable si hay momentum. No fuerces WAIT si cumple los umbrales globales.
+- Sé honesto. Prefiere calidad pero permite señales válidas de corto plazo.`
                     },
                     {
                         role: "user",
@@ -645,27 +627,19 @@ REGLAS OBLIGATORIAS:
                 edge: parseFloat(data.edge) || 0,
                 recommendation: data.recommendation || "WAIT"
             };
-
         } catch (error) {
             const isOverloaded = error.status === 429 || error.status >= 500;
             if (isOverloaded && attempt < retries) {
                 console.log(`⚠️ Grok saturado (Intento ${attempt}/${retries}). Esperando 3s...`);
                 await new Promise(resolve => setTimeout(resolve, 3000));
-                continue; 
+                continue;
             }
             console.error("❌ Error en motor Grok:", error.message);
-            return { 
-                isError: true, 
-                prob: 0, 
-                strategy: "WAIT", 
-                urgency: 0, 
-                reason: "Error Grok API", 
-                edge: 0, 
-                recommendation: "WAIT" 
-            };
+            return { isError: true, prob: 0, strategy: "WAIT", urgency: 0, reason: "Error Grok API", edge: 0, recommendation: "WAIT" };
         }
     }
 }
+
 
 // ==========================================
 // 4. RECOLECCIÓN DE NOTICIAS Y DATOS
