@@ -1,10 +1,10 @@
 {
   "aiConfig": {
     "standard": {
-      "predictionThreshold": 0.72,
+      "predictionThreshold": 0.7,
       "edgeThreshold": 0.07,
-      "takeProfitThreshold": 35,
-      "stopLossThreshold": -35,
+      "takeProfitThreshold": 30,
+      "stopLossThreshold": -25,
       "microBetAmount": 2
     },
     "volatile": {
@@ -91,6 +91,31 @@
       "address": "0xdbade4c82fb72780a0db9a38f821d8671aba9c95",
       "nickname": "SwissMiss",
       "enabled": true
+    },
+    {
+      "address": "0x56687bf447db6ffa42ffe2204a05edaa20f55839",
+      "nickname": "Theo4",
+      "enabled": true
+    },
+    {
+      "address": "0x1f2dd6d473f3e824cd2f8a89d9c69fb96f6ad0cf",
+      "nickname": "Fredi9999",
+      "enabled": true
+    },
+    {
+      "address": "0x6a72f61820b26b1fe4d956e17b6dc2a1ea3033ee",
+      "nickname": "kch123",
+      "enabled": true
+    },
+    {
+      "address": "0x204f72f35326db932158cba6adff0b9a1da95e14",
+      "nickname": "swisstony",
+      "enabled": true
+    },
+    {
+      "address": "0xe90bec87d9ef430f27f9dcfe72c34b76967d5da2",
+      "nickname": "gmanas",
+      "enabled": true
     }
   ],
   "dailyLossLimit": 15,
@@ -103,50 +128,32 @@
       "marketName": "Will SpaceX IPO by June 30, 2026?"
     },
     {
-      "tokenId": "105987781619256106320834214634481569201469680689697403303566741875570620946936",
-      "whale": "0xdbade4c82fb72780a0db9a38f821d8671aba9c95",
-      "sizeCopied": 6.2872,
-      "priceEntry": 0.3460156266666667,
-      "marketName": "Will FISA Section 702 reauthorization become law this year?"
-    },
-    {
       "tokenId": "6481065406228558365238644843443361794127708339263750609499644517192303031538",
       "whale": "0xdbade4c82fb72780a0db9a38f821d8671aba9c95",
       "sizeCopied": 5.8256,
       "priceEntry": 0.3432,
       "marketName": "SAVE Act becomes law by December 31, 2026?"
+    },
+    {
+      "tokenId": "105987781619256106320834214634481569201469680689697403303566741875570620946936",
+      "whale": "0xdbade4c82fb72780a0db9a38f821d8671aba9c95",
+      "nickname": "SwissMiss",
+      "sizeCopied": 29.654400000000003,
+      "priceEntry": 0.6226996331621423,
+      "marketName": "Will FISA Section 702 reauthorization become law this year?"
     }
   ],
   "copiedTrades": [
     {
-      "id": 1776353043169,
-      "txHash": "0x6592e1b602c2b9e3d04abd83bda90a35ee40ddcf3b576cbb160a60cfb03c8f83",
+      "id": 1776536685767,
+      "txHash": "0x22131b1db282f0cacb99cbae3c9eb4ab451c08beb93c1bd1bffe34a1ef32120b",
       "whale": "0xdbade4c8...",
-      "tokenId": "6481065406228558365238644843443361794127708339263750609499644517192303031538",
-      "size": 5.8256,
-      "price": 0.3432,
-      "time": "3:24:03 PM",
-      "market": "SAVE Act becomes law by December 31, 2026?"
-    },
-    {
-      "id": 1776329192669,
-      "txHash": "0x65c3baea5f6064ad9079c8b83b987a2f9db5ac155d85ea550c87dd09847e3630",
-      "whale": "0xdbade4c8...",
+      "nickname": "SwissMiss",
       "tokenId": "105987781619256106320834214634481569201469680689697403303566741875570620946936",
-      "size": 6.2872,
-      "price": 0.3460156266666667,
-      "time": "8:46:32 AM",
+      "size": 29.654400000000003,
+      "price": 0.6226996331621423,
+      "time": "6:24:45 PM",
       "market": "Will FISA Section 702 reauthorization become law this year?"
-    },
-    {
-      "id": 1776320881740,
-      "txHash": "0x5c57b7df061c58ad190596b4ee523045377024f6c26fda19e06bb810e010811e",
-      "whale": "0x2a2c53bd...",
-      "tokenId": "90331940038411395172930362249400482695046497967474557272083772488981191567871",
-      "size": 6.2976,
-      "price": 0.364,
-      "time": "6:28:01 AM",
-      "market": "Bitcoin Up or Down - April 16, 2:25AM-2:30AM ET"
     },
     {
       "id": 1776286227420,
@@ -168,21 +175,21 @@
   "customMarketRules": [
     {
       "keyword": "Will Trump say",
-      "takeProfitThreshold": 25,
-      "stopLossThreshold": -32,
-      "microBetAmount": 1.5
+      "takeProfitThreshold": 28,
+      "stopLossThreshold": -25,
+      "microBetAmount": 2
     },
     {
       "keyword": "Trump say",
-      "takeProfitThreshold": 25,
-      "stopLossThreshold": -32,
-      "microBetAmount": 1.5
+      "takeProfitThreshold": 28,
+      "stopLossThreshold": -25,
+      "microBetAmount": 2
     },
     {
       "keyword": "Up or Down",
       "takeProfitThreshold": 18,
-      "stopLossThreshold": -25,
-      "microBetAmount": 2
+      "stopLossThreshold": -22,
+      "microBetAmount": 1.2
     },
     {
       "keyword": "Bitcoin Up or Down",
