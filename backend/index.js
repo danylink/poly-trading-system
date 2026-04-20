@@ -672,11 +672,29 @@ async function sendAlert(message) {
     try { await telegram.sendMessage(chatId, `🤖 *PolySniper*:\n${message}`, { parse_mode: 'Markdown' }); } catch (e) {}
 }
 
-// 🟢 FUNCIÓN RECUPERADA Y MEJORADA PARA AUTO-TRADE
+// 🟢 FUNCIÓN MEJORADA - SNIPER ALERT CON ORIGEN DEL MODELO
 async function sendSniperAlert(signal) {
     const edgePct = signal.edge >= 0 ? `+${(signal.edge * 100).toFixed(1)}%` : `${(signal.edge * 100).toFixed(1)}%`;
-    const msg = `🎯 *SNIPER AUTOMÁTICO EJECUTADO*\n\n📋 *Mercado:* ${signal.marketName}\n🧠 *Confianza IA:* ${(signal.probability * 100).toFixed(0)}%\n📊 *Precio de Compra:* $${signal.marketPrice}\n📈 *Ventaja (Edge):* ${edgePct}\n💰 *Inversión:* $${signal.suggestedInversion} USDC\n📝 *Razón:* ${signal.reasoning}`;
-    
+
+    // 🔥 NUEVO: Mostrar el origen del modelo de forma clara y bonita
+    let origen = signal.engine || "Desconocido";
+
+    // Si es consenso, lo hacemos más legible
+    if (origen.includes("Trinity") || origen.includes("Consenso")) {
+        origen = `🔥 ${origen}`;
+    } else if (["Claude", "Gemini", "Grok"].includes(origen)) {
+        origen = `🧠 ${origen}`;
+    }
+
+    const msg = `🎯 *SNIPER AUTOMÁTICO EJECUTADO*\n\n` +
+                `📋 *Mercado:* ${signal.marketName}\n` +
+                `🔍 *Modelo:* ${origen}\n` +                    // ← NUEVA LÍNEA
+                `🧠 *Confianza IA:* ${(signal.probability * 100).toFixed(0)}%\n` +
+                `📊 *Precio de Compra:* $${signal.marketPrice}\n` +
+                `📈 *Ventaja (Edge):* ${edgePct}\n` +
+                `💰 *Inversión:* $${signal.suggestedInversion} USDC\n` +
+                `📝 *Razón:* ${signal.reasoning}`;
+
     try { 
         await telegram.sendMessage(chatId, msg, { parse_mode: 'Markdown' }); 
     } catch (e) { 
@@ -1144,6 +1162,38 @@ async function cleanupCopiedState() {
     saveConfigToDisk("Cleanup de copied state");
 }
 
+// ==========================================
+// FUNCIÓN AUXILIAR PARA ALERTAS DE COPY TRADING (BUY + SELL)
+async function sendCopyAlert(type, whaleName, marketTitle, amount) {
+    let emoji = '';
+    let titulo = '';
+
+    if (type === 'BUY') {
+        emoji = '🐋';
+        titulo = '*COPY BUY*';
+        amount = `Inversión: *$${amount}* USDC`;
+    } else if (type === 'SELL') {
+        emoji = '🛑';
+        titulo = '*COPY SELL*';
+        amount = `Rescatado: *$${amount}* USDC`;
+    }
+
+    const marketClean = marketTitle.length > 68 
+        ? marketTitle.substring(0, 65) + '...' 
+        : marketTitle;
+
+    const msg = `${emoji} ${titulo}\n\n` +
+                `📛 *Ballena:* ${whaleName}\n` +
+                `📋 *Mercado:* ${marketClean}\n` +
+                `💰 ${amount}`;
+
+    try {
+        await telegram.sendMessage(chatId, msg, { parse_mode: 'Markdown' });
+    } catch (e) {
+        console.error(`❌ Error enviando alerta COPY ${type}:`, e.message);
+    }
+}
+
 
 // ==========================================
 // CHECK AND COPY WHALE TRADES - VERSIÓN CON LÍMITE POR BALLENA (Parche #9.1)
@@ -1326,7 +1376,8 @@ async function checkAndCopyWhaleTrades() {
                             botStatus.copyTradingStats.totalCopied = (botStatus.copyTradingStats.totalCopied || 0) + 1;
                             botStatus.copyTradingStats.successful = (botStatus.copyTradingStats.successful || 0) + 1;
 
-                            await sendAlert(`🐋 *COPY BUY*\nBallena: ${getWhaleDisplayName(whale)}\nMercado: ${title.substring(0,45)}...\nInversión: $${montoInversion.toFixed(2)}`);
+                            // 🔥 NUEVO - usando la función auxiliar
+                            await sendCopyAlert('BUY', getWhaleDisplayName(whale), title, montoInversion.toFixed(2));
 
                             botStatus.lastTrades[tokenId] = Date.now();
                         }
@@ -1349,8 +1400,12 @@ async function checkAndCopyWhaleTrades() {
                         if (sellResult?.success) {
                             botStatus.copiedPositions.splice(copiedIndex, 1);
                             saveConfigToDisk("Ballena Vendida");
+
                             const rescateEst = (position.sizeCopied * limitSellPrice).toFixed(2);
-                            await sendAlert(`🛑 *COPY SELL*\nBallena: ${position.nickname || getWhaleDisplayName(whale)}\nMercado: ${title.substring(0,40)}...\nRescatado ≈ $${rescateEst} USDC`);
+
+                            // 🔥 NUEVO - usando la función auxiliar
+                            await sendCopyAlert('SELL', position.nickname || getWhaleDisplayName(whale), title, rescateEst);
+
                         }
                     }
                 }
@@ -1700,7 +1755,8 @@ async function runBot() {
                     marketPrice: livePrice,
                     edge: edge,
                     suggestedInversion: dynamicBetAmount, 
-                    reasoning: finalAnalysis.reason
+                    reasoning: finalAnalysis.reason,
+                    engine: finalAnalysis.engine || "IA"   // ← NUEVA LÍNEA
                 });
 
                 botStatus.lastTrades[targetTokenId] = Date.now();
