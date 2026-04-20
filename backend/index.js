@@ -446,6 +446,9 @@ async function updateRealBalances() {
             
             botStatus.unclaimedUSDC = totalUnclaimed.toFixed(2);
 
+            // 🔥 LIMPIEZA AUTOMÁTICA de copiedTrades
+            await cleanupCopiedTrades();
+
         } catch (apiError) {
             console.log("⚠️ Error al obtener posiciones:", apiError.message);
         }
@@ -478,7 +481,7 @@ async function analyzeMarketWithClaude(marketQuestion, currentNews, retries = 2)
                 system: `Eres un Senior Quant Trader EXTREMADAMENTE DISCIPLINADO en Polymarket.
 
                 **Prioridad clara:**
-                1. Primero: Mercados de **Política, Trump, Fed, CPI, interés rates, Geopolítica (Irán, Ukraine, Israel)** y Business (hasta 72 horas). Estos suelen tener mejor edge y menos ruido.
+                1. Primero: Mercados de **Política, Trump, Fed, CPI, interés rates, Geopolítica (Irán, Ukraine, Israel)** y Business (hasta 96 horas). Estos suelen tener mejor edge y menos ruido.
                 2. Segundo: Solo si hay hype muy fuerte o news clara, considera crypto corto.
 
                 **Nunca** fuerces señales en "Up or Down", "above X" o "BNB/Solana/Ethereum Up or Down" de menos de 30 minutos a menos que el edge sea excelente (>0.12).
@@ -499,7 +502,7 @@ async function analyzeMarketWithClaude(marketQuestion, currentNews, retries = 2)
                 - Sé muy conservador. Mejor 3 señales buenas al día que 15 marginales.
                 - Si no ves ventaja clara → responde "WAIT".`,
 
-                messages: [{ role: "user", content: `Mercado: ${marketQuestion}\nNoticias: ${currentNews}\nAnaliza ventaja real en las próximas 72 horas.` }]
+                messages: [{ role: "user", content: `Mercado: ${marketQuestion}\nNoticias: ${currentNews}\nAnaliza ventaja real en las próximas 96 horas.` }]
             });
 
             const jsonMatch = response.content[0].text.match(/\{.*\}/s);
@@ -536,7 +539,7 @@ async function analyzeMarketWithGemini(marketQuestion, currentNews) {
         const prompt = `Eres un Senior Quant Trader especializado en Polymarket.
 
         **Orden de prioridad:**
-        1. Mercados de política, Trump, Fed, CPI, tasas de interés, geopolítica (Irán, Ukraine, Israel) y business (hasta 72 horas). Estos tienen mejor edge.
+        1. Mercados de política, Trump, Fed, CPI, tasas de interés, geopolítica (Irán, Ukraine, Israel) y business (hasta 96 horas). Estos tienen mejor edge.
         2. Solo después, y solo si hay momentum o news muy fuerte, considera crypto corto.
 
         Responde ESTRICTAMENTE con este JSON:
@@ -602,7 +605,7 @@ async function analyzeMarketWithGrok(marketQuestion, currentNews, retries = 2) {
                         content: `Eres un Senior Quant Trader EXTREMADAMENTE DISCIPLINADO especializado en Polymarket.
 
 **Orden de prioridad estricto:**
-1. Primero: Mercados de **política, eventos de Trump, Fed, CPI, tasas de interés, geopolítica (Irán, Ukraine, Israel)** y **business** (hasta 72 horas). Estos suelen tener mejor edge y menos ruido.
+1. Primero: Mercados de **política, eventos de Trump, Fed, CPI, tasas de interés, geopolítica (Irán, Ukraine, Israel)** y **business** (hasta 96 horas). Estos suelen tener mejor edge y menos ruido.
 2. Solo después, y **solo si hay hype o catalizador muy claro**, considera mercados crypto cortos.
 
 **Nunca** fuerces señales en mercados "Up or Down", "above X" o crypto de menos de 30 minutos a menos que el edge sea excelente (> 0.12).
@@ -625,7 +628,7 @@ REGLAS OBLIGATORIAS:
                     },
                     {
                         role: "user",
-                        content: `Mercado: ${marketQuestion}\nNoticias recientes: ${currentNews}\nAnaliza ventaja real en las próximas 72 horas.`
+                        content: `Mercado: ${marketQuestion}\nNoticias recientes: ${currentNews}\nAnaliza ventaja real en las próximas 96 horas.`
                     }
                 ],
                 response_format: { type: "json_object" }
@@ -785,7 +788,7 @@ async function refreshWatchlist() {
             if (!m.conditionId || !m.endDate) return false;
             const endTime = new Date(m.endDate).getTime();
             const hoursLeft = (endTime - now) / (1000 * 60 * 60);
-            return endTime > now && hoursLeft <= 72;   // máximo 72 horas
+            return endTime > now && hoursLeft <= 96;   // máximo 96 horas
         });
 
         // Categorizamos
@@ -1766,7 +1769,7 @@ async function runBot() {
 }
 
 // ==========================================
-// AUTO SELL MANAGER - VERSIÓN FINAL MEJORADA (TP + SL Homologados)
+// AUTO SELL MANAGER - VERSIÓN FINAL MEJORADA (TP + SL Homologados + Cleanup)
 // ==========================================
 async function autoSellManager() {
     if (!botStatus.autoTradeEnabled) return;
@@ -1815,8 +1818,9 @@ async function autoSellManager() {
                     closedPositionsCache.add(pos.tokenId);
                     
                     await updateRealBalances();
+                    await cleanupCopiedTrades();   // ← LIMPIEZA AQUÍ
 
-                    // 🔥 FIX: Cálculo real de Cartera Total
+                    // Cálculo real de Cartera Total
                     const metaMaskVal = parseFloat(botStatus.walletOnlyUSDC || 0);
                     const polyVal = parseFloat(botStatus.clobOnlyUSDC || 0);
                     const unclaimedVal = parseFloat(botStatus.unclaimedUSDC || 0);
@@ -1890,8 +1894,8 @@ async function autoSellManager() {
                     closedPositionsCache.add(pos.tokenId);
                     
                     await updateRealBalances();
+                    await cleanupCopiedTrades();   // ← LIMPIEZA AQUÍ TAMBIÉN
 
-                    // 🔥 FIX: Cálculo real de Cartera Total
                     const metaMaskVal = parseFloat(botStatus.walletOnlyUSDC || 0);
                     const polyVal = parseFloat(botStatus.clobOnlyUSDC || 0);
                     const unclaimedVal = parseFloat(botStatus.unclaimedUSDC || 0);
@@ -2305,6 +2309,30 @@ async function monitorSystemHealth() {
         }
     } catch (error) {
         console.error("❌ Error en monitorSystemHealth:", error.message);
+    }
+}
+
+// ==========================================
+// CLEANUP DE COPIED TRADES - Elimina trades cerrados
+// ==========================================
+async function cleanupCopiedTrades() {
+    if (!botStatus.copiedTrades || botStatus.copiedTrades.length === 0) return;
+
+    const activeTokenIds = new Set(
+        botStatus.activePositions.map(p => p.tokenId)
+    );
+
+    const before = botStatus.copiedTrades.length;
+
+    botStatus.copiedTrades = botStatus.copiedTrades.filter(trade => 
+        activeTokenIds.has(trade.tokenId)
+    );
+
+    const removed = before - botStatus.copiedTrades.length;
+
+    if (removed > 0) {
+        console.log(`🧹 [CLEANUP] Eliminados ${removed} trades cerrados de copiedTrades`);
+        saveConfigToDisk("Cleanup de copiedTrades");
     }
 }
 
