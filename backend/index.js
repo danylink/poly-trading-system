@@ -692,7 +692,7 @@ async function sendSniperAlert(signal) {
                 `🧠 *Confianza IA:* ${(signal.probability * 100).toFixed(0)}%\n` +
                 `📊 *Precio de Compra:* $${signal.marketPrice}\n` +
                 `📈 *Ventaja (Edge):* ${edgePct}\n` +
-                `💰 *Inversión:* $${signal.suggestedInversion} USDC\n` +
+                `💰 *Inversión:* $${(signal.suggestedInversion).toFixed(2)} USDC\n` +
                 `📝 *Razón:* ${signal.reasoning}`;
 
     try { 
@@ -1449,41 +1449,40 @@ function isMarketAllowed(title = "", slug = "") {
 }
 
 // ==========================================
-// GET RISK PROFILE - VERSIÓN CORREGIDA (Filtros globales primero)
+// GET RISK PROFILE - VERSIÓN FINAL CORREGIDA
+// Custom rules tienen prioridad en TP / SL / Apuesta
+// Los filtros globales (prediction + edge) SIEMPRE mandan
 // ==========================================
 function getRiskProfile(marketName = "", isWhale = false) {
     const text = (marketName || "").toLowerCase();
 
-    // Detectar si es mercado volátil
+    // Detectar mercados volátiles
     const isVolatile = /nba|nfl|mlb|nhl|soccer|tennis|f1|ufc|league|champions|madrid|lakers|sports|pop|movie|oscar|grammy|temperature|temperatura/i.test(text);
     
     const profileType = isVolatile ? 'volatile' : 'standard';
     
-    // Perfil base (global)
+    // 1. Perfil base GLOBAL (aiConfig o whaleConfig)
     let config = isWhale 
-        ? botStatus.whaleConfig[profileType] 
-        : botStatus.aiConfig[profileType];
+        ? { ...botStatus.whaleConfig[profileType] } 
+        : { ...botStatus.aiConfig[profileType] };
 
-    // 🔥 Buscar regla personalizada (solo para TP, SL y apuesta)
+    // 2. Buscar regla personalizada
     const customRule = getCustomMarketRules(marketName);
     
     if (customRule) {
-        console.log(`📋 [CUSTOM RULE] Aplicada → ${marketName}`);
-        
-        // SOLO sobrescribimos TP, SL y microBetAmount
+        console.log(`📋 [CUSTOM RULE] Aplicada → ${marketName.substring(0, 60)}...`);
+
+        // 🔥 SOLO SOBRESCRIBIMOS TP, SL y microBetAmount
         // predictionThreshold y edgeThreshold siguen siendo los GLOBALES
-        config = {
-            ...config,
-            takeProfitThreshold: customRule.takeProfitThreshold,
-            stopLossThreshold: customRule.stopLossThreshold,
-            microBetAmount: customRule.microBetAmount || config.microBetAmount
-        };
+        config.takeProfitThreshold = customRule.takeProfitThreshold;
+        config.stopLossThreshold   = customRule.stopLossThreshold;
+        config.microBetAmount      = customRule.microBetAmount || config.microBetAmount;
     }
 
     return {
         config: config,
         profileType: profileType,
-        usedCustomRule: !!customRule
+        usedCustomRule: !!customRule   // útil para debugging
     };
 }
 
