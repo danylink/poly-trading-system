@@ -153,17 +153,6 @@
   ],
   "copiedTrades": [
     {
-      "id": 1776791384365,
-      "txHash": "0xbc243a46cb9a9e1a06ed728b998efa697e94ead71f35621cec75e32d264fefb9",
-      "whale": "0x204f72f3...",
-      "nickname": "swisstony",
-      "tokenId": "34725319619481449303683205321575387830621885144032007351760845722414708369841",
-      "size": 28.3616,
-      "price": 0.7488,
-      "time": "5:09:44 PM",
-      "market": "Valencia CF leading at halftime?"
-    },
-    {
       "id": 1776536685767,
       "txHash": "0x22131b1db282f0cacb99cbae3c9eb4ab451c08beb93c1bd1bffe34a1ef32120b",
       "whale": "0xdbade4c8...",
