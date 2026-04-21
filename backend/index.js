@@ -1677,7 +1677,7 @@ async function runBot() {
         const isFlippedToNo = (targetSideLabel === "NO");
 
         // ====================== SEÑAL FUERTE (MÁS ESTRICTA) ======================
-        /* 
+        
         const isStrongSignal = 
             (!alreadyInvested && !alreadyClosed && !alreadyPending && !isSportsLimitReached) && (
                 (finalAnalysis.recommendation === "STRONG_BUY" && edge > 0.12) ||
@@ -1686,29 +1686,29 @@ async function runBot() {
                 (isFlippedToNo && targetProb >= profile.predictionThreshold + 0.05 && edge >= profile.edgeThreshold + 0.03) ||
                 (finalAnalysis.urgency >= 9 && edge >= 0.11)
             );
-             */
+        
             
         // ====================== SEÑAL FUERTE (VERSIÓN INTELIGENTE Y FLEXIBLE) ======================
-        const isStrongSignal = 
-            (!alreadyInvested && !alreadyClosed && !alreadyPending && !isSportsLimitReached) && (
+        // const isStrongSignal = 
+        //     (!alreadyInvested && !alreadyClosed && !alreadyPending && !isSportsLimitReached) && (
                 
-                // CASO 1: Consenso Fuerte (Trinity). El más importante.
-                // Como los 3 modelos están de acuerdo, le descontamos un 1.5% a tu Mínimo Edge global.
-                // Si tu panel dice 7% (0.07), aquí solo pedirá 5.5% (0.055).
-                (finalAnalysis.engine && finalAnalysis.engine.includes("Trinity") && edge >= Math.max(0.04, profile.edgeThreshold - 0.015)) ||
+        //         // CASO 1: Consenso Fuerte (Trinity). El más importante.
+        //         // Como los 3 modelos están de acuerdo, le descontamos un 1.5% a tu Mínimo Edge global.
+        //         // Si tu panel dice 7% (0.07), aquí solo pedirá 5.5% (0.055).
+        //         (finalAnalysis.engine && finalAnalysis.engine.includes("Trinity") && edge >= Math.max(0.04, profile.edgeThreshold - 0.015)) ||
                 
-                // CASO 2: Recomendación MUY FUERTE (STRONG_BUY).
-                // Pedimos tu Edge Mínimo + 1.5% extra de confirmación.
-                (finalAnalysis.recommendation === "STRONG_BUY" && edge >= profile.edgeThreshold + 0.015) ||
+        //         // CASO 2: Recomendación MUY FUERTE (STRONG_BUY).
+        //         // Pedimos tu Edge Mínimo + 1.5% extra de confirmación.
+        //         (finalAnalysis.recommendation === "STRONG_BUY" && edge >= profile.edgeThreshold + 0.015) ||
                 
-                // CASO 3: Recomendación NORMAL (BUY) o Inversión a "NO".
-                // Pedimos tu Edge Mínimo + 0.5% extra, y aseguramos que la probabilidad sea buena.
-                ((finalAnalysis.recommendation === "BUY" || isFlippedToNo) && targetProb >= profile.predictionThreshold + 0.03 && edge >= profile.edgeThreshold + 0.005) ||
+        //         // CASO 3: Recomendación NORMAL (BUY) o Inversión a "NO".
+        //         // Pedimos tu Edge Mínimo + 0.5% extra, y aseguramos que la probabilidad sea buena.
+        //         ((finalAnalysis.recommendation === "BUY" || isFlippedToNo) && targetProb >= profile.predictionThreshold + 0.03 && edge >= profile.edgeThreshold + 0.005) ||
                 
-                // CASO 4: Urgencia Extrema (Noticia de última hora).
-                // Relajamos el Edge un 1% para entrar rápido antes de que el mercado se corrija.
-                (finalAnalysis.urgency >= 9 && edge >= profile.edgeThreshold - 0.01)
-            );
+        //         // CASO 4: Urgencia Extrema (Noticia de última hora).
+        //         // Relajamos el Edge un 1% para entrar rápido antes de que el mercado se corrija.
+        //         (finalAnalysis.urgency >= 9 && edge >= profile.edgeThreshold - 0.01)
+        //     );
 
 
         if (isSportsLimitReached) {
