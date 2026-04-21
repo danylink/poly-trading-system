@@ -732,6 +732,7 @@ function getMarketCategory(title) {
     return null; 
 }
 
+// 🛡️ ESCÁNER DE CATEGORÍAS (VERSIÓN BLINDADA QUANT)
 function getMarketCategoryEnhanced(title) {
     const lower = title.toLowerCase();
 
@@ -755,11 +756,35 @@ function getMarketCategoryEnhanced(title) {
     if (lower.includes("israel") || lower.includes("ukraine") || lower.includes("russia") || lower.includes("trump") || lower.includes("biden") || lower.includes("war")) return 'GEOPOLITICS';
     if (lower.includes("elon") || lower.includes("musk") || lower.includes("tweet")) return 'SOCIAL';
 
-    // 🔥 EL FIX QUANT: Etiquetar correctamente los deportes
-    if (lower.match(/nba|nfl|mlb|nhl|soccer|tennis|f1|ufc|league|champions|madrid|lakers|sports|yankees|fc|atp|wta|match|inning/i)) return 'SPORTS';
-    if (lower.includes(" vs ")) return 'SPORTS'; // El clásico formato "Equipo A vs Equipo B"
+    // 🔥 EL FIX QUANT: Diccionario masivo con límites de palabra (\b) para evitar falsos positivos
+    if (/\b(nba|nfl|mlb|nhl|soccer|tennis|f1|ufc|wwe|mma|league|champions|madrid|lakers|yankees|athletics|club|fc|cf|atp|wta|tour|match|inning|halftime|half-time|quarter|basketball|football|baseball|hockey|fifa|uefa|goals|points|rebounds|assists|touchdown|spread|over\/under|o\/u)\b/i.test(lower)) return 'SPORTS';
+    if (lower.includes(" vs ") || lower.includes(" vs. ")) return 'SPORTS'; 
 
     return null;
+}
+
+// 🛡️ ESCÁNER DE PERMISOS (VERSIÓN BLINDADA QUANT)
+function isMarketAllowed(title = "", slug = "") {
+    const text = `${title} ${slug}`.toLowerCase();
+
+    // Regex SÚPER AGRESIVO BLINDADO con el mismo diccionario de deportes
+    const isSports = /\b(nba|nfl|mlb|nhl|soccer|tennis|f1|ufc|wwe|mma|league|champions|madrid|lakers|yankees|athletics|club|fc|cf|atp|wta|tour|match|inning|halftime|half-time|quarter|basketball|football|baseball|hockey|fifa|uefa|goals|points|rebounds|assists|touchdown|spread|over\/under|o\/u)\b/i.test(text) || text.includes(" vs ") || text.includes(" vs. ") || text.includes("win on 202");
+    
+    // Categorías sanas
+    const isCrypto = text.match(/btc|eth|sol|crypto|bitcoin|ethereum|airdrop|token|etf|binance|memecoin|doge|pepe/i);
+    const isPolitics = text.match(/election|president|trump|biden|senate|gop|dem|politics|party|vote|poll|debate/i);
+    const isPop = text.match(/movie|oscar|grammy|mrbeast|box office|pop culture|youtube|tiktok|spotify|billboard/i);
+    const isBusiness = text.match(/fed|interest rate|inflation|cpi|business|elon|tesla|openai|gdp|economy|apple|microsoft/i);
+
+    // Si el filtro de deportes está APAGADO en el panel frontal, bloqueamos a la menor provocación
+    if (isSports && !botStatus.marketFilters.sports) return false;
+    
+    if (isCrypto && !botStatus.marketFilters.crypto) return false;
+    if (isPolitics && !botStatus.marketFilters.politics) return false;
+    if (isPop && !botStatus.marketFilters.pop) return false;
+    if (isBusiness && !botStatus.marketFilters.business) return false;
+
+    return true; 
 }
 
 // ==========================================
@@ -1308,7 +1333,15 @@ async function checkAndCopyWhaleTrades() {
                         if (botStatus.isPanicStopped) continue;
                         if (!isMarketAllowed(title)) continue;
 
-                        if (botStatus.maxActiveSportsMarkets > 0 && botStatus.copiedPositions.length >= botStatus.maxActiveSportsMarkets) continue;
+                        // 🔥 FIX LÓGICO: Solo aplicamos el límite si el mercado ES de deportes
+                        const marketCat = getMarketCategoryEnhanced(title);
+                        if (marketCat === 'SPORTS' && botStatus.maxActiveSportsMarkets > 0) {
+                            const activeSportsCount = botStatus.activePositions.filter(p => p.category === 'SPORTS').length;
+                            if (activeSportsCount >= botStatus.maxActiveSportsMarkets) {
+                                console.log(`⚠️ [LIMITE COPY] Omitiendo deporte de ballena: ${title.substring(0,30)}`);
+                                continue;
+                            }
+                        }
 
                         const alreadyHavePosition = botStatus.activePositions.some(p => p.tokenId === tokenId);
                         const alreadyCopied = botStatus.copiedTrades.some(t => t.txHash === txHash);
@@ -1419,33 +1452,6 @@ async function checkAndCopyWhaleTrades() {
         isScanningWhales = false;
         await cleanupCopiedState();
     }
-}
-
-// 🛡️ ESCÁNER DE CATEGORÍAS (VERSIÓN BLINDADA)
-function isMarketAllowed(title = "", slug = "") {
-    const text = `${title} ${slug}`.toLowerCase();
-
-    // Regex SÚPER AGRESIVO para bloquear TODO tipo de deportes, equipos y ligas
-    const isSports = text.match(/nba|nfl|mlb|nhl|soccer|tennis|f1|ufc|league|champions|madrid|lakers|spread|sports|yankees|athletics|club|fc|atp|wta|sarasota|masters|tour|match|inning|over\/under|o\/u|win on 202|vs\.|vs /i);
-    
-    // Categorías sanas
-    const isCrypto = text.match(/btc|eth|sol|crypto|bitcoin|ethereum|airdrop|token|etf|binance|memecoin|doge|pepe/i);
-    const isPolitics = text.match(/election|president|trump|biden|senate|gop|dem|politics|party|vote|poll|debate/i);
-    const isPop = text.match(/movie|oscar|grammy|mrbeast|box office|pop culture|youtube|tiktok|spotify|billboard/i);
-    const isBusiness = text.match(/fed|interest rate|inflation|cpi|business|elon|tesla|openai|gdp|economy|apple|microsoft/i);
-
-    // Si el filtro de deportes está APAGADO en el panel frontal, bloqueamos a la menor provocación
-    if (isSports && !botStatus.marketFilters.sports) return false;
-    
-    if (isCrypto && !botStatus.marketFilters.crypto) return false;
-    if (isPolitics && !botStatus.marketFilters.politics) return false;
-    if (isPop && !botStatus.marketFilters.pop) return false;
-    if (isBusiness && !botStatus.marketFilters.business) return false;
-
-    // Si no encuentra nada, por seguridad lo dejamos pasar SOLO si no tiene el formato clásico de partido "Equipo A vs Equipo B"
-    if (text.includes(" vs ") && !botStatus.marketFilters.sports) return false;
-
-    return true; 
 }
 
 // ==========================================
