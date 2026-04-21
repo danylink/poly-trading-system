@@ -871,7 +871,7 @@ async function refreshWatchlist() {
 }
 
 // ==========================================
-// 8. EJECUCIÓN DE COMPRA - VERSIÓN CORREGIDA (Mínimo 5 shares)
+// 8. EJECUCIÓN DE COMPRA - VERSIÓN DINÁMICA Y SEGURA
 // ==========================================
 async function executeTradeOnChain(conditionId, tokenId, amountUsdc, currentPrice, marketTickSize = "0.01") {
     try {
@@ -885,12 +885,19 @@ async function executeTradeOnChain(conditionId, tokenId, amountUsdc, currentPric
 
         // 2. Datos del mercado
         let trueTickSize = String(marketTickSize);
+        let minOrderSize = 5; // Fallback por defecto si la API no lo informa
         let isNegRisk = false;
 
         try {
             const clobMarket = await axios.get(`https://clob.polymarket.com/markets/${conditionId}`);
             if (clobMarket.data) {
                 if (clobMarket.data.neg_risk === true) isNegRisk = true;
+                
+                // 🔥 FIX: Leemos el mínimo exigido directamente de la blockchain de Polymarket
+                if (clobMarket.data.minimum_order_size) {
+                    minOrderSize = parseFloat(clobMarket.data.minimum_order_size);
+                }
+
                 if (clobMarket.data.tokens) {
                     const tokenData = clobMarket.data.tokens.find(t => t.token_id === tokenId);
                     if (tokenData?.minimum_tick_size) trueTickSize = tokenData.minimum_tick_size;
@@ -915,14 +922,14 @@ async function executeTradeOnChain(conditionId, tokenId, amountUsdc, currentPric
         if (limitPrice > 0.99) limitPrice = 0.99;
         limitPrice = Number(limitPrice.toFixed(decimales));
 
-        // ====================== CÁLCULO CORREGIDO ======================
-        let targetAmount = parseFloat(amountUsdc);           // lo que queremos gastar ($2 o $3)
+        // ====================== CÁLCULO DINÁMICO DE SHARES ======================
+        let targetAmount = parseFloat(amountUsdc);           
         let numShares = Number((targetAmount / limitPrice).toFixed(3));
 
-        // FORZAMOS mínimo 5 shares (Polymarket lo exige en casi todos los mercados)
-        if (numShares < 5) {
-            numShares = 5;
-            console.log(`⚠️ Ajustando a mínimo 5 shares → Monto real: $${(5 * limitPrice).toFixed(2)}`);
+        // 🔥 FIX: Respetamos el mínimo dinámico del mercado, NO el 5 fijo
+        if (numShares < minOrderSize) {
+            numShares = minOrderSize;
+            console.log(`⚠️ Ajustando al mínimo del mercado (${minOrderSize} shares) → Monto real: $${(minOrderSize * limitPrice).toFixed(2)}`);
         }
 
         console.log(`📡 Orden BUY: ${numShares} shares | Target: $${basePrice} | Monto real: $${(numShares * limitPrice).toFixed(2)}`);
