@@ -801,11 +801,25 @@ async function refreshWatchlist() {
         );
 
         const now = Date.now();
+
+        // const futureMarkets = res.data.filter(m => {
+        //     if (!m.conditionId || !m.endDate) return false;
+        //     const endTime = new Date(m.endDate).getTime();
+        //     const hoursLeft = (endTime - now) / (1000 * 60 * 60);
+        //     return endTime > now && hoursLeft <= 96;   // máximo 96 horas
+        // });
         const futureMarkets = res.data.filter(m => {
             if (!m.conditionId || !m.endDate) return false;
             const endTime = new Date(m.endDate).getTime();
             const hoursLeft = (endTime - now) / (1000 * 60 * 60);
-            return endTime > now && hoursLeft <= 96;   // máximo 96 horas
+            
+            const cat = getMarketCategoryEnhanced(m.question);
+            
+            // 🔥 MEJORA QUANT: Visión a 60 días (1440 hrs) para Macro, 4 días (96 hrs) para Crypto/Ruido
+            if (["POLITICS", "BUSINESS", "GEOPOLITICS", "TRUMP", "FED", "CPI", "IRAN", "UKRAINE", "ISRAEL"].includes(cat)) {
+                return endTime > now && hoursLeft <= 1440; 
+            }
+            return endTime > now && hoursLeft <= 96;   
         });
 
         // Categorizamos
@@ -880,8 +894,8 @@ async function executeTradeOnChain(conditionId, tokenId, amountUsdc, currentPric
         if (!clobClient) throw new Error("clobClient no está inicializado.");
 
         // 1. Auto-limpieza
-        console.log("🧹 Liberando USDC de órdenes anteriores...");
-        try { await clobClient.cancelAll(); } catch (e) {}
+        // console.log("🧹 Liberando USDC de órdenes anteriores...");
+        // try { await clobClient.cancelAll(); } catch (e) {}
 
         // 2. Datos del mercado
         let trueTickSize = String(marketTickSize);
@@ -1729,12 +1743,22 @@ async function runBot() {
             let dynamicBetAmount = profile.microBetAmount || 2.0;
 
             // Kelly solo en edges muy buenos
+            // if (edge > 0.25 && livePrice > 0 && livePrice < 1) {
+            //     const kellyFraction = edge / (1 - livePrice);
+            //     dynamicBetAmount = Math.min(
+            //         saldoLibre * kellyFraction * 0.20,
+            //         4.0,
+            //         profile.microBetAmount * 1.5
+            //     );
+            // }
+            
+            // 🔥 MEJORA QUANT: Kelly Asimétrico (Hasta 5x la apuesta base)
             if (edge > 0.25 && livePrice > 0 && livePrice < 1) {
                 const kellyFraction = edge / (1 - livePrice);
                 dynamicBetAmount = Math.min(
-                    saldoLibre * kellyFraction * 0.20,
-                    4.0,
-                    profile.microBetAmount * 1.5
+                    saldoLibre * kellyFraction * 0.20,   // Kelly conservador (20% del dictamen real)
+                    saldoLibre * 0.05,                   // NUNCA apostar más del 5% de tu cartera total
+                    profile.microBetAmount * 5.0         // Multiplicador máximo (Ej: de $2 a $10)
                 );
             }
 
