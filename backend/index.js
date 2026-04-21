@@ -1450,39 +1450,32 @@ function isMarketAllowed(title = "", slug = "") {
 
 // ==========================================
 // GET RISK PROFILE - VERSIÓN FINAL CORREGIDA
-// Custom rules tienen prioridad en TP / SL / Apuesta
-// Los filtros globales (prediction + edge) SIEMPRE mandan
 // ==========================================
 function getRiskProfile(marketName = "", isWhale = false) {
     const text = (marketName || "").toLowerCase();
-
-    // Detectar mercados volátiles
     const isVolatile = /nba|nfl|mlb|nhl|soccer|tennis|f1|ufc|league|champions|madrid|lakers|sports|pop|movie|oscar|grammy|temperature|temperatura/i.test(text);
-    
     const profileType = isVolatile ? 'volatile' : 'standard';
     
-    // 1. Perfil base GLOBAL (aiConfig o whaleConfig)
     let config = isWhale 
         ? { ...botStatus.whaleConfig[profileType] } 
         : { ...botStatus.aiConfig[profileType] };
 
-    // 2. Buscar regla personalizada
     const customRule = getCustomMarketRules(marketName);
     
     if (customRule) {
-        console.log(`📋 [CUSTOM RULE] Aplicada → ${marketName.substring(0, 60)}...`);
-
-        // 🔥 SOLO SOBRESCRIBIMOS TP, SL y microBetAmount
-        // predictionThreshold y edgeThreshold siguen siendo los GLOBALES
         config.takeProfitThreshold = customRule.takeProfitThreshold;
         config.stopLossThreshold   = customRule.stopLossThreshold;
         config.microBetAmount      = customRule.microBetAmount || config.microBetAmount;
+        
+        // 🔥 NUEVO: Asignar Edge y Prob solo si existen en la regla (Si no, mantiene el de config base)
+        if (customRule.edgeThreshold !== undefined) config.edgeThreshold = customRule.edgeThreshold;
+        if (customRule.predictionThreshold !== undefined) config.predictionThreshold = customRule.predictionThreshold;
     }
 
     return {
         config: config,
         profileType: profileType,
-        usedCustomRule: !!customRule   // útil para debugging
+        usedCustomRule: !!customRule   
     };
 }
 
@@ -1490,9 +1483,7 @@ function getRiskProfile(marketName = "", isWhale = false) {
 // NUEVA FUNCIÓN: Reglas personalizadas por mercado (Parche #8 FINAL)
 // ==========================================
 function getCustomMarketRules(marketTitle = "") {
-    if (!botStatus.customMarketRules || botStatus.customMarketRules.length === 0) {
-        return null;
-    }
+    if (!botStatus.customMarketRules || botStatus.customMarketRules.length === 0) return null;
 
     const titleLower = marketTitle.toLowerCase();
 
@@ -1502,7 +1493,9 @@ function getCustomMarketRules(marketTitle = "") {
             return {
                 takeProfitThreshold: rule.takeProfitThreshold,
                 stopLossThreshold: rule.stopLossThreshold,
-                microBetAmount: rule.microBetAmount   // ← NUEVO
+                microBetAmount: rule.microBetAmount,
+                edgeThreshold: rule.edgeThreshold,             // 🔥 NUEVO
+                predictionThreshold: rule.predictionThreshold  // 🔥 NUEVO
             };
         }
     }
@@ -1667,7 +1660,8 @@ async function runBot() {
         const alreadyClosed = closedPositionsCache.has(targetTokenId);
         const alreadyPending = pendingOrdersCache.has(targetTokenId); 
 
-        const { config: profile, profileType } = getRiskProfile(marketTitle, false);
+        // 🔥 FIX 1: OBTENEMOS PERFIL CON REGLAS CUSTOM INCLUIDAS
+        const { config: profile, profileType, usedCustomRule } = getRiskProfile(marketTitle, false);
 
         const activeSportsCount = botStatus.activePositions.filter(p => p.category === 'SPORTS').length;
         const isSportsLimitReached = (marketItem.category === 'SPORTS' && 
@@ -1676,40 +1670,26 @@ async function runBot() {
 
         const isFlippedToNo = (targetSideLabel === "NO");
 
-        // ====================== SEÑAL FUERTE (MÁS ESTRICTA) ======================
-        
+        // 🔥 FIX 2: FALLBACK MATEMÁTICO. Si la regla no tiene Edge/Prob, usamos el global
+        const minEdge = profile.edgeThreshold !== undefined ? profile.edgeThreshold : botStatus.aiConfig.standard.edgeThreshold;
+        const minProb = profile.predictionThreshold !== undefined ? profile.predictionThreshold : botStatus.aiConfig.standard.predictionThreshold;
+
+        // ====================== SEÑAL FUERTE (VERSIÓN INTELIGENTE CORREGIDA) ======================
         const isStrongSignal = 
             (!alreadyInvested && !alreadyClosed && !alreadyPending && !isSportsLimitReached) && (
-                (finalAnalysis.recommendation === "STRONG_BUY" && edge > 0.12) ||
-                (finalAnalysis.recommendation === "BUY" && edge >= profile.edgeThreshold + 0.03 && 
-                 targetProb >= profile.predictionThreshold + 0.05) ||
-                (isFlippedToNo && targetProb >= profile.predictionThreshold + 0.05 && edge >= profile.edgeThreshold + 0.03) ||
-                (finalAnalysis.urgency >= 9 && edge >= 0.11)
+                
+                // CASO 1: Consenso Fuerte (Trinity)
+                (finalAnalysis.engine && finalAnalysis.engine.includes("Trinity") && edge >= Math.max(0.04, minEdge - 0.015)) ||
+                
+                // CASO 2: Recomendación MUY FUERTE
+                (finalAnalysis.recommendation === "STRONG_BUY" && edge >= minEdge + 0.015) ||
+                
+                // CASO 3: Recomendación NORMAL
+                ((finalAnalysis.recommendation === "BUY" || isFlippedToNo) && targetProb >= minProb + 0.03 && edge >= minEdge + 0.005) ||
+                
+                // CASO 4: Urgencia Extrema
+                (finalAnalysis.urgency >= 9 && edge >= minEdge - 0.01)
             );
-        
-            
-        // ====================== SEÑAL FUERTE (VERSIÓN INTELIGENTE Y FLEXIBLE) ======================
-        // const isStrongSignal = 
-        //     (!alreadyInvested && !alreadyClosed && !alreadyPending && !isSportsLimitReached) && (
-                
-        //         // CASO 1: Consenso Fuerte (Trinity). El más importante.
-        //         // Como los 3 modelos están de acuerdo, le descontamos un 1.5% a tu Mínimo Edge global.
-        //         // Si tu panel dice 7% (0.07), aquí solo pedirá 5.5% (0.055).
-        //         (finalAnalysis.engine && finalAnalysis.engine.includes("Trinity") && edge >= Math.max(0.04, profile.edgeThreshold - 0.015)) ||
-                
-        //         // CASO 2: Recomendación MUY FUERTE (STRONG_BUY).
-        //         // Pedimos tu Edge Mínimo + 1.5% extra de confirmación.
-        //         (finalAnalysis.recommendation === "STRONG_BUY" && edge >= profile.edgeThreshold + 0.015) ||
-                
-        //         // CASO 3: Recomendación NORMAL (BUY) o Inversión a "NO".
-        //         // Pedimos tu Edge Mínimo + 0.5% extra, y aseguramos que la probabilidad sea buena.
-        //         ((finalAnalysis.recommendation === "BUY" || isFlippedToNo) && targetProb >= profile.predictionThreshold + 0.03 && edge >= profile.edgeThreshold + 0.005) ||
-                
-        //         // CASO 4: Urgencia Extrema (Noticia de última hora).
-        //         // Relajamos el Edge un 1% para entrar rápido antes de que el mercado se corrija.
-        //         (finalAnalysis.urgency >= 9 && edge >= profile.edgeThreshold - 0.01)
-        //     );
-
 
         if (isSportsLimitReached) {
             console.log(`⚠️ [LIMITE] Omitiendo ${marketTitle} (límite de deportes alcanzado)`);
@@ -1718,23 +1698,13 @@ async function runBot() {
         // ====================== EJECUCIÓN DEL SNIPER ======================
         if (botStatus.autoTradeEnabled && isStrongSignal) {
 
-            // 🔥 FILTRO GLOBAL OBLIGATORIO (primero siempre)
-            const globalProbOk = (targetProb || 0) >= botStatus.aiConfig.standard.predictionThreshold;
-            const globalEdgeOk = (edge || 0) >= botStatus.aiConfig.standard.edgeThreshold;
-
-            if (!globalProbOk || !globalEdgeOk) {
-                console.log(`⛔ [GLOBAL FILTER] Rechazado → Prob: ${(targetProb*100).toFixed(0)}% | Edge: ${(edge*100).toFixed(1)}% (mínimo: ${botStatus.aiConfig.standard.predictionThreshold*100}% / ${botStatus.aiConfig.standard.edgeThreshold*100}%)`);
-                watchlistIndex = (watchlistIndex + 1) % botStatus.watchlist.length;
-                return;
-            }
-
-            // Si pasó el filtro global → ahora sí obtenemos perfil (con posible regla personalizada)
-            const { config: riskConfig, usedCustomRule } = getRiskProfile(marketTitle, false);
+            // Ya NO usamos el filtro global estricto aquí, porque isStrongSignal ya lo evaluó
+            // usando minEdge y minProb, respetando las excepciones de Trinity y las reglas personalizadas.
 
             const saldoLibre = parseFloat(botStatus.clobOnlyUSDC || 0);
             
             // Usamos el microBetAmount que venga (global o de regla personalizada)
-            let dynamicBetAmount = riskConfig.microBetAmount || 2.0;
+            let dynamicBetAmount = profile.microBetAmount || 2.0;
 
             // Kelly solo en edges muy buenos
             if (edge > 0.25 && livePrice > 0 && livePrice < 1) {
@@ -1742,7 +1712,7 @@ async function runBot() {
                 dynamicBetAmount = Math.min(
                     saldoLibre * kellyFraction * 0.20,
                     4.0,
-                    riskConfig.microBetAmount * 1.5
+                    profile.microBetAmount * 1.5
                 );
             }
 
@@ -1780,7 +1750,7 @@ async function runBot() {
                     edge: edge,
                     suggestedInversion: dynamicBetAmount, 
                     reasoning: finalAnalysis.reason,
-                    engine: finalAnalysis.engine || "IA"   // ← NUEVA LÍNEA
+                    engine: finalAnalysis.engine || "IA"
                 });
 
                 botStatus.lastTrades[targetTokenId] = Date.now();
@@ -2783,33 +2753,22 @@ app.get('/api/settings/custom-rules', (req, res) => {
 app.post('/api/settings/custom-rules', (req, res) => {
     try {
         const { rules } = req.body;
+        if (!rules || !Array.isArray(rules)) return res.status(400).json({ success: false, error: "Se esperaba un array" });
 
-        if (!rules || !Array.isArray(rules)) {
-            return res.status(400).json({ 
-                success: false, 
-                error: "Se esperaba un array de reglas" 
-            });
-        }
-
-        // Limpiamos y validamos cada regla
         for (const rule of rules) {
             rule.keyword = (rule.keyword || "").trim();
             rule.takeProfitThreshold = parseInt(rule.takeProfitThreshold) || 25;
             rule.stopLossThreshold = parseInt(rule.stopLossThreshold) || -30;
             rule.microBetAmount = parseFloat(rule.microBetAmount) || 2.0;
+            // 🔥 NUEVO: Guardar Edge y Probabilidad
+            rule.edgeThreshold = parseFloat(rule.edgeThreshold) || undefined;
+            rule.predictionThreshold = parseFloat(rule.predictionThreshold) || undefined;
         }
 
-        // Reemplazamos completamente el array
         botStatus.customMarketRules = rules;
-
         saveConfigToDisk("Reglas personalizadas actualizadas (edición)");
-
         console.log(`📋 ${rules.length} reglas personalizadas guardadas correctamente`);
-
-        res.json({ 
-            success: true, 
-            customMarketRules: botStatus.customMarketRules 
-        });
+        res.json({ success: true, customMarketRules: botStatus.customMarketRules });
 
     } catch (error) {
         console.error("❌ Error en /api/settings/custom-rules:", error.message);
