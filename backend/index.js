@@ -1678,17 +1678,27 @@ async function runBot() {
         const isStrongSignal = 
             (!alreadyInvested && !alreadyClosed && !alreadyPending && !isSportsLimitReached) && (
                 
+                // 🔥 AHORA TODOS LOS CASOS EXIGEN PROBABILIDAD MÍNIMA
+                
                 // CASO 1: Consenso Fuerte (Trinity)
-                (finalAnalysis.engine && finalAnalysis.engine.includes("Trinity") && edge >= Math.max(0.04, minEdge - 0.015)) ||
+                // Relajamos la Probabilidad 5% y el Edge 1.5%
+                (finalAnalysis.engine && finalAnalysis.engine.includes("Trinity") && 
+                 targetProb >= minProb - 0.05 && edge >= Math.max(0.04, minEdge - 0.015)) ||
                 
-                // CASO 2: Recomendación MUY FUERTE
-                (finalAnalysis.recommendation === "STRONG_BUY" && edge >= minEdge + 0.015) ||
+                // CASO 2: Recomendación MUY FUERTE (STRONG_BUY).
+                // Relajamos la probabilidad 2% pero exigimos Edge alto (+1.5%)
+                (finalAnalysis.recommendation === "STRONG_BUY" && 
+                 targetProb >= minProb - 0.02 && edge >= minEdge + 0.015) ||
                 
-                // CASO 3: Recomendación NORMAL
-                ((finalAnalysis.recommendation === "BUY" || isFlippedToNo) && targetProb >= minProb + 0.03 && edge >= minEdge + 0.005) ||
+                // CASO 3: Recomendación NORMAL (BUY o Flipped).
+                // Exigimos Probabilidad alta (+3%) y Edge normal (+0.5%)
+                ((finalAnalysis.recommendation === "BUY" || isFlippedToNo) && 
+                 targetProb >= minProb + 0.03 && edge >= minEdge + 0.005) ||
                 
-                // CASO 4: Urgencia Extrema
-                (finalAnalysis.urgency >= 9 && edge >= minEdge - 0.01)
+                // CASO 4: Urgencia Extrema (Noticias).
+                // Exigimos la Probabilidad exacta, relajamos el Edge (-1%)
+                (finalAnalysis.urgency >= 9 && 
+                 targetProb >= minProb && edge >= minEdge - 0.01)
             );
 
         if (isSportsLimitReached) {
