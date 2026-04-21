@@ -1722,9 +1722,9 @@ async function runBot() {
                  targetProb >= minProb && edge >= minEdge - 0.01) ||
 
                 // 🔥 NUEVO - CASO 5: Oportunidad de Oro (Asimetría Extrema)
-                // Si el mercado nos regala un Edge mayor a 20%, ignoramos el minProb, 
-                // PERO exigimos un mínimo absoluto de 60% para que siga siendo una predicción a favor.
-                (edge >= 0.20 && targetProb >= 0.60)
+                // Exigimos Edge > 20%, Prob > 60%, Y QUE HAYA CONSENSO (Mínimo 2 IAs de acuerdo).
+                // Esto evita que una sola IA "alucinando" queme capital.
+                (edge >= 0.20 && targetProb >= 0.60 && finalAnalysis.engine && (finalAnalysis.engine.includes("Consenso") || finalAnalysis.engine.includes("Trinity")))
             );
 
         if (isSportsLimitReached) {
@@ -1751,7 +1751,7 @@ async function runBot() {
             //         profile.microBetAmount * 1.5
             //     );
             // }
-            
+
             // 🔥 MEJORA QUANT: Kelly Asimétrico (Hasta 5x la apuesta base)
             if (edge > 0.25 && livePrice > 0 && livePrice < 1) {
                 const kellyFraction = edge / (1 - livePrice);
