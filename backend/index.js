@@ -1691,27 +1691,26 @@ async function runBot() {
         const isStrongSignal = 
             (!alreadyInvested && !alreadyClosed && !alreadyPending && !isSportsLimitReached) && (
                 
-                // 🔥 AHORA TODOS LOS CASOS EXIGEN PROBABILIDAD MÍNIMA
-                
                 // CASO 1: Consenso Fuerte (Trinity)
-                // Relajamos la Probabilidad 5% y el Edge 1.5%
                 (finalAnalysis.engine && finalAnalysis.engine.includes("Trinity") && 
                  targetProb >= minProb - 0.05 && edge >= Math.max(0.04, minEdge - 0.015)) ||
                 
                 // CASO 2: Recomendación MUY FUERTE (STRONG_BUY).
-                // Relajamos la probabilidad 2% pero exigimos Edge alto (+1.5%)
                 (finalAnalysis.recommendation === "STRONG_BUY" && 
                  targetProb >= minProb - 0.02 && edge >= minEdge + 0.015) ||
                 
                 // CASO 3: Recomendación NORMAL (BUY o Flipped).
-                // Exigimos Probabilidad alta (+3%) y Edge normal (+0.5%)
                 ((finalAnalysis.recommendation === "BUY" || isFlippedToNo) && 
                  targetProb >= minProb + 0.03 && edge >= minEdge + 0.005) ||
                 
                 // CASO 4: Urgencia Extrema (Noticias).
-                // Exigimos la Probabilidad exacta, relajamos el Edge (-1%)
                 (finalAnalysis.urgency >= 9 && 
-                 targetProb >= minProb && edge >= minEdge - 0.01)
+                 targetProb >= minProb && edge >= minEdge - 0.01) ||
+
+                // 🔥 NUEVO - CASO 5: Oportunidad de Oro (Asimetría Extrema)
+                // Si el mercado nos regala un Edge mayor a 20%, ignoramos el minProb, 
+                // PERO exigimos un mínimo absoluto de 60% para que siga siendo una predicción a favor.
+                (edge >= 0.20 && targetProb >= 0.60)
             );
 
         if (isSportsLimitReached) {
