@@ -1676,14 +1676,23 @@ async function runBot() {
 
         const isFlippedToNo = (targetSideLabel === "NO");
 
-        // ====================== SEÑAL FUERTE (MÁS ESTRICTA) ======================
+        // ====================== SEÑAL FUERTE (VERSIÓN INTELIGENTE Y FLEXIBLE) ======================
+        // Respeta profile.edgeThreshold pero permite señales buenas de política con consenso
         const isStrongSignal = 
             (!alreadyInvested && !alreadyClosed && !alreadyPending && !isSportsLimitReached) && (
-                (finalAnalysis.recommendation === "STRONG_BUY" && edge > 0.12) ||
-                (finalAnalysis.recommendation === "BUY" && edge >= profile.edgeThreshold + 0.03 && 
-                 targetProb >= profile.predictionThreshold + 0.05) ||
-                (isFlippedToNo && targetProb >= profile.predictionThreshold + 0.05 && edge >= profile.edgeThreshold + 0.03) ||
-                (finalAnalysis.urgency >= 9 && edge >= 0.11)
+                
+                // Caso 1: Recomendación muy fuerte → exigimos un poco más que el umbral global
+                (finalAnalysis.recommendation === "STRONG_BUY" && edge > profile.edgeThreshold + 0.02) ||
+                
+                // Caso 2: Recomendación normal (BUY) → usamos el umbral global + pequeño margen
+                (finalAnalysis.recommendation === "BUY" && edge >= profile.edgeThreshold + 0.005) ||
+                
+                // Caso 3: Urgencia muy alta → buen comodín (un poco más permisivo)
+                (finalAnalysis.urgency >= 9 && edge >= profile.edgeThreshold - 0.01) ||
+                
+                // Caso 4: Consenso fuerte (Trinity) → el más importante para señales políticas
+                // Aquí relajamos un poco porque el consenso de 3 modelos es muy valioso
+                (finalAnalysis.engine && finalAnalysis.engine.includes("Trinity") && edge >= Math.max(0.04, profile.edgeThreshold - 0.015))
             );
 
         if (isSportsLimitReached) {
