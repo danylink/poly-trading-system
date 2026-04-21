@@ -2,7 +2,7 @@
   "aiConfig": {
     "standard": {
       "predictionThreshold": 0.7,
-      "edgeThreshold": 0.07,
+      "edgeThreshold": 0.06,
       "takeProfitThreshold": 30,
       "stopLossThreshold": -25,
       "microBetAmount": 2
@@ -282,7 +282,7 @@
       "microBetAmount": 3
     }
   ],
-  "maxCopyMarketsPerWhale": 5,
-  "copyMinWhaleSize": 100,
+  "maxCopyMarketsPerWhale": 7,
+  "copyMinWhaleSize": 80,
   "copyTimeWindowMinutes": 30
 }
