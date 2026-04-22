@@ -805,6 +805,48 @@ const getWinRateColor = (rate) => {
   return 'text-rose-500';
 };
 
+const radarData = ref({ whales: [], lastScan: null, isScanning: false });
+
+const fetchRadar = async () => {
+  try {
+    const res = await axios.get(`${API_URL}/radar`);
+    radarData.value = res.data;
+  } catch (e) { console.error("Error cargando radar:", e); }
+};
+
+const forceRadarScan = async () => {
+  radarData.value.isScanning = true;
+  try {
+    const res = await axios.post(`${API_URL}/radar/force`);
+    radarData.value = res.data;
+    Swal.fire({ icon: 'success', title: 'Radar Actualizado', background: '#1c1917', color: '#D4AF37', showConfirmButton: false, timer: 1500 });
+  } catch (e) {
+    Swal.fire({ icon: 'error', title: 'Error', background: '#1c1917', color: '#EF4444' });
+  }
+};
+
+// Autocompletar el formulario de nueva ballena al darle clic al "+"
+const copyWhaleToForm = (whale) => {
+  newWhaleAddress.value = whale.address;
+  newWhaleNickname.value = whale.nickname;
+  
+  Swal.fire({
+    title: 'Ballena Seleccionada',
+    text: 'Dirección y Nickname copiados al formulario. ¡Sube y presiona "Agregar"!',
+    icon: 'info',
+    background: '#1C1612',
+    color: '#e4e4e7',
+    iconColor: '#a855f7',
+    confirmButtonColor: '#a855f7'
+  });
+};
+
+// Carga inicial y polling cada 30 segundos para ver si el backend ya actualizó
+onMounted(() => {
+  fetchRadar();
+  setInterval(fetchRadar, 30000);
+});
+
 // --- COMPUTED PROPERTIES ---
 
 // 1. Valor total de las posiciones que siguen vivas
@@ -1347,6 +1389,90 @@ onUnmounted(() => {
               <Target :size="32" class="text-zinc-600 mb-3" />
               <p class="text-zinc-500 text-sm">Esperando movimientos de las ballenas...</p>
             </div>
+          </div>
+        </div>
+
+        <!-- ====================== LEADERBOARD RADAR (WHALES QUANT) ====================== -->
+         <div class="bg-[#111114] border-2 border-blue-500/10 rounded-3xl p-8 mb-8 shadow-xl">
+          <div class="flex items-center justify-between mb-6 pb-4 border-b border-zinc-800/50">
+            <h2 class="text-xl font-bold text-white flex items-center gap-3">
+              <Activity :size="24" class="text-blue-500" /> 
+              Radar Quant de Ballenas (Live)
+            </h2>
+            <div class="flex items-center gap-3">
+              <span class="text-[10px] text-zinc-500 font-mono">Último escaneo: {{ radarData.lastScan || '...' }}</span>
+              <button @click="forceRadarScan" :disabled="radarData.isScanning" class="text-[10px] font-black uppercase tracking-widest bg-blue-500/10 text-blue-400 px-3 py-1.5 rounded-lg border border-blue-500/20 hover:bg-blue-500/20 transition-all disabled:opacity-50 flex items-center gap-2">
+                <span v-if="radarData.isScanning" class="w-1.5 h-1.5 rounded-full bg-blue-400 animate-ping"></span>
+                {{ radarData.isScanning ? 'ESCANEANDO...' : 'FORZAR ESCANEO' }}
+              </button>
+            </div>
+          </div>
+
+          <div class="overflow-x-auto rounded-xl border border-zinc-800/50 bg-[#161619]">
+            <table class="w-full text-left border-collapse whitespace-nowrap">
+              <thead>
+                <tr class="text-[9px] text-zinc-500 uppercase tracking-widest bg-black/40 border-b border-zinc-800/50">
+                  <th class="p-4 font-black text-center w-12">Pos</th>
+                  <th class="p-4 font-black">Nickname / Dirección</th>
+                  <th class="p-4 font-black text-right">Volumen Relevante</th>
+                  <th class="p-4 font-black text-center">Score</th>
+                  <th class="p-4 font-black text-center">Ops</th>
+                  <th class="p-4 font-black">Última Actividad</th>
+                  <th class="p-4 font-black">Recomendación</th>
+                  <th class="p-4 font-black text-center">Acción</th>
+                </tr>
+              </thead>
+
+              <tbody class="text-xs">
+                <tr v-for="(whale, index) in radarData.whales" :key="index" class="border-b border-zinc-800/30 hover:bg-white/[0.02] transition-colors group">
+                  <td class="p-4 text-center font-mono text-zinc-500 font-bold">{{ index + 1 }}</td>
+                  
+                  <td class="p-4">
+                    <div class="font-bold text-blue-400 mb-0.5">{{ whale.nickname }}</div>
+                    <div class="font-mono text-[10px] text-zinc-500">{{ whale.address.substring(0,8) }}...{{ whale.address.substring(36) }}</div>
+                  </td>
+                  
+                  <td class="p-4 font-mono font-bold text-right text-emerald-400">
+                    ${{ whale.relevantVolume.toLocaleString(undefined, {maximumFractionDigits: 0}) }}
+                    <div class="text-[9px] text-zinc-600 mt-0.5">de ${{ whale.totalVolume.toLocaleString(undefined, {maximumFractionDigits: 0}) }}</div>
+                  </td>
+                  
+                  <td class="p-4 text-center">
+                    <span class="px-2 py-1 rounded-md text-[10px] font-black border"
+                          :class="whale.relevanceScore >= 80 ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' : (whale.relevanceScore >= 40 ? 'bg-amber-500/10 text-amber-400 border-amber-500/30' : 'bg-rose-500/10 text-rose-400 border-rose-500/30')">
+                      {{ whale.relevanceScore }}%
+                    </span>
+                  </td>
+                  
+                  <td class="p-4 text-center font-mono text-zinc-300 font-bold">{{ whale.tradeCount }}</td>
+                  
+                  <td class="p-4 text-[10px] font-mono text-zinc-400">{{ whale.lastActivity }}</td>
+                  
+                  <td class="p-4">
+                    <div class="flex items-center gap-1 mb-0.5 text-amber-400 text-[10px]">
+                      <span v-for="n in 5" :key="n" :class="n <= whale.stars ? 'opacity-100' : 'opacity-20'">★</span>
+                    </div>
+                    <div class="text-[9px] font-black uppercase tracking-widest" :class="whale.stars >= 4 ? 'text-emerald-400' : (whale.stars >= 2 ? 'text-amber-400' : 'text-zinc-500')">
+                      {{ whale.recommendation }}
+                    </div>
+                  </td>
+
+                  <td class="p-4 text-center">
+                    <button @click="copyWhaleToForm(whale)" class="w-8 h-8 rounded-lg bg-purple-500/10 hover:bg-purple-500 border border-purple-500/30 text-purple-400 hover:text-white flex items-center justify-center transition-all shadow-lg group-hover:scale-110">
+                      +
+                    </button>
+                  </td>
+                </tr>
+                <tr v-if="!radarData.whales || radarData.whales.length === 0">
+                  <td colspan="8" class="p-12 text-center text-zinc-600 italic">
+                    <div class="flex flex-col items-center justify-center">
+                      <span v-if="radarData.isScanning" class="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mb-3"></span>
+                      {{ radarData.isScanning ? 'Analizando el Orderbook global...' : 'Iniciando radar de red. Espera un momento...' }}
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
           </div>
         </div>
 

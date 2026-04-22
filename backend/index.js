@@ -147,6 +147,15 @@ const profitAlertCache = new Set(); // Memoria para no repetir alertas de toma d
 const closedPositionsCache = new Set();
 const pendingOrdersCache = new Set();
 
+// ==========================================
+// 📡 CACHÉ DEL RADAR DE BALLENAS
+// ==========================================
+let whaleRadarCache = {
+    lastScan: null,
+    isScanning: false,
+    whales: []
+};
+
 // --- ESTADO GLOBAL DEL SNIPER ---
 let botStatus = {
     lastCheck: null,
@@ -3036,6 +3045,123 @@ function scheduleDailyReports() {
 }
 
 // ==========================================
+// 📡 RADAR QUANT DE BALLENAS (MACRO/LONG-TERM)
+// ==========================================
+function isShortTermMarket(title) {
+    const t = (title || "").toLowerCase();
+    return /up or down|above .* on|by .* [0-9]+:[0-9]+|3:.*pm-4:.*pm|4:.*pm-5:.*pm|15m|5m|10m|minute|minutos/.test(t);
+}
+
+function isLongTermMarket(title) {
+    const t = (title || "").toLowerCase();
+    return /by april|by may|by june|by july|by 2026|2026|trump say|zelensky|ukraine|russia|fed|cpi|election|congress|starmer|warsh|pokrovsk|iran|israel|kevin warsh|nasdaq|sp500|interest rate|elon|tesla|spacex|munich|sao paulo|temperature|will there be|will trump|will russia|will bitcoin|will ethereum/.test(t);
+}
+
+function timeAgo(timestamp) {
+    if (!timestamp) return "Desconocido";
+    const now = Math.floor(Date.now() / 1000);
+    const diff = now - timestamp;
+    if (diff < 60) return "hace segundos";
+    if (diff < 3600) return `hace ${Math.floor(diff / 60)} min`;
+    if (diff < 86400) return `hace ${Math.floor(diff / 3600)} hrs`;
+    return `hace ${Math.floor(diff / 86400)} días`;
+}
+
+async function runWhaleRadar() {
+    if (whaleRadarCache.isScanning) return;
+    whaleRadarCache.isScanning = true;
+
+    try {
+        console.log("🌊 [RADAR] Iniciando escaneo profundo de ballenas macro...");
+        const tradeRes = await axios.get('https://data-api.polymarket.com/trades?limit=1000', {
+            httpsAgent: agent,
+            timeout: 15000
+        });
+
+        let trades = Array.isArray(tradeRes.data) ? tradeRes.data : (tradeRes.data.data || []);
+        const whaleStats = {};
+
+        for (const trade of trades) {
+            const address = trade.proxyWallet || trade.maker_address || trade.user;
+            if (!address) continue;
+
+            const volume = (parseFloat(trade.size) || 0) * (parseFloat(trade.price) || 0);
+            const title = (trade.title || "").toLowerCase();
+            const ts = trade.timestamp || 0;
+            const nickname = trade.pseudonym || trade.name || address.substring(0, 5);
+
+            if (!whaleStats[address]) {
+                whaleStats[address] = {
+                    address, nickname, totalVolume: 0, relevantVolume: 0,
+                    tradeCount: 0, markets: new Set(), lastTimestamp: 0
+                };
+            }
+
+            whaleStats[address].totalVolume += volume;
+            whaleStats[address].tradeCount += 1;
+            if (trade.conditionId || title) whaleStats[address].markets.add(trade.conditionId || title);
+            if (ts > whaleStats[address].lastTimestamp) whaleStats[address].lastTimestamp = ts;
+
+            const isShort = isShortTermMarket(title);
+            const isLong = isLongTermMarket(title);
+
+            if (!isShort && isLong) {
+                whaleStats[address].relevantVolume += volume;
+            }
+        }
+
+        const whalesArray = Object.values(whaleStats)
+            .filter(w => w.totalVolume > 100 && w.tradeCount > 2)
+            .map(w => {
+                const relevance = w.totalVolume > 0 ? Math.round((w.relevantVolume / w.totalVolume) * 100) : 0;
+                
+                // Sistema de Estrellas/Recomendación tipo Quant
+                let stars = 0;
+                let rec = "No recomendado";
+                if (relevance >= 80 && w.relevantVolume > 500) { stars = 5; rec = "TOP MACRO"; }
+                else if (relevance >= 60) { stars = 4; rec = "Excelente"; }
+                else if (relevance >= 40) { stars = 3; rec = "Aceptable"; }
+                else if (relevance >= 20 && w.totalVolume > 2000) { stars = 2; rec = "Volumen Mixto"; }
+                else if (relevance > 0) { stars = 1; rec = "Baja Relevancia"; }
+
+                return {
+                    address: w.address,
+                    nickname: w.nickname,
+                    totalVolume: w.totalVolume,
+                    relevantVolume: w.relevantVolume,
+                    relevanceScore: relevance,
+                    tradeCount: w.tradeCount,
+                    marketCount: w.markets.size,
+                    lastActivity: timeAgo(w.lastTimestamp),
+                    stars,
+                    recommendation: rec,
+                    rawTimestamp: w.lastTimestamp
+                };
+            })
+            .sort((a, b) => b.relevanceScore - a.relevanceScore || b.totalVolume - a.totalVolume)
+            .slice(0, 15); // Guardamos el Top 15
+
+        whaleRadarCache.whales = whalesArray;
+        whaleRadarCache.lastScan = new Date().toLocaleTimeString();
+        console.log(`✅ [RADAR] Escaneo completo. Top 1 detectado: ${whalesArray[0]?.nickname || 'N/A'}`);
+
+    } catch (error) {
+        console.error("❌ [RADAR] Error escaneando:", error.message);
+    } finally {
+        whaleRadarCache.isScanning = false;
+    }
+}
+
+// ENDPOINT PARA EL DASHBOARD
+app.get('/api/radar', (req, res) => {
+    res.json(whaleRadarCache);
+});
+app.post('/api/radar/force', async (req, res) => {
+    await runWhaleRadar();
+    res.json(whaleRadarCache);
+});
+
+// ==========================================
 // 11. INICIO DEL MOTOR DEL SNIPER
 // ==========================================
 app.listen(PORT, async () => {
@@ -3060,8 +3186,12 @@ app.listen(PORT, async () => {
     // 4. Guardián del servidor (RAM + CPU)
     setInterval(monitorSystemHealth, 90000); // 90 segundos → suficiente
 
-    // Auto Redeem cada 5 minutos
+    // 5. Auto Redeem cada 5 minutos
     setInterval(autoRedeemPositions, 300000);   // 5 minutos
+
+    // 6. Radar de Ballenas Macro (Cada 15 minutos)
+    setInterval(runWhaleRadar, 15 * 60 * 1000);
+    setTimeout(runWhaleRadar, 5000); // Primer escaneo a los 5s de arrancar
 
     // 🔥 Reportes diarios automáticos (12:00 PM, 6:00 PM y 11:59 PM)
     scheduleDailyReports();

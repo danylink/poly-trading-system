@@ -20,9 +20,21 @@ function timeAgo(timestamp) {
     return `hace ${Math.floor(diff / 86400)} días`;
 }
 
+// Excluye SOLO mercados ultra-cortos (5-15 minutos)
+function isShortTermMarket(title) {
+    const t = (title || "").toLowerCase();
+    return /up or down|above .* on|by .* [0-9]+:[0-9]+|3:.*pm-4:.*pm|4:.*pm-5:.*pm|15m|5m|10m|minute|minutos/.test(t);
+}
+
+// Detecta mercados de LARGO PLAZO (mucho más amplio)
+function isLongTermMarket(title) {
+    const t = (title || "").toLowerCase();
+    return /by april|by may|by june|by july|by 2026|2026|trump say|zelensky|ukraine|russia|fed|cpi|election|congress|starmer|warsh|pokrovsk|iran|israel|kevin warsh|nasdaq|sp500|interest rate|elon|tesla|spacex|munich|sao paulo|temperature|will there be|will trump|will russia|will bitcoin|will ethereum/.test(t);
+}
+
 async function scanLiveWhales() {
     console.log("=========================================");
-    console.log("🌊 RADAR QUANT DE BALLENAS - CON ÚLTIMA ACTIVIDAD");
+    console.log("🌊 RADAR QUANT DE BALLENAS - FILTRO MEJORADO LARGO PLAZO");
     console.log("=========================================\n");
 
     try {
@@ -47,9 +59,12 @@ async function scanLiveWhales() {
             const title = (trade.title || "").toLowerCase();
             const ts = trade.timestamp || 0;
 
+            const nickname = trade.pseudonym || trade.name || address.substring(0, 5);
+
             if (!whaleStats[address]) {
                 whaleStats[address] = {
                     address: address,
+                    nickname: nickname,
                     totalVolume: 0,
                     relevantVolume: 0,
                     tradeCount: 0,
@@ -66,23 +81,17 @@ async function scanLiveWhales() {
                 whaleStats[address].lastTimestamp = ts;
             }
 
-            // Clasificación rápida por título
-            let category = "otros";
-            if (/trump|zelensky|ukraine|russia|fed|cpi|election|congress|starmer|warsh|pokrovsk|iran|israel|kevin warsh/.test(title)) {
-                category = "politica";
-            } else if (/bitcoin|ethereum|solana|dogecoin|crypto|xrp|bnb/.test(title)) {
-                category = "crypto";
-            } else if (/fed|interest rate|cpi|elon|business|nasdaq|sp500/.test(title)) {
-                category = "business";
-            }
+            const isShort = isShortTermMarket(trade.title || "");
+            const isLong = isLongTermMarket(trade.title || "");
 
-            if (["politica", "crypto", "business"].includes(category)) {
+            // Solo cuenta como relevante si NO es ultra-corto Y es largo plazo
+            if (!isShort && isLong) {
                 whaleStats[address].relevantVolume += volume;
             }
         }
 
         const whalesArray = Object.values(whaleStats)
-            .filter(w => w.totalVolume > 150)
+            .filter(w => w.totalVolume > 100)
             .filter(w => w.tradeCount > 2)
             .map(w => ({
                 ...w,
@@ -94,9 +103,9 @@ async function scanLiveWhales() {
         console.log(`✅ Escaneo completo → ${whalesArray.length} ballenas candidatas\n`);
 
         whalesArray.slice(0, 20).forEach((w, i) => {
-            const color = w.relevanceScore >= 70 ? "🟢" : (w.relevanceScore >= 50 ? "🟡" : "🔴");
+            const color = w.relevanceScore >= 70 ? "🟢" : (w.relevanceScore >= 40 ? "🟡" : "🔴");
             console.log(`${color} #${i+1} | ${w.address}`);
-            console.log(`   Nickame: ${w.name}`);
+            console.log(`   Nickname: ${w.nickname}`);
             console.log(`   Volumen total: $${w.totalVolume.toFixed(0)}`);
             console.log(`   Volumen relevante: $${w.relevantVolume.toFixed(0)} (${w.relevanceScore}%)`);
             console.log(`   Operaciones: ${w.tradeCount} | Mercados: ${w.markets.size}`);
