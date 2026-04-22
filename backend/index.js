@@ -1276,7 +1276,7 @@ async function sendCopyAlert(type, whaleName, marketTitle, amount) {
 
 
 // ==========================================
-// CHECK AND COPY WHALE TRADES - VERSIÓN CON LÍMITE POR BALLENA (Parche #9.1)
+// CHECK AND COPY WHALE TRADES - VERSIÓN QUANT (Anti-Ametralladora + Anti-Iceberg)
 // ==========================================
 let isScanningWhales = false;
 
@@ -1323,28 +1323,23 @@ async function checkAndCopyWhaleTrades() {
 
         // ====================== HELPER MEJORADO PARA NICKNAME ======================
         const getWhaleDisplayName = (whale) => {
-            // 1. Si el objeto actual ya tiene nickname → usarlo
             if (whale.nickname && whale.nickname.trim() !== '') {
                 return whale.nickname;
             }
-
-            // 2. Buscar en el config global por dirección (garantía 100%)
             const configWhale = botStatus.customWhales.find(w => 
                 w.address.toLowerCase() === whale.address.toLowerCase()
             );
             if (configWhale && configWhale.nickname && configWhale.nickname.trim() !== '') {
                 return configWhale.nickname;
             }
-
-            // 3. Fallback final
             return whale.address.substring(0, 8) + "...";
         };
-
         // =======================================================================
 
         for (const whale of allWhales) {
             try {
-                const copiedFromThisWhale = botStatus.copiedPositions.filter(p => 
+                // 🔥 FIX VITAL: Debe ser 'let' y no 'const' para que el Freno Dinámico pueda sumar
+                let copiedFromThisWhale = botStatus.copiedPositions.filter(p => 
                     p.whale && p.whale.toLowerCase() === whale.address.toLowerCase()
                 ).length;
 
@@ -1373,7 +1368,6 @@ async function checkAndCopyWhaleTrades() {
                         ? parseInt(latestTrade.timestamp) * 1000 
                         : parseInt(latestTrade.timestamp);
                     
-                    // Buscamos si es una ballena custom para actualizar su registro
                     const customWhaleIndex = botStatus.customWhales.findIndex(w => 
                         w.address.toLowerCase() === whale.address.toLowerCase()
                     );
@@ -1383,6 +1377,9 @@ async function checkAndCopyWhaleTrades() {
                     }
                 }
                 // ==========================================================
+
+                // 🔥 FIX QUANT: Memoria temporal para ignorar órdenes "Iceberg"
+                const uniqueMarketsCopiedNow = new Set(); 
 
                 for (const trade of recentTrades) {
                     if (!trade) continue;
@@ -1405,10 +1402,23 @@ async function checkAndCopyWhaleTrades() {
 
                     // ==================== COPIA DE COMPRA ====================
                     if (side === "BUY") {
+
+                        // 🔥 FIX QUANT: Freno Dinámico en Tiempo Real (Anti-Ametralladora)
+                        if (limitPerWhale > 0 && copiedFromThisWhale >= limitPerWhale) {
+                            console.log(`⛔ [COPY LIMIT] Freno de ráfaga activado. ${getWhaleDisplayName(whale)} intentó abrir más de ${limitPerWhale} mercados de golpe.`);
+                            break; // 🛑 Rompe el bucle instantáneamente
+                        }
+
+                        // 🔥 FIX QUANT: Filtro Anti-Duplicación (Ignorar Icebergs)
+                        if (uniqueMarketsCopiedNow.has(tokenId)) {
+                            // Silenciosamente ignoramos este pedazo de la orden porque ya lo compramos
+                            continue; 
+                        }
+
                         if (botStatus.isPanicStopped) continue;
                         if (!isMarketAllowed(title)) continue;
 
-                        // 🔥 FIX LÓGICO: Solo aplicamos el límite si el mercado ES de deportes
+                        // Lógica de Límite de Deportes
                         const marketCat = getMarketCategoryEnhanced(title);
                         if (marketCat === 'SPORTS' && botStatus.maxActiveSportsMarkets > 0) {
                             const activeSportsCount = botStatus.activePositions.filter(p => p.category === 'SPORTS').length;
@@ -1454,12 +1464,17 @@ async function checkAndCopyWhaleTrades() {
                         if (result?.success) {
                             pendingOrdersCache.add(tokenId);
 
-                            // 🔥 NUEVO: Guardamos también el nickname
+                            // 🔥 Actualizamos el contador en tiempo real
+                            copiedFromThisWhale++;
+
+                            // 🔥 Guardamos el ID del mercado para no volver a comprarlo en esta ráfaga
+                            uniqueMarketsCopiedNow.add(tokenId);
+
                             botStatus.copiedTrades.unshift({
                                 id: Date.now(),
                                 txHash,
                                 whale: whale.address.substring(0,10) + "...",
-                                nickname: whale.nickname || getWhaleDisplayName(whale),   // ← AQUÍ SE GUARDA EL NICKNAME
+                                nickname: whale.nickname || getWhaleDisplayName(whale),
                                 tokenId,
                                 size: montoInversion,
                                 price: limitPrice,
@@ -1469,11 +1484,10 @@ async function checkAndCopyWhaleTrades() {
 
                             if (botStatus.copiedTrades.length > 20) botStatus.copiedTrades.pop();
 
-                            // 🔥 NUEVO: Guardamos también el nickname en copiedPositions
                             botStatus.copiedPositions.push({
                                 tokenId,
                                 whale: whale.address,
-                                nickname: whale.nickname || getWhaleDisplayName(whale),   // ← AQUÍ SE GUARDA EL NICKNAME
+                                nickname: whale.nickname || getWhaleDisplayName(whale),
                                 sizeCopied: montoInversion,
                                 priceEntry: limitPrice,
                                 marketName: title
@@ -1484,7 +1498,6 @@ async function checkAndCopyWhaleTrades() {
                             botStatus.copyTradingStats.totalCopied = (botStatus.copyTradingStats.totalCopied || 0) + 1;
                             botStatus.copyTradingStats.successful = (botStatus.copyTradingStats.successful || 0) + 1;
 
-                            // 🔥 NUEVO - usando la función auxiliar
                             await sendCopyAlert('BUY', getWhaleDisplayName(whale), title, montoInversion.toFixed(2));
 
                             botStatus.lastTrades[tokenId] = Date.now();
@@ -1511,9 +1524,7 @@ async function checkAndCopyWhaleTrades() {
 
                             const rescateEst = (position.sizeCopied * limitSellPrice).toFixed(2);
 
-                            // 🔥 NUEVO - usando la función auxiliar
                             await sendCopyAlert('SELL', position.nickname || getWhaleDisplayName(whale), title, rescateEst);
-
                         }
                     }
                 }
@@ -1526,7 +1537,7 @@ async function checkAndCopyWhaleTrades() {
     } finally {
         isScanningWhales = false;
         await cleanupCopiedState();
-        saveConfigToDisk("Actualización de Actividad de Ballenas"); // 🔥 NUEVO GUARDADO
+        saveConfigToDisk("Actualización de Actividad de Ballenas");
     }
 }
 
@@ -3187,7 +3198,7 @@ async function runWhaleRadar() {
 
         whaleRadarCache.whales = whalesArray;
         whaleRadarCache.lastScan = new Date().toLocaleTimeString();
-        
+
         // 🔥 LA MAGIA: Ejecutamos el administrador de nómina
         manageWhaleRoster(whalesArray);
 
