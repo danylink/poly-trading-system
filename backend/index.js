@@ -525,12 +525,14 @@ Responde ESTRICTAMENTE en JSON:
 }
 
 // ==========================================
-// 3B. MOTOR DE IA 2 (GEMINI) - Versión Cuantitativa Anti-Alucinación
+// 3B. MOTOR DE IA 2 (GEMINI) - Versión Anti-Alucinación y Resiliente
 // ==========================================
-async function analyzeMarketWithGemini(marketQuestion, currentNews) {
+async function analyzeMarketWithGemini(marketQuestion, currentNews, retries = 2) {
     console.log("🧠 Gemini Short-Term Analysis...");
-    try {
-        const prompt = `Eres un Senior Quant Trader especializado en Polymarket.
+    
+    for (let attempt = 1; attempt <= retries; attempt++) {
+        try {
+            const prompt = `Eres un Senior Quant Trader especializado en Polymarket.
 
 TUS INSTRUCCIONES:
 Analiza ESTE mercado específico usando SOLO las noticias proporcionadas.
@@ -553,24 +555,34 @@ Responde ESTRICTAMENTE con este JSON:
   "recommendation": "STRONG_BUY" | "BUY" | "WAIT" | "SELL"
 }`;
 
-        const result = await geminiModel.generateContent(prompt);
-        const responseText = result.response.text().trim();
-        const jsonMatch = responseText.match(/\{.*\}/s);
-        if (!jsonMatch) throw new Error("JSON inválido");
-        const data = JSON.parse(jsonMatch[0]);
+            const result = await geminiModel.generateContent(prompt);
+            const responseText = result.response.text().trim();
+            const jsonMatch = responseText.match(/\{.*\}/s);
+            if (!jsonMatch) throw new Error("JSON inválido");
+            const data = JSON.parse(jsonMatch[0]);
 
-        return {
-            isError: false,
-            prob: parseFloat(data.prob) || 0,
-            strategy: data.strategy || "WAIT",
-            urgency: data.urgency || 5,
-            reason: data.reason || "Sin ventaja clara",
-            edge: parseFloat(data.edge) || 0,
-            recommendation: data.recommendation || "WAIT"
-        };
-    } catch (error) {
-        console.error("❌ Error en motor Gemini:", error.message);
-        return { isError: true, prob: 0, strategy: "WAIT", urgency: 0, reason: "Error Gemini API", edge: 0, recommendation: "WAIT" };
+            return {
+                isError: false,
+                prob: parseFloat(data.prob) || 0,
+                strategy: data.strategy || "WAIT",
+                urgency: data.urgency || 5,
+                reason: data.reason || "Sin ventaja clara",
+                edge: parseFloat(data.edge) || 0,
+                recommendation: data.recommendation || "WAIT"
+            };
+
+        } catch (error) {
+            // Si es un error de sobrecarga (503) y nos quedan intentos, esperamos y reintentamos
+            const isOverloaded = error.message.includes('503') || error.message.includes('429');
+            if (isOverloaded && attempt < retries) {
+                console.log(`⚠️ Gemini saturado (Intento ${attempt}/${retries}). Esperando 3s...`);
+                await new Promise(resolve => setTimeout(resolve, 3000));
+                continue;
+            }
+            
+            console.error("❌ Error en motor Gemini:", error.message);
+            return { isError: true, prob: 0, strategy: "WAIT", urgency: 0, reason: "Error Gemini API", edge: 0, recommendation: "WAIT" };
+        }
     }
 }
 
