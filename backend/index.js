@@ -1936,20 +1936,19 @@ async function autoSellManager() {
             continue;
         }
 
-        // ====================== STOP LOSS O PISO DE CRISTAL ======================
+// ====================== STOP LOSS O PISO DE CRISTAL ======================
         if (profit <= riskConfig.stopLossThreshold) {
             
-            // 🔥 FIX QUANT: "Piso de Lotería" (Opciones OTM)
-            const isLotteryTicket = currentSharePrice <= 0.03; // Si vale 3 centavos o menos, está casi muerta
+            // 1. PISO DE LOTERÍA (Te protege de mercados realmente muertos)
+            const isLotteryTicket = currentSharePrice <= 0.03; 
             const totalValueLeft = parseFloat(pos.currentValue || 0);
-            const isWorthRescuing = totalValueLeft >= 0.50;    // Si vamos a rescatar menos de 50 centavos, no vale la pena
+            const isWorthRescuing = totalValueLeft >= 0.50;    
 
             if (isLotteryTicket || !isWorthRescuing) {
-                // Silenciosamente lo ignoramos para no spamear la terminal, excepto de vez en cuando
                 if (profit <= (riskConfig.stopLossThreshold - 10)) { 
-                    console.log(`🎫 [MOONSHOT] ${marketNameShort} tocó SL pero vale migajas ($${currentSharePrice.toFixed(2)}). Se deja a expiración como billete de lotería.`);
+                    console.log(`🎫 [MOONSHOT] ${marketNameShort} tocó SL pero vale migajas ($${currentSharePrice.toFixed(2)}). Se deja a expiración.`);
                 }
-                continue; // Saltamos a la siguiente posición sin vender
+                continue; 
             }
 
             console.log(`🛑 STOP LOSS DETECTADO [${originTag}-${profileType}]: ${marketNameShort} (${profit.toFixed(1)}%)`);
@@ -1963,6 +1962,16 @@ async function autoSellManager() {
 
                 const sharesToSell = parseFloat(pos.exactSize || pos.size || 0);
                 let bestBidPrice = parseFloat(bids[0].price);
+
+                // 🔥 2. NUEVO ESCUDO DE LIQUIDEZ (Te protege de robos de Orderbook)
+                // Comparamos el valor teórico ($0.55) contra la burla que ofrecen ($0.01)
+                const spreadDropPct = currentSharePrice > 0 ? ((currentSharePrice - bestBidPrice) / currentSharePrice) * 100 : 0;
+                
+                // Si nos intentan pagar un 35% MENOS de lo que vale la acción hoy, abortamos la venta.
+                if (spreadDropPct > 35) {
+                    console.log(`⚠️ [ALERTA LIQUIDEZ] Abortando SL en ${marketNameShort}. Valor teórico: $${currentSharePrice.toFixed(2)}, pero ofrecen $${bestBidPrice.toFixed(2)} (-${spreadDropPct.toFixed(1)}%).`);
+                    continue; // Detiene la venta y espera a que regresen compradores reales
+                }
 
                 if (bestBidPrice <= 0.001) bestBidPrice = 0.001;
 
