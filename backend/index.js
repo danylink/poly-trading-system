@@ -1894,7 +1894,7 @@ async function runBot() {
 }
 
 // ==========================================
-// AUTO SELL MANAGER - VERSIÓN QUANT (TP + SL + Techo de Cristal)
+// AUTO SELL MANAGER - VERSIÓN FINAL QUANT (TP Parcial + TP Total + SL + Stats)
 // ==========================================
 async function autoSellManager() {
     if (!botStatus.autoTradeEnabled) return;
@@ -1924,9 +1924,60 @@ async function autoSellManager() {
             console.log(`📊 [AUTO-SELL] ${originTag}-${profileType} | ${marketNameShort} | PnL: ${profit.toFixed(1)}% | Precio Acc: $${currentSharePrice.toFixed(2)}`);
         }
 
-// ====================== TAKE PROFIT O TECHO DE CRISTAL ======================
-        // Vendemos si cruza tu regla del panel (28%) OR si toca los 95 centavos
-        if (profit >= riskConfig.takeProfitThreshold || isMaxPriceReached) {
+        // Inicializamos la memoria de Parciales si no existe
+        if (!botStatus.partialSells) botStatus.partialSells = [];
+        const hasDonePartial = botStatus.partialSells.includes(pos.tokenId);
+
+        // ====================== 🌓 TAKE PROFIT PARCIAL (HOUSE MONEY) ======================
+        // REGLA: Si es ballena (largo plazo), superó el 45% de ganancia y NO hemos tomado el parcial
+        if (isWhaleTrade && profit >= 45 && !hasDonePartial) {
+            console.log(`🌓 [TP PARCIAL] ${originTag}-${profileType} | ${marketNameShort} superó +45%. Asegurando 50% del capital...`);
+
+            try {
+                const bookResp = await axios.get(`https://clob.polymarket.com/book?token_id=${pos.tokenId}`, 
+                    { httpsAgent: agent, timeout: 6500 });
+                const bids = bookResp.data?.bids || [];
+                
+                if (bids.length > 0) {
+                    const bestPrice = parseFloat(bids[0].price);
+                    const spreadDropPct = currentSharePrice > 0 ? ((currentSharePrice - bestPrice) / currentSharePrice) * 100 : 0;
+                    
+                    // Escudo de Liquidez para el parcial
+                    if (spreadDropPct <= 35 && bestPrice > 0.005) {
+                        
+                        // 🔥 LA MAGIA QUANT: Vendemos exactamente el 50% de las acciones
+                        const halfShares = parseFloat(pos.exactSize || pos.size || 0) / 2;
+                        
+                        const result = await executeSellOnChain(pos.conditionId || null, pos.tokenId, halfShares, bestPrice, "0.01");
+                        
+                        if (result?.success) {
+                            botStatus.partialSells.push(pos.tokenId);
+                            saveConfigToDisk("Take Profit Parcial Ejecutado");
+                            await updateRealBalances();
+
+                            const alerta = `🌓 *TAKE PROFIT PARCIAL (50%)*\n` +
+                                           `Origen: ${originTag} ${profileType}\n\n` +
+                                           `📈 Mercado: *${marketNameShort}*\n` +
+                                           `🎯 PnL de la posición: *+${profit.toFixed(1)}%*\n` +
+                                           `🛡️ *Estrategia:* Se aseguró el 50% de la posición en efectivo. El resto se deja correr gratis ("House Money").`;
+                            
+                            await sendAlert(alerta);
+                        }
+                    } else {
+                        console.log(`⚠️ [ALERTA LIQUIDEZ TP PARCIAL] Abortando en ${marketNameShort}. Valor teórico: $${currentSharePrice.toFixed(2)}, ofrecen $${bestPrice.toFixed(2)}.`);
+                    }
+                }
+            } catch (e) {
+                console.error(`❌ Error TP Parcial:`, e.message);
+            }
+            continue; // Saltamos a la siguiente iteración para no ejecutar la venta total de inmediato
+        }
+
+        // ====================== 🌕 TAKE PROFIT TOTAL O TECHO DE CRISTAL ======================
+        // Si ya hicimos un TP parcial, la mitad restante es paciente (exige 80%). Si no, usa tu regla normal.
+        const effectiveTpThreshold = (isWhaleTrade && hasDonePartial) ? 80 : riskConfig.takeProfitThreshold;
+
+        if (profit >= effectiveTpThreshold || isMaxPriceReached) {
             console.log(`📈 TAKE PROFIT EJECUTADO [${originTag}-${profileType}]: ${marketNameShort} (PnL: +${profit.toFixed(1)}% | Techo: ${isMaxPriceReached})`);
 
             try {
@@ -2840,13 +2891,6 @@ app.post('/api/custom-whales', (req, res) => {
 
         const normalizedAddress = trimmedAddress.toLowerCase();
 
-        if (botStatus.customWhales.length > 20) {
-            return res.status(400).json({ 
-                success: false, 
-                error: "Máximo 20 ballenas custom permitidas" 
-            });
-        }
-
         const exists = botStatus.customWhales.some(w => 
             w.address.toLowerCase() === normalizedAddress
         );
@@ -3143,12 +3187,61 @@ async function runWhaleRadar() {
 
         whaleRadarCache.whales = whalesArray;
         whaleRadarCache.lastScan = new Date().toLocaleTimeString();
+        
+        // 🔥 LA MAGIA: Ejecutamos el administrador de nómina
+        manageWhaleRoster(whalesArray);
+
         console.log(`✅ [RADAR] Escaneo completo. Top 1 detectado: ${whalesArray[0]?.nickname || 'N/A'}`);
 
     } catch (error) {
         console.error("❌ [RADAR] Error escaneando:", error.message);
     } finally {
         whaleRadarCache.isScanning = false;
+    }
+}
+
+// ==========================================
+// 🏢 RECURSOS HUMANOS QUANT (Auto-Gestión de Ballenas)
+// ==========================================
+function manageWhaleRoster(radarWhales) {
+    if (!botStatus.copyTradingCustomEnabled) return;
+
+    const now = Date.now();
+    let removedZombies = 0;
+    let addedTopWhales = 0;
+
+    // 1. DESPEDIR ZOMBIES (Más de 15 días inactivos)
+    botStatus.customWhales = botStatus.customWhales.filter(whale => {
+        if (whale.lastActive) {
+            const diffDays = (now - whale.lastActive) / (1000 * 60 * 60 * 24);
+            if (diffDays > 15) {
+                console.log(`🧟‍♂️ [AUTO-CLEAN] Eliminando ballena Zombie: ${whale.nickname || whale.address}`);
+                removedZombies++;
+                return false; // Expulsada
+            }
+        }
+        return true; // Conservada
+    });
+
+    // 2. CONTRATAR TALENTO FRESCO (Relevancia >= 60% o Estrellas >= 4)
+    for (const rw of radarWhales) {
+        if (rw.stars >= 4) {
+            const exists = botStatus.customWhales.some(w => w.address.toLowerCase() === rw.address.toLowerCase());
+            if (!exists) {
+                botStatus.customWhales.push({
+                    address: rw.address.toLowerCase(),
+                    nickname: rw.nickname || "Auto-Quant",
+                    enabled: true,
+                    lastActive: rw.rawTimestamp ? rw.rawTimestamp * 1000 : Date.now() // Guardamos en milisegundos
+                });
+                console.log(`🌟 [AUTO-HIRE] Nueva ballena Top agregada a Custom: ${rw.nickname || rw.address}`);
+                addedTopWhales++;
+            }
+        }
+    }
+
+    if (removedZombies > 0 || addedTopWhales > 0) {
+        saveConfigToDisk("Auto-Gestión de Ballenas (RRHH)");
     }
 }
 

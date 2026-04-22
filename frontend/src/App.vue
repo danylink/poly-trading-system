@@ -2234,7 +2234,7 @@ onUnmounted(() => {
                   <h3 class="text-white font-black text-lg tracking-tight">Copy Trading Custom</h3>
                   <span class="text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-md border"
                         :class="(status.customWhales?.length || 0) >= 20 ? 'bg-rose-500/10 text-rose-400 border-rose-500/30' : 'bg-purple-500/10 text-purple-400 border-purple-500/30'">
-                    {{ status.customWhales?.length || 0 }} / 20 MAX
+                    {{ status.customWhales?.length || 0 }}
                   </span>
                 </div>
                 <p class="text-xs text-zinc-500 font-medium">Agrega y controla tus propias ballenas</p>
@@ -2347,20 +2347,17 @@ onUnmounted(() => {
             <div class="flex flex-col sm:flex-row gap-3">
               <input 
                 v-model="newWhaleAddress"
-                :disabled="(status.customWhales?.length || 0) >= 20"
                 :placeholder="(status.customWhales?.length || 0) >= 20 ? 'Límite de 10 ballenas alcanzado' : '0x1234...abcd'"
                 class="w-full sm:flex-1 bg-[#09090b] border border-zinc-700 rounded-2xl px-4 py-3 text-sm font-mono focus:outline-none focus:border-purple-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               />
               <div class="flex gap-3 w-full sm:w-auto">
                 <input 
                   v-model="newWhaleNickname"
-                  :disabled="(status.customWhales?.length || 0) >= 20"
                   placeholder="Nickname (opcional)"
                   class="flex-1 sm:w-36 bg-[#09090b] border border-zinc-700 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-purple-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 />
                 <button 
                   @click="addCustomWhale"
-                  :disabled="(status.customWhales?.length || 0) >= 20"
                   class="px-6 py-3 rounded-2xl font-bold text-sm transition-all whitespace-nowrap shrink-0 shadow-lg disabled:cursor-not-allowed"
                   :class="(status.customWhales?.length || 0) >= 20 ? 'bg-zinc-800 text-zinc-500 shadow-none' : 'bg-purple-600 hover:bg-purple-500 text-white'">
                   Agregar
