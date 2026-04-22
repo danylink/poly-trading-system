@@ -774,6 +774,10 @@ function isMarketAllowed(title = "", slug = "") {
     const isPop = text.match(/movie|oscar|grammy|mrbeast|box office|pop culture|youtube|tiktok|spotify|billboard/i);
     const isBusiness = text.match(/fed|interest rate|inflation|cpi|business|elon|tesla|openai|gdp|economy|apple|microsoft/i);
 
+    // 🔥 FILTRO QUANT: Bloquear mercados de conteo sin datos en vivo
+    const isCountingMarket = text.match(/truth social posts|tweets|posts from|how many times/i);
+    if (isCountingMarket) return false;
+
     // Si el filtro de deportes está APAGADO en el panel frontal, bloqueamos a la menor provocación
     if (isSports && !botStatus.marketFilters.sports) return false;
     
