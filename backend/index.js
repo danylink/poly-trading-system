@@ -1932,8 +1932,22 @@ async function autoSellManager() {
             continue;
         }
 
-        // ====================== STOP LOSS ======================
+        // ====================== STOP LOSS O PISO DE CRISTAL ======================
         if (profit <= riskConfig.stopLossThreshold) {
+            
+            // 🔥 FIX QUANT: "Piso de Lotería" (Opciones OTM)
+            const isLotteryTicket = currentSharePrice <= 0.03; // Si vale 3 centavos o menos, está casi muerta
+            const totalValueLeft = parseFloat(pos.currentValue || 0);
+            const isWorthRescuing = totalValueLeft >= 0.50;    // Si vamos a rescatar menos de 50 centavos, no vale la pena
+
+            if (isLotteryTicket || !isWorthRescuing) {
+                // Silenciosamente lo ignoramos para no spamear la terminal, excepto de vez en cuando
+                if (profit <= (riskConfig.stopLossThreshold - 10)) { 
+                    console.log(`🎫 [MOONSHOT] ${marketNameShort} tocó SL pero vale migajas ($${currentSharePrice.toFixed(2)}). Se deja a expiración como billete de lotería.`);
+                }
+                continue; // Saltamos a la siguiente posición sin vender
+            }
+
             console.log(`🛑 STOP LOSS DETECTADO [${originTag}-${profileType}]: ${marketNameShort} (${profit.toFixed(1)}%)`);
 
             try {
