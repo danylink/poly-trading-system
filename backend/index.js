@@ -211,12 +211,8 @@ let botStatus = {
     copyMinWhaleSize: 150,           // ← Tamaño de Trade Minimo
     copyTimeWindowMinutes: 45,       // ← Ventana de tiempo para volver a checar los trades
     lastTrades: {}, // Objeto para controlar el Cooldown: { tokenId: timestamp }
-    tradingStats: {
-        wins: 0,
-        losses: 0,
-        totalTrades: 0,
-        winRate: 0.0
-    },
+    aiStats: { wins: 0, losses: 0, totalTrades: 0, winRate: 0.0 },
+    whaleStats: { wins: 0, losses: 0, totalTrades: 0, winRate: 0.0 },
 };
 
 
@@ -1946,13 +1942,13 @@ async function autoSellManager() {
                 if (result?.success) {
                     closedPositionsCache.add(pos.tokenId);
                     
-                    // Sumamos la VICTORIA a las estadísticas
-                    if (!botStatus.tradingStats) {
-                        botStatus.tradingStats = { wins: 0, losses: 0, totalTrades: 0, winRate: 0.0 };
-                    }
-                    botStatus.tradingStats.wins += 1;
-                    botStatus.tradingStats.totalTrades += 1;
-                    botStatus.tradingStats.winRate = (botStatus.tradingStats.wins / botStatus.tradingStats.totalTrades) * 100;
+                    // 🔥 SEPARACIÓN DE ESTADÍSTICAS
+                    const targetStats = isWhaleTrade ? botStatus.whaleStats : botStatus.aiStats;
+                    
+                    targetStats.wins += 1;
+                    targetStats.totalTrades += 1;
+                    targetStats.winRate = (targetStats.wins / targetStats.totalTrades) * 100;
+                    saveConfigToDisk(`TP ${originTag} - Stats Actualizadas`);
                     
                     await updateRealBalances();
                     await cleanupCopiedTrades();
@@ -2056,10 +2052,14 @@ async function autoSellManager() {
                 if (result?.success) {
                     closedPositionsCache.add(pos.tokenId);
 
-                    // 🔥 ACTUALIZAR ESTADÍSTICAS (DERROTA)
-                    botStatus.tradingStats.losses += 1;
-                    botStatus.tradingStats.totalTrades += 1;
-                    botStatus.tradingStats.winRate = (botStatus.tradingStats.wins / botStatus.tradingStats.totalTrades) * 100;
+                    // 🔥 SEPARACIÓN DE ESTADÍSTICAS
+                    const targetStats = isWhaleTrade ? botStatus.whaleStats : botStatus.aiStats;
+                    
+                    targetStats.losses += 1;
+                    targetStats.totalTrades += 1;
+                    targetStats.winRate = (targetStats.wins / targetStats.totalTrades) * 100;
+                    
+                    saveConfigToDisk(`SL ${originTag} - Stats Actualizadas`);
                     
                     await updateRealBalances();
                     await cleanupCopiedTrades();

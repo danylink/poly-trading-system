@@ -799,6 +799,12 @@ const formatLastSeen = (lastActive) => {
   return `Hace ${Math.floor(diffHours / 24)} días`;
 };
 
+const getWinRateColor = (rate) => {
+  if (rate >= 65) return 'text-emerald-400';
+  if (rate >= 50) return 'text-[#D4AF37]'; // Color dorado para el nivel medio
+  return 'text-rose-500';
+};
+
 // --- COMPUTED PROPERTIES ---
 
 // 1. Valor total de las posiciones que siguen vivas
@@ -962,7 +968,7 @@ onUnmounted(() => {
             </div>
           </div>
 
-          <div class="grid grid-cols-1 md:grid-cols-3 gap-5 relative z-10"> 
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-5 relative z-10 mb-6"> 
             
             <div class="bg-[#1c1917] border-2 border-[#D4AF37] p-5 rounded-3xl shadow-[0_0_20px_rgba(212,175,55,0.2)] relative overflow-hidden group flex flex-col justify-center">
               <div class="absolute -right-6 -top-6 opacity-10"><Target :size="80" class="text-[#D4AF37]" /></div>
@@ -1028,8 +1034,60 @@ onUnmounted(() => {
               <p class="text-[9px] uppercase font-black text-zinc-500 tracking-widest mb-1">IA Confidence</p>
               <h3 class="text-2xl font-bold font-mono" :class="probColor">{{ (status.lastProbability * 100).toFixed(1) }}%</h3>
             </div>
-
           </div>
+
+          <div class="pt-6 border-t border-zinc-800/50 relative z-10">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+              
+              <div class="bg-[#0a0806] border border-zinc-800/80 rounded-2xl p-5 flex flex-col justify-between hover:border-[#D4AF37]/40 transition-all group/ia">
+                <div class="flex justify-between items-center mb-4">
+                  <span class="text-[10px] text-zinc-500 group-hover/ia:text-[#D4AF37]/80 font-black uppercase tracking-widest transition-colors">Motor de IA (Trinidad)</span>
+                  <Bot class="w-4 h-4 text-zinc-600 group-hover/ia:text-[#D4AF37]/60 transition-colors" />
+                </div>
+                <div class="flex items-end justify-between mb-3">
+                  <span class="text-4xl font-black tracking-tighter font-mono" :class="getWinRateColor(status.aiStats?.winRate || 0)">
+                    {{ (status.aiStats?.winRate || 0).toFixed(1) }}%
+                  </span>
+                  <div class="text-[10px] font-mono font-bold text-zinc-500 bg-zinc-900/50 px-2 py-1.5 rounded-lg border border-zinc-800/80 flex gap-2">
+                    <span>W: <span class="text-emerald-400">{{ status.aiStats?.wins || 0 }}</span></span>
+                    <span class="text-zinc-700">|</span>
+                    <span>L: <span class="text-rose-500">{{ status.aiStats?.losses || 0 }}</span></span>
+                  </div>
+                </div>
+                <div class="w-full h-1.5 bg-zinc-900 rounded-full overflow-hidden flex">
+                  <div :style="{ width: (status.aiStats?.winRate || 0) + '%' }" 
+                       class="h-full transition-all duration-1000" 
+                       :class="(status.aiStats?.winRate || 0) >= 50 ? 'bg-emerald-500/70' : 'bg-rose-500/70'">
+                  </div>
+                </div>
+              </div>
+
+              <div class="bg-[#0a0806] border border-zinc-800/80 rounded-2xl p-5 flex flex-col justify-between hover:border-[#D4AF37]/40 transition-all group/whale">
+                <div class="flex justify-between items-center mb-4">
+                  <span class="text-[10px] text-zinc-500 group-hover/whale:text-[#D4AF37]/80 font-black uppercase tracking-widest transition-colors">Copy Trading (Ballenas)</span>
+                  <Target class="w-4 h-4 text-zinc-600 group-hover/whale:text-[#D4AF37]/60 transition-colors" />
+                </div>
+                <div class="flex items-end justify-between mb-3">
+                  <span class="text-4xl font-black tracking-tighter font-mono" :class="getWinRateColor(status.whaleStats?.winRate || 0)">
+                    {{ (status.whaleStats?.winRate || 0).toFixed(1) }}%
+                  </span>
+                  <div class="text-[10px] font-mono font-bold text-zinc-500 bg-zinc-900/50 px-2 py-1.5 rounded-lg border border-zinc-800/80 flex gap-2">
+                    <span>W: <span class="text-emerald-400">{{ status.whaleStats?.wins || 0 }}</span></span>
+                    <span class="text-zinc-700">|</span>
+                    <span>L: <span class="text-rose-500">{{ status.whaleStats?.losses || 0 }}</span></span>
+                  </div>
+                </div>
+                <div class="w-full h-1.5 bg-zinc-900 rounded-full overflow-hidden flex">
+                  <div :style="{ width: (status.whaleStats?.winRate || 0) + '%' }" 
+                       class="h-full transition-all duration-1000" 
+                       :class="(status.whaleStats?.winRate || 0) >= 50 ? 'bg-[#D4AF37]/70' : 'bg-rose-500/70'">
+                  </div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+          
         </div>
 
         <!-- ====================== POSICIONES EN VIVO SECTION ====================== -->
