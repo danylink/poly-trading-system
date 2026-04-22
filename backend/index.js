@@ -210,7 +210,13 @@ let botStatus = {
     maxCopyMarketsPerWhale: 1,     // 1 = por defecto (1 mercado por ballena)
     copyMinWhaleSize: 150,           // ← Tamaño de Trade Minimo
     copyTimeWindowMinutes: 45,       // ← Ventana de tiempo para volver a checar los trades
-    lastTrades: {} // Objeto para controlar el Cooldown: { tokenId: timestamp }
+    lastTrades: {}, // Objeto para controlar el Cooldown: { tokenId: timestamp }
+    tradingStats: {
+        wins: 0,
+        losses: 0,
+        totalTrades: 0,
+        winRate: 0.0
+    },
 };
 
 
@@ -1904,7 +1910,7 @@ async function autoSellManager() {
             console.log(`📊 [AUTO-SELL] ${originTag}-${profileType} | ${marketNameShort} | PnL: ${profit.toFixed(1)}% | Precio Acc: $${currentSharePrice.toFixed(2)}`);
         }
 
-        // ====================== TAKE PROFIT O TECHO DE CRISTAL ======================
+// ====================== TAKE PROFIT O TECHO DE CRISTAL ======================
         // Vendemos si cruza tu regla del panel (28%) OR si toca los 95 centavos
         if (profit >= riskConfig.takeProfitThreshold || isMaxPriceReached) {
             console.log(`📈 TAKE PROFIT EJECUTADO [${originTag}-${profileType}]: ${marketNameShort} (PnL: +${profit.toFixed(1)}% | Techo: ${isMaxPriceReached})`);
@@ -1919,6 +1925,14 @@ async function autoSellManager() {
                 const sharesToSell = parseFloat(pos.exactSize || pos.size || 0);
                 const bestPrice = parseFloat(bids[0].price);
 
+                // 🔥 FIX QUANT: ESCUDO DE LIQUIDEZ PARA TAKE PROFIT
+                const spreadDropPct = currentSharePrice > 0 ? ((currentSharePrice - bestPrice) / currentSharePrice) * 100 : 0;
+                
+                if (spreadDropPct > 35) {
+                    console.log(`⚠️ [ALERTA LIQUIDEZ TP] Abortando Take Profit en ${marketNameShort}. Valor teórico: $${currentSharePrice.toFixed(2)}, pero ofrecen $${bestPrice.toFixed(2)} (-${spreadDropPct.toFixed(1)}%). No regalaremos la ganancia.`);
+                    continue; // Detiene la venta y espera a que regresen compradores reales
+                }
+
                 if (bestPrice <= 0.005) continue;
 
                 const result = await executeSellOnChain(
@@ -1931,6 +1945,14 @@ async function autoSellManager() {
 
                 if (result?.success) {
                     closedPositionsCache.add(pos.tokenId);
+                    
+                    // Sumamos la VICTORIA a las estadísticas
+                    if (!botStatus.tradingStats) {
+                        botStatus.tradingStats = { wins: 0, losses: 0, totalTrades: 0, winRate: 0.0 };
+                    }
+                    botStatus.tradingStats.wins += 1;
+                    botStatus.tradingStats.totalTrades += 1;
+                    botStatus.tradingStats.winRate = (botStatus.tradingStats.wins / botStatus.tradingStats.totalTrades) * 100;
                     
                     await updateRealBalances();
                     await cleanupCopiedTrades();
@@ -1969,7 +1991,7 @@ async function autoSellManager() {
             continue;
         }
 
-// ====================== STOP LOSS O PISO DE CRISTAL ======================
+        // ====================== STOP LOSS O PISO DE CRISTAL ======================
         if (profit <= riskConfig.stopLossThreshold) {
             
             // 1. PISO DE LOTERÍA (Te protege de mercados realmente muertos)
@@ -2033,6 +2055,11 @@ async function autoSellManager() {
 
                 if (result?.success) {
                     closedPositionsCache.add(pos.tokenId);
+
+                    // 🔥 ACTUALIZAR ESTADÍSTICAS (DERROTA)
+                    botStatus.tradingStats.losses += 1;
+                    botStatus.tradingStats.totalTrades += 1;
+                    botStatus.tradingStats.winRate = (botStatus.tradingStats.wins / botStatus.tradingStats.totalTrades) * 100;
                     
                     await updateRealBalances();
                     await cleanupCopiedTrades();
