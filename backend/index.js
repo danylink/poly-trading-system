@@ -1837,7 +1837,7 @@ async function runBot() {
 }
 
 // ==========================================
-// AUTO SELL MANAGER - VERSIÓN FINAL MEJORADA (TP + SL Homologados + Cleanup)
+// AUTO SELL MANAGER - VERSIÓN QUANT (TP + SL + Techo de Cristal)
 // ==========================================
 async function autoSellManager() {
     if (!botStatus.autoTradeEnabled) return;
@@ -1848,6 +1848,12 @@ async function autoSellManager() {
         const profit = pos.percentPnl || 0;
         const marketNameShort = (pos.marketName || "Mercado desconocido").substring(0, 45);
 
+        // 🔥 FIX QUANT: Calculamos el precio actual por acción
+        const currentSharePrice = pos.exactSize > 0 ? (parseFloat(pos.currentValue) / parseFloat(pos.exactSize)) : 0;
+        
+        // 🔥 REGLA DEL TECHO DE CRISTAL: Venta forzada si toca los 95 centavos
+        const isMaxPriceReached = currentSharePrice >= 0.95;
+
         let isWhaleTrade = botStatus.copiedPositions.some(cp => cp.tokenId === pos.tokenId);
         if (!isWhaleTrade) {
             isWhaleTrade = botStatus.copiedTrades.some(ct => ct.tokenId === pos.tokenId);
@@ -1856,11 +1862,15 @@ async function autoSellManager() {
         const { config: riskConfig, profileType } = getRiskProfile(pos.marketName, isWhaleTrade);
         const originTag = isWhaleTrade ? 'WHALE' : 'IA';
 
-        console.log(`📊 [AUTO-SELL] ${originTag}-${profileType} | ${marketNameShort} | PnL: ${profit.toFixed(1)}%`);
+        // Solo mostramos el log si está cerca de los límites para no saturar la terminal
+        if (profit >= (riskConfig.takeProfitThreshold - 5) || profit <= (riskConfig.stopLossThreshold + 5) || currentSharePrice >= 0.90) {
+            console.log(`📊 [AUTO-SELL] ${originTag}-${profileType} | ${marketNameShort} | PnL: ${profit.toFixed(1)}% | Precio Acc: $${currentSharePrice.toFixed(2)}`);
+        }
 
-        // ====================== TAKE PROFIT ======================
-        if (profit >= riskConfig.takeProfitThreshold) {
-            console.log(`📈 TAKE PROFIT EJECUTADO [${originTag}-${profileType}]: ${marketNameShort} (+${profit.toFixed(1)}%)`);
+        // ====================== TAKE PROFIT O TECHO DE CRISTAL ======================
+        // Vendemos si cruza tu regla del panel (28%) OR si toca los 95 centavos
+        if (profit >= riskConfig.takeProfitThreshold || isMaxPriceReached) {
+            console.log(`📈 TAKE PROFIT EJECUTADO [${originTag}-${profileType}]: ${marketNameShort} (PnL: +${profit.toFixed(1)}% | Techo: ${isMaxPriceReached})`);
 
             try {
                 const bookResp = await axios.get(`https://clob.polymarket.com/book?token_id=${pos.tokenId}`, 
@@ -1886,9 +1896,8 @@ async function autoSellManager() {
                     closedPositionsCache.add(pos.tokenId);
                     
                     await updateRealBalances();
-                    await cleanupCopiedTrades();   // ← LIMPIEZA AQUÍ
+                    await cleanupCopiedTrades();
 
-                    // Cálculo real de Cartera Total
                     const metaMaskVal = parseFloat(botStatus.walletOnlyUSDC || 0);
                     const polyVal = parseFloat(botStatus.clobOnlyUSDC || 0);
                     const unclaimedVal = parseFloat(botStatus.unclaimedUSDC || 0);
@@ -1899,10 +1908,14 @@ async function autoSellManager() {
 
                     const carteraTotal = (metaMaskVal + polyVal + unclaimedVal + activePosValue).toFixed(2);
 
+                    // Mensaje dinámico para Telegram
+                    const motivoVenta = isMaxPriceReached ? "Techo de $0.95 asegurado" : `Meta de +${profit.toFixed(1)}% superada`;
+
                     const alerta = `✅ *TAKE PROFIT EJECUTADO* ✅\n` +
-                                `Origen: ${originTag} ${profileType}\n\n` +
+                                `Origen: ${originTag} ${profileType}\n` +
+                                `Motivo: ${motivoVenta}\n\n` +
                                 `📈 Mercado: *${marketNameShort}*\n` +
-                                `💰 Ganancia en este mercado: *+$${pos.cashPnl ? pos.cashPnl.toFixed(2) : '0.00'} (+${profit.toFixed(1)}%)*\n\n` +
+                                `💰 Ganancia en este mercado: *+$${pos.cashPnl ? pos.cashPnl.toFixed(2) : '0.00'}*\n\n` +
                                 `💰 *Cartera Total:* $${carteraTotal} USDC\n` +
                                 `🟢 Disponible (Poly): *$${polyVal.toFixed(2)} USDC*\n` +
                                 `🦊 MetaMask Wallet: *$${metaMaskVal.toFixed(2)} USDC*`;
@@ -1962,7 +1975,7 @@ async function autoSellManager() {
                     closedPositionsCache.add(pos.tokenId);
                     
                     await updateRealBalances();
-                    await cleanupCopiedTrades();   // ← LIMPIEZA AQUÍ TAMBIÉN
+                    await cleanupCopiedTrades();
 
                     const metaMaskVal = parseFloat(botStatus.walletOnlyUSDC || 0);
                     const polyVal = parseFloat(botStatus.clobOnlyUSDC || 0);
