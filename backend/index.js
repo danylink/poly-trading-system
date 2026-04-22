@@ -1344,6 +1344,26 @@ async function checkAndCopyWhaleTrades() {
                     ? response.data 
                     : (response.data.data || response.data.trades || []);
 
+                // ==========================================================
+                // 🔥 NUEVO RADAR DE ACTIVIDAD: Registrar el último movimiento
+                // ==========================================================
+                if (recentTrades.length > 0) {
+                    const latestTrade = recentTrades[0];
+                    const lastTimestamp = String(latestTrade.timestamp).length === 10 
+                        ? parseInt(latestTrade.timestamp) * 1000 
+                        : parseInt(latestTrade.timestamp);
+                    
+                    // Buscamos si es una ballena custom para actualizar su registro
+                    const customWhaleIndex = botStatus.customWhales.findIndex(w => 
+                        w.address.toLowerCase() === whale.address.toLowerCase()
+                    );
+                    
+                    if (customWhaleIndex !== -1) {
+                        botStatus.customWhales[customWhaleIndex].lastActive = lastTimestamp;
+                    }
+                }
+                // ==========================================================
+
                 for (const trade of recentTrades) {
                     if (!trade) continue;
 
@@ -1486,6 +1506,7 @@ async function checkAndCopyWhaleTrades() {
     } finally {
         isScanningWhales = false;
         await cleanupCopiedState();
+        saveConfigToDisk("Actualización de Actividad de Ballenas"); // 🔥 NUEVO GUARDADO
     }
 }
 

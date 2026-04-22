@@ -773,6 +773,32 @@ const saveEditedRule = async (index) => {
   }
 };
 
+// ==========================================
+// 📡 RADAR DE BALLENAS ZOMBIE
+// ==========================================
+const getWhaleStatus = (lastActive) => {
+  if (!lastActive) return { color: 'text-zinc-500', label: 'Sin datos', bg: 'bg-zinc-500/10' };
+  
+  const now = Date.now();
+  const diffDays = Math.floor((now - lastActive) / (1000 * 60 * 60 * 24));
+
+  if (diffDays <= 3) return { color: 'text-emerald-400', label: 'Activa', bg: 'bg-emerald-400/10' };
+  if (diffDays <= 7) return { color: 'text-amber-400', label: 'Poco activa', bg: 'bg-amber-400/10' };
+  if (diffDays <= 15) return { color: 'text-orange-500', label: 'Inactiva', bg: 'bg-orange-500/10' };
+  
+  return { color: 'text-rose-500', label: 'ZOMBIE', bg: 'bg-rose-500/10' };
+};
+
+const formatLastSeen = (lastActive) => {
+  if (!lastActive) return 'Nunca operó';
+  const diffHours = Math.floor((Date.now() - lastActive) / (1000 * 60 * 60));
+  
+  if (diffHours < 24) {
+    return diffHours === 0 ? 'Hace un momento' : `Hace ${diffHours}h`;
+  }
+  return `Hace ${Math.floor(diffHours / 24)} días`;
+};
+
 // --- COMPUTED PROPERTIES ---
 
 // 1. Valor total de las posiciones que siguen vivas
@@ -2161,24 +2187,44 @@ onUnmounted(() => {
             <!-- Lista de ballenas -->
             <div v-if="status.customWhales && status.customWhales.length > 0" class="max-h-52 overflow-y-auto custom-scroll space-y-2 pr-2">
               <div v-for="(whale, index) in status.customWhales" :key="index"
-                  class="bg-[#09090b] border border-zinc-800/80 rounded-xl p-3.5 flex justify-between items-center hover:border-purple-500/30 transition-colors group">
-                <div class="flex items-center gap-3 truncate pr-2">
+                  class="bg-[#0a0806] border border-amber-600/30 rounded-xl p-3.5 flex justify-between items-center hover:border-amber-500/60 transition-colors group">
+                <div class="flex items-center gap-3 truncate pr-2 w-full">
+                  
                   <input 
                     type="checkbox" 
                     v-model="whale.enabled"
                     @change="toggleCustomWhale(whale.address)"
-                    class="w-4 h-4 accent-purple-500 shrink-0"
+                    class="w-4 h-4 accent-amber-500 shrink-0"
                   />
-                  <div class="truncate">
-                    <div class="font-mono text-purple-400/80 text-xs font-medium group-hover:text-purple-400 truncate">
-                      {{ whale.address.substring(0,8) }}...{{ whale.address.slice(-6) }}
+                  
+                  <div class="flex flex-col truncate gap-0.5 w-full">
+                    <div class="flex items-center gap-2">
+                      <div class="font-mono text-amber-400/80 text-xs font-medium group-hover:text-amber-400 truncate">
+                        {{ whale.address.substring(0,8) }}...{{ whale.address.slice(-6) }}
+                      </div>
+                      
+                      <span :class="[getWhaleStatus(whale.lastActive).bg, getWhaleStatus(whale.lastActive).color]" 
+                            class="text-[9px] px-1.5 py-0.5 rounded-full font-black uppercase tracking-tighter border border-current/20">
+                        {{ getWhaleStatus(whale.lastActive).label }}
+                      </span>
                     </div>
-                    <div v-if="whale.nickname" class="text-[10px] text-zinc-500 truncate">{{ whale.nickname }}</div>
+                    
+                    <div class="flex items-center justify-between pr-2">
+                      <div v-if="whale.nickname" class="text-[10px] text-amber-600/70 truncate font-semibold uppercase tracking-wider">
+                        {{ whale.nickname }}
+                      </div>
+                      
+                      <div class="text-[9px] font-mono font-bold ml-auto" :class="getWhaleStatus(whale.lastActive).color">
+                        {{ formatLastSeen(whale.lastActive) }}
+                      </div>
+                    </div>
                   </div>
+
                 </div>
+                
                 <button 
                   @click="deleteCustomWhale(whale.address)"
-                  class="text-rose-400 hover:text-rose-500 text-xs font-medium px-3 py-1 shrink-0 bg-rose-500/10 rounded-lg">
+                  class="text-rose-400 hover:text-rose-500 text-[10px] font-bold uppercase tracking-wider px-3 py-1.5 shrink-0 bg-rose-500/10 rounded-lg transition-colors hover:bg-rose-500/20">
                   Eliminar
                 </button>
               </div>
