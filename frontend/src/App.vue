@@ -2126,7 +2126,7 @@ onUnmounted(() => {
             <Cpu :size="150" class="text-emerald-500" />
           </div>
           
-          <div class="flex items-center justify-between relative z-10">
+          <div class="flex items-center justify-between relative z-10 mb-6">
             <div class="flex items-center gap-4">
               <div class="p-3.5 rounded-2xl border transition-colors duration-500 shadow-inner shrink-0 bg-emerald-500/10 border-emerald-500/20 text-emerald-400">
                 <Cpu :size="24" />
@@ -2142,95 +2142,26 @@ onUnmounted(() => {
               <div class="w-11 h-6 bg-[#09090b] border border-zinc-700 rounded-full peer peer-focus:ring-2 peer-focus:ring-emerald-500/20 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-zinc-400 after:border-zinc-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500 peer-checked:border-emerald-500 group-hover/toggle:shadow-[0_0_15px_rgba(16,185,129,0.3)]"></div>
             </label>
           </div>
-        </div>
 
-        <!-- ====================== COPY TRADING AUTO ====================== -->
-        <div class="bg-[#111114] border border-zinc-800/80 rounded-[2rem] p-6 lg:p-8 transition-all duration-500 relative overflow-hidden group shadow-[0_0_50px_rgba(16,185,129,0.02)] hover:border-emerald-500/30">
-          <div class="absolute -top-32 -right-32 w-64 h-64 bg-emerald-500 rounded-full blur-[100px] opacity-10 pointer-events-none transition-colors duration-700"></div>
-          
-          <div class="flex items-center justify-between mb-8 relative z-10 pb-6 border-b border-zinc-800/80">
-            <div class="flex items-center gap-4">
-              <div class="p-3.5 rounded-2xl border transition-colors duration-500 shadow-inner shrink-0 bg-emerald-500/10 border-emerald-500/20 text-emerald-400">
-                <Target :size="24" />
-              </div>
-              <div>
-                <h3 class="text-white font-black text-lg tracking-tight">Copy Trading Auto</h3>
-                <p class="text-xs text-zinc-500 font-medium">Sigue las mejores ballenas del leaderboard</p>
-              </div>
+          <div class="relative z-10 pt-4 border-t border-zinc-800/50">
+            <div class="flex justify-between items-center mb-3">
+              <span class="text-xs font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-2">
+                <ShieldCheck :size="14" class="text-emerald-500" /> Reserva Exclusiva IA
+              </span>
+              <span class="text-sm font-mono font-black text-emerald-400">${{ status.aiReserveAmount || 50 }} USDC</span>
             </div>
-            
-            <!-- Toggle Auto -->
-            <label class="relative inline-flex items-center cursor-pointer group/toggle">
-              <input 
-                type="checkbox" 
-                v-model="status.copyTradingAutoEnabled" 
-                @change="updateCopyTrading" 
-                class="sr-only peer"
-              />
-              <div class="w-11 h-6 bg-[#09090b] border border-zinc-700 rounded-full peer peer-focus:ring-2 peer-focus:ring-emerald-500/20 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-zinc-400 after:border-zinc-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500 peer-checked:border-emerald-500 group-hover/toggle:shadow-[0_0_15px_rgba(16,185,129,0.3)]"></div>
-            </label>
-          </div>
-
-          <div v-if="status.copyTradingAutoEnabled" class="relative z-10 space-y-6">
-            
-            <!-- Slider de cantidad de ballenas -->
-            <div class="flex flex-col p-5 rounded-2xl bg-[#161619] border border-zinc-800/60 hover:border-zinc-700/80 transition-colors w-full sm:w-1/2 md:w-1/3">
-              <div class="flex justify-between items-start mb-4 gap-2">
-                <label class="text-[10px] text-zinc-400 font-bold uppercase tracking-widest leading-snug">Top Whales</label>
-                <span class="text-[9px] font-black px-2 py-1 rounded-md border text-emerald-400 bg-emerald-400/10 border-emerald-400/20 shrink-0">SEG.</span>
-              </div>
-              <div class="relative w-full mt-auto">
-                <input 
-                  type="number" 
-                  min="1" 
-                  max="20" 
-                  step="1" 
-                  v-model.number="status.maxWhalesToCopy" 
-                  @change="updateCopyTrading" 
-                  class="w-full h-12 bg-[#09090b] border border-zinc-800/80 rounded-xl pl-4 pr-16 text-white font-mono text-lg font-bold outline-none transition-all placeholder-zinc-700 appearance-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50" 
-                />
-                <span class="absolute right-4 top-1/2 -translate-y-1/2 text-emerald-600/50 font-black pointer-events-none text-xs">USERS</span>
-              </div>
-              <input 
-                type="range" 
-                min="1" 
-                max="20" 
-                step="1" 
-                v-model.number="status.maxWhalesToCopy" 
-                @change="updateCopyTrading" 
-                class="w-full h-1 mt-4 bg-zinc-800/80 rounded-lg appearance-none cursor-pointer accent-emerald-500" 
-              />
-            </div>
-              
-            <!-- Lista de ballenas seleccionadas automáticamente -->
-            <div class="pt-2">
-              <p class="text-[11px] text-zinc-500 font-bold uppercase tracking-widest mb-3 px-1">Whales seleccionadas automáticamente</p>
-              <div class="max-h-52 overflow-y-auto custom-scroll space-y-2 pr-2">
-                <div v-for="(whale, i) in status.autoSelectedWhales || []" :key="i" 
-                     class="bg-[#09090b] border border-zinc-800/80 rounded-xl p-3.5 flex justify-between items-center hover:border-emerald-500/30 transition-colors group">
-                  <div class="font-mono text-emerald-400/80 text-xs font-medium group-hover:text-emerald-400">
-                    {{ whale.address.substring(0,12) }}...
-                  </div>
-                  <div class="flex gap-4 text-[10px] font-black tracking-wide">
-                    <span class="text-emerald-500/80 bg-emerald-500/10 px-2 py-1 rounded-md border border-emerald-500/20">
-                      +${{ Number(whale.pnl || 0).toLocaleString(undefined, {maximumFractionDigits: 0}) }}
-                    </span>
-                    <span class="text-zinc-500 bg-zinc-800/50 px-2 py-1 rounded-md border border-zinc-700/50 hidden sm:block">
-                      VOL: ${{ Number(whale.volume || 0).toLocaleString(undefined, {maximumFractionDigits: 0}) }}
-                    </span>
-                  </div>
-                </div>
-                <div v-if="!status.autoSelectedWhales || status.autoSelectedWhales.length === 0" 
-                     class="text-center py-6 border border-dashed border-zinc-800 rounded-xl text-zinc-500 text-xs font-medium">
-                  Esperando selección automática...
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div v-else class="text-center py-10 bg-[#09090b] rounded-2xl border border-zinc-800/50 relative z-10 mt-6">
-            <Target :size="32" class="text-zinc-700 mx-auto mb-3" />
-            <p class="text-zinc-500 text-sm font-medium">Activa Copy Trading Auto para seguir las mejores ballenas</p>
+            <input 
+              type="range" 
+              v-model="status.aiReserveAmount" 
+              min="0" 
+              max="150" 
+              step="5"
+              @change="updateAiReserve"
+              class="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-emerald-500"
+            />
+            <p class="text-[10px] text-zinc-500 mt-2 leading-relaxed">
+              Dinero garantizado para el Sniper. El Copy Trading <span class="text-zinc-300 font-bold">NUNCA</span> podrá tocar estos fondos.
+            </p>
           </div>
         </div>
 

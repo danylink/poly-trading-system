@@ -222,6 +222,7 @@ let botStatus = {
     lastTrades: {}, // Objeto para controlar el Cooldown: { tokenId: timestamp }
     aiStats: { wins: 0, losses: 0, totalTrades: 0, winRate: 0.0 },
     whaleStats: { wins: 0, losses: 0, totalTrades: 0, winRate: 0.0 },
+    aiReserveAmount: 50,
 };
 
 
@@ -1463,9 +1464,21 @@ async function checkAndCopyWhaleTrades() {
                         let montoInversion = Math.min(riskConfig.maxCopySize || 50, maxAllowedPercent);
                         if (montoInversion < 1) montoInversion = 1;
 
+                        // =========================================================
+                        // 🛡️ EL ESCUDO DE RESERVA DINÁMICO PARA LA IA (FIDEICOMISO)
+                        // =========================================================
+                        const RESERVE_FOR_AI = botStatus.aiReserveAmount !== undefined ? botStatus.aiReserveAmount : 50; 
+                        
+                        if (currentBalance - montoInversion < RESERVE_FOR_AI) {
+                            console.log(`🛡️ [RESERVA IA] Saldo libre ($${currentBalance.toFixed(2)}) muy cerca de la reserva sagrada ($${RESERVE_FOR_AI}). Copy Trading bloqueado.`);
+                            isScanningWhales = false; 
+                            return; // 🛑 Aborta la copia actual y expulsa a las demás ballenas en este escaneo
+                        }
+
                         if (currentBalance < montoInversion) continue;
 
                         let limitPrice = price * 1.04;
+
                         if (limitPrice > 0.99) limitPrice = 0.99;
 
                         const lastTradeTime = botStatus.lastTrades[tokenId];
@@ -2747,6 +2760,20 @@ app.post('/api/settings/advanced-risk', (req, res) => {
     } catch (error) {
         console.error("❌ Error en /api/settings/advanced-risk:", error);
         res.status(500).json({ success: false, error: "Error interno" });
+    }
+});
+
+// ==========================================
+// RUTA: CONTROLAR FONDO DE RESERVA PARA MODELOS IA
+// ==========================================
+app.post('/api/settings/ai-reserve', (req, res) => {
+    const { amount } = req.body;
+    if (amount !== undefined) {
+        botStatus.aiReserveAmount = parseFloat(amount);
+        saveConfigToDisk("Ajuste de Reserva IA");
+        res.json({ success: true, aiReserveAmount: botStatus.aiReserveAmount });
+    } else {
+        res.status(400).json({ success: false, error: "Monto no válido" });
     }
 });
 
