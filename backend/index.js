@@ -250,7 +250,10 @@ function saveConfigToDisk(origen = "Sistema") {
             customMarketRules: botStatus.customMarketRules || [],
             maxCopyMarketsPerWhale: botStatus.maxCopyMarketsPerWhale,
             copyMinWhaleSize: botStatus.copyMinWhaleSize,
-            copyTimeWindowMinutes: botStatus.copyTimeWindowMinutes
+            copyTimeWindowMinutes: botStatus.copyTimeWindowMinutes,
+            // 🔥 FIX QUANT: Guardamos los Winrates en el disco duro
+            aiStats: botStatus.aiStats,
+            whaleStats: botStatus.whaleStats
         };
         fs.writeFileSync(CONFIG_FILE, JSON.stringify(configToSave, null, 2), 'utf8');
         console.log(`💾 Configuración guardada en el disco. (Origen: ${origen})`);
@@ -304,6 +307,10 @@ function loadConfigFromDisk() {
 
             if (savedConfig.copyMinWhaleSize !== undefined) botStatus.copyMinWhaleSize = savedConfig.copyMinWhaleSize;
             if (savedConfig.copyTimeWindowMinutes !== undefined) botStatus.copyTimeWindowMinutes = savedConfig.copyTimeWindowMinutes;
+
+            // 🔥 FIX QUANT: Cargar los Winrates desde el disco al iniciar
+            if (savedConfig.aiStats) botStatus.aiStats = savedConfig.aiStats;
+            if (savedConfig.whaleStats) botStatus.whaleStats = savedConfig.whaleStats;
 
             console.log("📂 Configuración y Memoria cargada con éxito.");
         } else {
