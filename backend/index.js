@@ -2009,7 +2009,6 @@ async function autoSellManager() {
         const effectiveTpThreshold = (isWhaleTrade && hasDonePartial) ? 80 : riskConfig.takeProfitThreshold;
 
         if (profit >= effectiveTpThreshold || isMaxPriceReached) {
-            console.log(`📈 TAKE PROFIT EJECUTADO [${originTag}-${profileType}]: ${marketNameShort} (PnL: +${profit.toFixed(1)}% | Techo: ${isMaxPriceReached})`);
 
             try {
                 const bookResp = await axios.get(`https://clob.polymarket.com/book?token_id=${pos.tokenId}`, 
@@ -2040,6 +2039,9 @@ async function autoSellManager() {
                 );
 
                 if (result?.success) {
+
+                    console.log(`📈 TAKE PROFIT EJECUTADO [${originTag}-${profileType}]: ${marketNameShort} (PnL: +${profit.toFixed(1)}% | Techo: ${isMaxPriceReached})`);
+
                     closedPositionsCache.add(pos.tokenId);
                     
                     // 🔥 SEPARACIÓN DE ESTADÍSTICAS
@@ -3232,7 +3234,7 @@ async function runWhaleRadar() {
 }
 
 // ==========================================
-// 🏢 RECURSOS HUMANOS QUANT (Auto-Gestión de Ballenas)
+// 🏢 RECURSOS HUMANOS QUANT (Auto-Gestión y Meritocracia)
 // ==========================================
 function manageWhaleRoster(radarWhales) {
     if (!botStatus.copyTradingCustomEnabled) return;
@@ -3255,24 +3257,47 @@ function manageWhaleRoster(radarWhales) {
         return true; // Conservada
     });
 
-    // 2. CONTRATAR TALENTO FRESCO (Relevancia >= 60% o Estrellas >= 4)
+    // 2. CONTRATAR TALENTO FRESCO Y GESTIONAR MERITOCRACIA
     for (const rw of radarWhales) {
-        // 🔥 FRENO DE CONTRATACIÓN: Si ya estamos llenos, no entra nadie más
-        if (botStatus.customWhales.length >= MAX_WHALE_ROSTER) {
-            break; 
-        }
-
         if (rw.stars >= 4) {
             const exists = botStatus.customWhales.some(w => w.address.toLowerCase() === rw.address.toLowerCase());
+            
             if (!exists) {
-                botStatus.customWhales.push({
-                    address: rw.address.toLowerCase(),
-                    nickname: rw.nickname || "Auto-Quant",
-                    enabled: true,
-                    lastActive: rw.rawTimestamp ? rw.rawTimestamp * 1000 : Date.now()
-                });
-                console.log(`🌟 [AUTO-HIRE] Nueva ballena Top agregada a Custom: ${rw.nickname || rw.address}`);
-                addedTopWhales++;
+                // ESCENARIO A: Hay espacio en la plantilla
+                if (botStatus.customWhales.length < MAX_WHALE_ROSTER) {
+                    botStatus.customWhales.push({
+                        address: rw.address.toLowerCase(),
+                        nickname: rw.nickname || "Auto-Quant",
+                        enabled: true,
+                        lastActive: rw.rawTimestamp ? rw.rawTimestamp * 1000 : Date.now()
+                    });
+                    console.log(`🌟 [AUTO-HIRE] Nueva ballena agregada: ${rw.nickname || rw.address}`);
+                    addedTopWhales++;
+                } 
+                // ESCENARIO B: Plantilla llena, pero el candidato es un TOP MACRO (5 Estrellas)
+                else if (rw.stars === 5) {
+                    // Ordenamos temporalmente nuestra lista del más inactivo al más activo
+                    const sortedWhales = [...botStatus.customWhales].sort((a, b) => (a.lastActive || 0) - (b.lastActive || 0));
+                    const peorEmpleado = sortedWhales[0];
+                    const diasInactivo = (now - (peorEmpleado.lastActive || 0)) / (1000 * 60 * 60 * 24);
+
+                    // Si nuestro peor empleado lleva más de 3 días sin operar, lo intercambiamos
+                    if (diasInactivo >= 3) {
+                        console.log(`🔀 [MERITOCRACIA] Despidiendo a ${peorEmpleado.nickname || peorEmpleado.address.substring(0,8)} para contratar a la superestrella ${rw.nickname || rw.address}`);
+                        
+                        // Borramos al flojo
+                        botStatus.customWhales = botStatus.customWhales.filter(w => w.address !== peorEmpleado.address);
+                        
+                        // Metemos a la superestrella
+                        botStatus.customWhales.push({
+                            address: rw.address.toLowerCase(),
+                            nickname: rw.nickname || "Auto-Quant",
+                            enabled: true,
+                            lastActive: rw.rawTimestamp ? rw.rawTimestamp * 1000 : Date.now()
+                        });
+                        addedTopWhales++;
+                    }
+                }
             }
         }
     }
