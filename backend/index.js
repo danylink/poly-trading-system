@@ -797,16 +797,18 @@ function isMarketAllowed(title = "", slug = "") {
     const isPop = text.match(/movie|oscar|grammy|mrbeast|box office|pop culture|youtube|tiktok|spotify|billboard/i);
     const isBusiness = text.match(/fed|interest rate|inflation|cpi|business|elon|tesla|openai|gdp|economy|apple|microsoft/i);
 
-    // 🔥 FILTRO QUANT 1: Bloquear mercados de conteo sin datos en vivo
+    // 🔥 FILTRO QUANT 1: Bloquear mercados de conteo 
     const isCountingMarket = text.match(/truth social posts|tweets|posts from|how many times/i);
     if (isCountingMarket) return false;
 
-    // 🔥 FILTRO QUANT 2: Anti-Scalping (Bloquea opciones binarias de 5-15 minutos)
-    // Detecta rangos de horas tipo "4:30PM-4:45PM" o la frase tóxica "Up or Down"
+    // 🔥 FILTRO QUANT 2: Anti-Scalping (Opciones binarias de minutos)
     const isMicroTimeframe = text.match(/\d{1,2}:\d{2}\s*(am|pm)?\s*-\s*\d{1,2}:\d{2}\s*(am|pm)?/i) || text.match(/up or down/i);
-    if (isMicroTimeframe) {
-        // Opcional: Puedes descomentar la siguiente línea si quieres ver en consola cuánta basura te está bloqueando
-        // console.log(`🚫 [ANTI-SCALPING] Mercado bloqueado automáticamente: ${title}`);
+    if (isMicroTimeframe) return false;
+
+    // 🔥 FILTRO QUANT 3: Anti-Clima y Ruido (Bloquea termómetros)
+    const isWeather = text.match(/temperature|temperatura|weather|degrees|°c|°f|rain|snow|highest temperature|lowest temperature/i);
+    if (isWeather) {
+        // console.log(`🚫 [ANTI-NOISE] Mercado de clima bloqueado: ${title.substring(0, 30)}...`);
         return false;
     }
 
