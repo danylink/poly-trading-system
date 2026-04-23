@@ -3271,17 +3271,17 @@ function manageWhaleRoster(radarWhales) {
     let addedTopWhales = 0;
     const MAX_WHALE_ROSTER = 15; // 🔥 LÍMITE INSTITUCIONAL DE PLANTILLA
 
-    // 1. DESPEDIR ZOMBIES (Más de 15 días inactivos)
+    // 1. DESPEDIR ZOMBIES ABSOLUTOS (Más de 15 días inactivos)
     botStatus.customWhales = botStatus.customWhales.filter(whale => {
         if (whale.lastActive) {
             const diffDays = (now - whale.lastActive) / (1000 * 60 * 60 * 24);
             if (diffDays > 15) {
-                console.log(`🧟‍♂️ [AUTO-CLEAN] Eliminando ballena Zombie: ${whale.nickname || whale.address}`);
+                console.log(`🧟‍♂️ [AUTO-CLEAN] Eliminando ballena Zombie (Ausente > 15 días): ${whale.nickname || whale.address}`);
                 removedZombies++;
-                return false; // Expulsada
+                return false; 
             }
         }
-        return true; // Conservada
+        return true; 
     });
 
     // 2. CONTRATAR TALENTO FRESCO Y GESTIONAR MERITOCRACIA
@@ -3303,19 +3303,17 @@ function manageWhaleRoster(radarWhales) {
                 } 
                 // ESCENARIO B: Plantilla llena, pero el candidato es un TOP MACRO (5 Estrellas)
                 else if (rw.stars === 5) {
-                    // Ordenamos temporalmente nuestra lista del más inactivo al más activo
                     const sortedWhales = [...botStatus.customWhales].sort((a, b) => (a.lastActive || 0) - (b.lastActive || 0));
                     const peorEmpleado = sortedWhales[0];
                     const diasInactivo = (now - (peorEmpleado.lastActive || 0)) / (1000 * 60 * 60 * 24);
 
-                    // Si nuestro peor empleado lleva más de 3 días sin operar, lo intercambiamos
-                    if (diasInactivo >= 3) {
-                        console.log(`🔀 [MERITOCRACIA] Despidiendo a ${peorEmpleado.nickname || peorEmpleado.address.substring(0,8)} para contratar a la superestrella ${rw.nickname || rw.address}`);
+                    // 🔥 FIX QUANT: Tolerancia Macro. Un francotirador puede no operar en una semana.
+                    // Solo hacemos el intercambio si nuestro peor empleado lleva más de 7 días dormido.
+                    if (diasInactivo >= 7) {
+                        console.log(`🔀 [MERITOCRACIA] Despidiendo a ${peorEmpleado.nickname || peorEmpleado.address.substring(0,8)} (Inactivo ${Math.floor(diasInactivo)} días) para contratar a la superestrella ${rw.nickname || rw.address}`);
                         
-                        // Borramos al flojo
                         botStatus.customWhales = botStatus.customWhales.filter(w => w.address !== peorEmpleado.address);
                         
-                        // Metemos a la superestrella
                         botStatus.customWhales.push({
                             address: rw.address.toLowerCase(),
                             nickname: rw.nickname || "Auto-Quant",
@@ -3371,8 +3369,8 @@ app.listen(PORT, async () => {
     // 5. Auto Redeem cada 5 minutos
     setInterval(autoRedeemPositions, 300000);   // 5 minutos
 
-    // 6. Radar de Ballenas Macro (Cada 15 minutos)
-    setInterval(runWhaleRadar, 15 * 60 * 1000);
+// 6. Radar de Ballenas Macro (Cada 1 Hora en lugar de 15 min)
+    setInterval(runWhaleRadar, 60 * 60 * 1000);
     setTimeout(runWhaleRadar, 5000); // Primer escaneo a los 5s de arrancar
 
     // 🔥 Reportes diarios automáticos (12:00 PM, 6:00 PM y 11:59 PM)
