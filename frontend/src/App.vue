@@ -888,6 +888,20 @@ const probColor = computed(() => {
   return 'text-zinc-500';
 });
 
+// ==========================================
+// ORDENAMIENTO QUANT DE POSICIONES
+// ==========================================
+const sortedActivePositions = computed(() => {
+  if (!status.value.activePositions || status.value.activePositions.length === 0) return [];
+  
+  // Creamos una copia del arreglo para no mutar el estado original y lo ordenamos
+  return [...status.value.activePositions].sort((a, b) => {
+    const pnlA = parseFloat(a.percentPnl || 0);
+    const pnlB = parseFloat(b.percentPnl || 0);
+    return pnlB - pnlA; // De mayor (positivo) a menor (negativo)
+  });
+});
+
 // --- CICLO DE VIDA ---
 
 onMounted(() => {
@@ -1154,7 +1168,7 @@ onUnmounted(() => {
           </div>
           
           <div class="grid grid-cols-1 gap-4 relative z-10">
-            <div v-for="pos in status.activePositions.filter(p => !p.status.includes('CANJEAR'))" :key="pos.tokenId" 
+            <div v-for="pos in sortedActivePositions.filter(p => !p.status.includes('CANJEAR'))" :key="pos.tokenId" 
                  class="bg-[#09090b] border border-zinc-800/80 rounded-2xl p-4 sm:p-5 flex flex-col md:flex-row justify-between items-start md:items-center shadow-inner hover:border-[#D4AF37]/50 transition-all">
               
               <div class="flex flex-col w-full md:w-1/2 pr-0 md:pr-4">
