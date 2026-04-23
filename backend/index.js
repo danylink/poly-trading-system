@@ -1405,6 +1405,17 @@ async function checkAndCopyWhaleTrades() {
                     // ==================== COPIA DE COMPRA ====================
                     if (side === "BUY") {
 
+                        // 🔥 FIX QUANT: Respetar los Master Switches estrictamente para NUEVAS compras
+                        const isAutoWhale = (botStatus.autoSelectedWhales || []).some(w => w.address.toLowerCase() === whale.address.toLowerCase());
+                        const isCustomWhale = (botStatus.customWhales || []).some(w => w.address.toLowerCase() === whale.address.toLowerCase());
+                        
+                        if (isAutoWhale && !botStatus.copyTradingAutoEnabled) {
+                            continue; // Ignora la compra si el Auto está apagado
+                        }
+                        if (isCustomWhale && !botStatus.copyTradingCustomEnabled) {
+                            continue; // Ignora la compra si el Custom está apagado
+                        }
+
                         // 🔥 FIX QUANT: Freno Dinámico en Tiempo Real (Anti-Ametralladora)
                         if (limitPerWhale > 0 && copiedFromThisWhale >= limitPerWhale) {
                             console.log(`⛔ [COPY LIMIT] Freno de ráfaga activado. ${getWhaleDisplayName(whale)} intentó abrir más de ${limitPerWhale} mercados de golpe.`);
@@ -3222,6 +3233,7 @@ function manageWhaleRoster(radarWhales) {
     const now = Date.now();
     let removedZombies = 0;
     let addedTopWhales = 0;
+    const MAX_WHALE_ROSTER = 15; // 🔥 LÍMITE INSTITUCIONAL DE PLANTILLA
 
     // 1. DESPEDIR ZOMBIES (Más de 15 días inactivos)
     botStatus.customWhales = botStatus.customWhales.filter(whale => {
@@ -3238,6 +3250,11 @@ function manageWhaleRoster(radarWhales) {
 
     // 2. CONTRATAR TALENTO FRESCO (Relevancia >= 60% o Estrellas >= 4)
     for (const rw of radarWhales) {
+        // 🔥 FRENO DE CONTRATACIÓN: Si ya estamos llenos, no entra nadie más
+        if (botStatus.customWhales.length >= MAX_WHALE_ROSTER) {
+            break; 
+        }
+
         if (rw.stars >= 4) {
             const exists = botStatus.customWhales.some(w => w.address.toLowerCase() === rw.address.toLowerCase());
             if (!exists) {
@@ -3245,7 +3262,7 @@ function manageWhaleRoster(radarWhales) {
                     address: rw.address.toLowerCase(),
                     nickname: rw.nickname || "Auto-Quant",
                     enabled: true,
-                    lastActive: rw.rawTimestamp ? rw.rawTimestamp * 1000 : Date.now() // Guardamos en milisegundos
+                    lastActive: rw.rawTimestamp ? rw.rawTimestamp * 1000 : Date.now()
                 });
                 console.log(`🌟 [AUTO-HIRE] Nueva ballena Top agregada a Custom: ${rw.nickname || rw.address}`);
                 addedTopWhales++;
