@@ -2607,46 +2607,6 @@ function recordPriceToMemory(tokenId, currentPrice) {
 }
 
 // ==========================================
-// 📈 ANALIZADOR DE SHOCKS DE LIQUIDEZ
-// ==========================================
-async function checkForLiquidityShocks() {
-    if (!botStatus.equalizerEnabled || botStatus.isPanicStopped) return;
-
-    try { // <-- ESTE TRY
-        for (const tokenId in priceHistoryCache) {
-            const history = priceHistoryCache[tokenId];
-            if (history.length < 2) continue; 
-
-            const currentEntry = history[history.length - 1];
-            const oldestEntry = history[0]; 
-
-            if (oldestEntry.price < 0.05 || oldestEntry.price > 0.85) continue;
-
-            const priceChange = currentEntry.price - oldestEntry.price;
-            const priceChangePct = (priceChange / oldestEntry.price) * 100;
-
-            if (Math.abs(priceChangePct) >= botStatus.equalizerShockThreshold) {
-                const fullMarket = botStatus.watchlist.find(m => m.tokenYes === tokenId || m.tokenNo === tokenId);
-                if (!fullMarket) continue; 
-
-                const outcomeToBuy = priceChangePct > 0 ? "NO" : "YES";
-                const targetTokenId = outcomeToBuy === "YES" ? fullMarket.tokenYes : fullMarket.tokenNo;
-
-                const alreadyInvested = botStatus.activePositions.some(p => p.tokenId === targetTokenId);
-                const alreadyPending = pendingOrdersCache.has(targetTokenId);
-
-                if (alreadyInvested || alreadyPending) continue;
-
-                console.log(`🚨 [SHOCK DETECTADO] ${fullMarket.title}`);
-                await verifyShockWithIA(fullMarket, priceChangePct, currentEntry.price, tokenId, outcomeToBuy);
-            }
-        }
-    } catch (error) { // <-- ESTE CATCH
-        console.error("❌ Error silencioso en el Radar Equalizer:", error.message);
-    }
-}
-
-// ==========================================
 // 🤖 IA FLASH CHECK Y ESCUDO DE LATENCIA (VERSIÓN CASCADA)
 // ==========================================
 async function verifyShockWithIA(marketData, priceChangePct, triggerPrice, shockTokenId, outcomeToBuy) {
