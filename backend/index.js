@@ -2898,6 +2898,14 @@ async function runChronosHarvester() {
                         });
                         saveConfigToDisk("Disparo Chronos");
 
+                        // 📱 NUEVO: Alerta directa a Telegram
+                        try {
+                            const telegramMsg = `⏳ *NUEVA COSECHA CHRONOS*\n🎯 ${market.title}\n🛒 Compra: *NO*\n💰 Capital: $${botStatus.chronosBetAmount}\n📉 Precio: $${currentLivePrice}\n⏰ Expira en: ${hoursLeft.toFixed(1)}h\n🧹 Extrayendo valor del tiempo...`;
+                            if (typeof sendAlert === "function") await sendAlert(telegramMsg);
+                        } catch (e) {
+                            console.error("❌ Error enviando alerta de Telegram (Chronos):", e.message);
+                        }
+
                         if (typeof sendSniperAlert === "function") {
                             await sendSniperAlert({
                                 marketName: `⏳ [CHRONOS HARVESTER] ${market.title} (Compra: NO)`, 
