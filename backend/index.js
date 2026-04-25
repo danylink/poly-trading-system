@@ -2871,7 +2871,7 @@ async function executeEqualizerTrade(marketData, outcomeToBuy) {
         if (result?.success) {
             pendingOrdersCache.add(targetTokenId);
             setTimeout(() => pendingOrdersCache.delete(targetTokenId), 60000); // 🔥 FIX VITAL: Limpieza Cuántica olvidada
-            
+
             botStatus.lastTrades[targetTokenId] = Date.now();
             botStatus.positionEngines[targetTokenId] = "EQUALIZER"; // <-- TATUAJE DE MEMORIA
             
@@ -3853,6 +3853,34 @@ function manageWhaleRoster(radarWhales) {
     }
 }
 
+// ==========================================
+// 🧹 QUANT GARBAGE COLLECTOR (Anti-Fugas de Memoria a Largo Plazo)
+// ==========================================
+function runGarbageCollector() {
+    console.log("🧹 [SYSTEM] Ejecutando Limpieza Profunda de Memoria (Garbage Collector)...");
+    const now = Date.now();
+
+    // 1. Limpiar priceHistoryCache (Mercados que ya no están en la Watchlist)
+    const activeTokens = new Set();
+    botStatus.watchlist.forEach(m => {
+        if (m.tokenYes) activeTokens.add(m.tokenYes);
+        if (m.tokenNo) activeTokens.add(m.tokenNo);
+    });
+
+    for (const tokenId in priceHistoryCache) {
+        if (!activeTokens.has(tokenId)) {
+            delete priceHistoryCache[tokenId]; // Borra el token muerto de la RAM
+        }
+    }
+
+    // 2. Limpiar botStatus.lastTrades (Cooldowns antiguos mayores a 24 horas)
+    for (const tokenId in botStatus.lastTrades) {
+        if (now - botStatus.lastTrades[tokenId] > 24 * 60 * 60 * 1000) {
+            delete botStatus.lastTrades[tokenId]; // Borra el registro histórico
+        }
+    }
+}
+
 // ENDPOINT PARA EL DASHBOARD
 app.get('/api/radar', (req, res) => {
     res.json(whaleRadarCache);
@@ -3905,6 +3933,9 @@ app.listen(PORT, async () => {
 
     // 🌊 10. Kinetic Pressure: Radar de Desequilibrio (Cada 20 segundos)
     setInterval(runKineticPressureScanner, 20 * 1000);
+
+    // 🧹 11. Garbage Collector: Limpieza profunda de RAM (Cada 12 horas)
+    setInterval(runGarbageCollector, 12 * 60 * 60 * 1000);
 
     // 🔥 Reportes diarios automáticos (12:00 PM, 6:00 PM y 11:59 PM)
     scheduleDailyReports();
