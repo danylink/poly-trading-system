@@ -912,10 +912,10 @@ async function refreshWatchlist() {
 
         // Limitamos fuertemente los crypto cortos
         shortTermCrypto.sort((a, b) => parseFloat(b.volume || 0) - parseFloat(a.volume || 0));
-        shortTermCrypto = shortTermCrypto.slice(0, 4);   // Máximo 4 mercados crypto corto
+        shortTermCrypto = shortTermCrypto.slice(0, 6);   // Máximo 4 mercados crypto corto
 
         // Armamos el pool final: primero alta calidad, luego pocos crypto
-        const finalPool = [...highQuality.slice(0, 11), ...shortTermCrypto];  // máximo ~15 mercados
+        const finalPool = [...highQuality.slice(0, 40), ...shortTermCrypto];  // máximo ~15 mercados
 
         // Convertimos al formato que usa el bot
         const rawTrends = finalPool.map(market => {
@@ -1704,10 +1704,6 @@ async function runBot() {
         botStatus.currentMarket = marketItem;
         botStatus.currentTopic = marketTitle;
 
-        // 🔥 QUANTUM EQUALIZER: Alimentar la memoria RAM antes del análisis pesado
-        if (marketItem.priceYes) recordPriceToMemory(marketItem.tokenYes, marketItem.priceYes);
-        if (marketItem.priceNo)  recordPriceToMemory(marketItem.tokenNo, marketItem.priceNo);
-        // =======================================================================
 
         // ====================================================
         // 🧠 EJECUCIÓN MULTI-AGENTE (CLAUDE + GEMINI + GROK)
@@ -2781,6 +2777,29 @@ async function executeEqualizerTrade(marketData, outcomeToBuy) {
 }
 
 // ==========================================
+// 🧠 ALIMENTADOR DE MEMORIA HFT (Alta Frecuencia)
+// ==========================================
+async function updateEqualizerMemory() {
+    if (!botStatus.equalizerEnabled) return;
+    
+    try {
+        // 1. Descargamos los precios más frescos de TODOS los mercados a la vez
+        await refreshWatchlist(); 
+        
+        // 2. Inyectamos todos los precios en la memoria RAM instantáneamente
+        botStatus.watchlist.forEach(market => {
+            if (market.priceYes) recordPriceToMemory(market.tokenYes, market.priceYes);
+            if (market.priceNo) recordPriceToMemory(market.tokenNo, market.priceNo);
+        });
+        
+        // Descomenta la siguiente línea si quieres ver en la consola cómo la memoria se llena
+        // console.log(`🌊 [EQUALIZER] Memoria inyectada. Radar vigilando ${Object.keys(priceHistoryCache).length} tokens en tiempo real.`);
+    } catch (error) {
+        console.error("❌ Error alimentando memoria Equalizer:", error.message);
+    }
+}
+
+// ==========================================
 // 📈 ANALIZADOR DE SHOCKS DE LIQUIDEZ (BLINDADO)
 // ==========================================
 async function checkForLiquidityShocks() {
@@ -3607,12 +3626,15 @@ app.listen(PORT, async () => {
     // 5. Auto Redeem cada 5 minutos
     setInterval(autoRedeemPositions, 300000);   // 5 minutos
 
-    // 🌊 6. Quantum Equalizer: Escáner de Shocks de Liquidez (Cada 2 minutos)
-    setInterval(checkForLiquidityShocks, 2 * 60 * 1000);
-
-    // 🐋 7. Radar de Ballenas Macro (Cada 1 Hora en lugar de 15 min)
+    // 🐋 6. Radar de Ballenas Macro (Cada 1 Hora en lugar de 15 min)
     setInterval(runWhaleRadar, 60 * 60 * 1000);
     setTimeout(runWhaleRadar, 5000); // Primer escaneo a los 5s de arrancar
+
+    // 🌊 7. Quantum Equalizer: Alimentador de Memoria (Cada 60 segundos)
+    setInterval(updateEqualizerMemory, 60 * 1000);
+
+    // 🌊 8. Quantum Equalizer: Escáner de Shocks de Liquidez (Cada 2 minutos)
+    setInterval(checkForLiquidityShocks, 2 * 60 * 1000);
 
     // 🔥 Reportes diarios automáticos (12:00 PM, 6:00 PM y 11:59 PM)
     scheduleDailyReports();
