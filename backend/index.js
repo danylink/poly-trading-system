@@ -452,7 +452,7 @@ async function conectarClob() {
 conectarClob();
 
 // ==========================================
-// 2. ACTUALIZACIÓN DE SALDOS (NATIVA CLOB) - VERSIÓN LIMPIA PARA DASHBOARD
+// 2. ACTUALIZACIÓN DE SALDOS (NATIVA CLOB) - VERSIÓN LIMPIA Y QUANT
 // ==========================================
 async function updateRealBalances() {
     try {
@@ -514,8 +514,15 @@ async function updateRealBalances() {
                     // 🔥 FIX VITAL: Definir la variable antes de usarla
                     const currentTokenId = pos.asset || pos.token_id || pos.asset_id;
 
+                    // 🔥 FIX QUANT VISUAL: Calcular Inversión y Precio de Entrada Matemáticamente
+                    const invested = valorActual - cashPnl;
+                    const entryPrice = size > 0 ? (invested / size) : 0;
+
+                    // 🔥 FIX QUANT VISUAL: Recuperar Nickname de Ballena si existe
+                    const whaleData = botStatus.copiedPositions?.find(p => p.tokenId === currentTokenId);
+
                     botStatus.activePositions.push({
-                        tokenId: pos.asset || pos.token_id || pos.asset_id,
+                        tokenId: currentTokenId,
                         conditionId: pos.conditionId || pos.condition_id,
                         size: size.toFixed(2),
                         exactSize: size,
@@ -526,7 +533,10 @@ async function updateRealBalances() {
                         percentPnl: percentPnl,
                         category: getMarketCategoryEnhanced(pos.title || pos.market || ""),
                         outcome: outcomeVal,
-                        engine: botStatus.positionEngines[currentTokenId] || null // 🔥 MAGIA: Restaura la etiqueta
+                        engine: botStatus.positionEngines[currentTokenId] || null, // 🔥 MAGIA: Restaura la etiqueta
+                        sizeCopied: invested, // <-- RESTAURA VISUALMENTE LA INVERSIÓN
+                        priceEntry: entryPrice, // <-- RESTAURA VISUALMENTE EL PRECIO
+                        nickname: whaleData ? whaleData.nickname : null // <-- RESTAURA LA BALLENA
                     });
                 }
             }
