@@ -619,6 +619,8 @@ async function runKineticPressureScanner() {
                     
                     // 🔥 FIX VITAL: Bloquear futuros disparos instantáneamente
                     pendingOrdersCache.add(targetTokenId);
+                    setTimeout(() => pendingOrdersCache.delete(targetTokenId), 60000); // Limpieza Cuántica
+
                     botStatus.positionEngines[targetTokenId] = "KINETIC";
                     botStatus.lastTrades[targetTokenId] = Date.now();
                     
@@ -1651,7 +1653,8 @@ async function checkAndCopyWhaleTrades() {
 
                         if (result?.success) {
                             pendingOrdersCache.add(tokenId);
-
+                            setTimeout(() => pendingOrdersCache.delete(tokenId), 60000); // 🔥 FIX VITAL: Limpieza Cuántica olvidada
+                            
                             // 🔥 Actualizamos el contador en tiempo real
                             copiedFromThisWhale++;
 
@@ -2025,6 +2028,7 @@ async function runBot() {
 
             if (result?.success) {
                 pendingOrdersCache.add(targetTokenId);
+                setTimeout(() => pendingOrdersCache.delete(targetTokenId), 60000); // Limpieza Cuántic
                 
                 // 🔥 NUEVO: Tatuar en la memoria qué IA o Consenso disparó la orden
                 botStatus.positionEngines[targetTokenId] = finalAnalysis.engine || "IA";
@@ -2756,43 +2760,36 @@ function recordPriceToMemory(tokenId, currentPrice) {
 }
 
 // ==========================================
-// 🤖 IA FLASH CHECK Y ESCUDO DE LATENCIA (VERSIÓN HOMOLOGADA)
+// 🤖 IA FLASH CHECK Y ESCUDO DE LATENCIA (BLINDADO VECTORIAL)
 // ==========================================
-async function verifyShockWithIA(marketData, priceChangePct, triggerPrice, shockTokenId, outcomeToBuy) {
-    const direction = priceChangePct > 0 ? "SUBIDO" : "CAÍDO";
+async function verifyShockWithIA(marketData, eventProbabilityChange, triggerPrice, shockTokenId, outcomeToBuy) {
+    // 🔥 FIX QUANT: La dirección ahora refleja la realidad del evento principal, no del token aislado.
+    const direction = eventProbabilityChange > 0 ? "AUMENTADO" : "CAÍDO";
     
-    // 🛡️ FIX QUANT: Extraemos noticias reales para que la IA no alucine
     const newsString = await getLatestNews(marketData.title, marketData.category); 
     
-    // 🛡️ FIX QUANT: Usamos el sistema de respuestas nativo de la IA (BUY / WAIT)
     const flashPrompt = `
-        [ALERTA DE SHOCK DE LIQUIDEZ]: El mercado "${marketData.title}" ha ${direction} un ${Math.abs(priceChangePct).toFixed(1)}% en 5 minutos.
+        [ALERTA DE SHOCK DE LIQUIDEZ]: La probabilidad de que ocurra el evento "${marketData.title}" ha ${direction} bruscamente un ${Math.abs(eventProbabilityChange).toFixed(1)}% en 5 minutos.
         Noticias recientes: "${newsString || 'Ninguna noticia relevante'}".
-        INSTRUCCIÓN VITAL: Si este salto de precio NO tiene sentido y es puro pánico humano/error de dedo, tu "recommendation" debe ser "WAIT" y tu "reason" debe decir "Pánico irracional". Si el salto SÍ está justificado por las noticias, tu "recommendation" debe ser "BUY".
+        INSTRUCCIÓN VITAL: Si este salto brusco de probabilidad NO tiene sentido y es puro pánico humano/error de dedo en el mercado, tu "recommendation" debe ser "WAIT" y tu "reason" debe decir "Pánico irracional". Si el cambio SÍ está justificado por las noticias reales, tu "recommendation" debe ser "BUY".
     `;
 
     try {
         console.log(`🧠 [EQUALIZER] Consultando a Claude (Vía Rápida)...`);
         let result;
-        
         const claudeResponse = await analyzeMarketWithClaude(marketData.title, flashPrompt, 1);
         
         if (!claudeResponse.isError) {
              result = {
-                 isJustified: claudeResponse.recommendation !== "WAIT", // Si NO es WAIT, asumimos que vio noticias reales
+                 isJustified: claudeResponse.recommendation !== "WAIT", 
                  reason: claudeResponse.reason,
                  confidence: (claudeResponse.prob * 100) || 80
              };
         } else {
              console.log(`⚠️ [EQUALIZER] Claude falló. Lanzando a Grok...`);
              const grokResponse = await analyzeMarketWithGrok(marketData.title, flashPrompt, 1);
-             
              if (!grokResponse.isError) {
-                 result = {
-                     isJustified: grokResponse.recommendation !== "WAIT",
-                     reason: grokResponse.reason,
-                     confidence: (grokResponse.prob * 100) || 80
-                 };
+                 result = { isJustified: grokResponse.recommendation !== "WAIT", reason: grokResponse.reason, confidence: (grokResponse.prob * 100) || 80 };
              } else {
                  console.log(`❌ [EQUALIZER ABORTADO] APIs caídas. No disparamos a ciegas.`);
                  delete priceHistoryCache[shockTokenId];
@@ -2800,7 +2797,6 @@ async function verifyShockWithIA(marketData, priceChangePct, triggerPrice, shock
              }
         }
 
-        // Solo disparamos si es un pánico injustificado
         if (result.isJustified === false && result.confidence >= 75) {
             console.log(`📉 [EQUALIZER] IA Confirma Pánico Humano (Confianza: ${result.confidence}%). Razón: ${result.reason}`);
             
@@ -2815,7 +2811,6 @@ async function verifyShockWithIA(marketData, priceChangePct, triggerPrice, shock
 
             await executeEqualizerTrade(marketData, outcomeToBuy);
             delete priceHistoryCache[shockTokenId];
-
         } else {
             console.log(`⏩ [EQUALIZER IGNORADO] Movimiento justificado por noticias reales. Razón: ${result.reason}`);
             delete priceHistoryCache[shockTokenId]; 
@@ -2875,6 +2870,8 @@ async function executeEqualizerTrade(marketData, outcomeToBuy) {
 
         if (result?.success) {
             pendingOrdersCache.add(targetTokenId);
+            setTimeout(() => pendingOrdersCache.delete(targetTokenId), 60000); // 🔥 FIX VITAL: Limpieza Cuántica olvidada
+            
             botStatus.lastTrades[targetTokenId] = Date.now();
             botStatus.positionEngines[targetTokenId] = "EQUALIZER"; // <-- TATUAJE DE MEMORIA
             
@@ -3000,6 +2997,7 @@ async function runChronosHarvester() {
                     
                     if (tradeResult?.success) {
                         pendingOrdersCache.add(market.tokenNo);
+                        setTimeout(() => pendingOrdersCache.delete(market.tokenNo), 60000); // Limpieza Cuántica
                         botStatus.lastTrades[market.tokenNo] = Date.now();
                         botStatus.positionEngines[market.tokenNo] = "CHRONOS"; // <-- TATUAJE DE MEMORIA
                         
@@ -3052,8 +3050,6 @@ async function runChronosHarvester() {
 // ==========================================
 async function checkForLiquidityShocks() {
     if (!botStatus.equalizerEnabled) return;
-    
-    // 🛡️ CANDADO 1: Modo Pánico Global
     if (botStatus.isPanicStopped) return; 
 
     for (const tokenId in priceHistoryCache) {
@@ -3063,7 +3059,6 @@ async function checkForLiquidityShocks() {
         const currentEntry = history[history.length - 1];
         const oldestEntry = history[0]; 
 
-        // 🛡️ CANDADO 2: Filtro de Precios Basura
         if (oldestEntry.price < 0.05 || oldestEntry.price > 0.85) continue;
 
         const priceChange = currentEntry.price - oldestEntry.price;
@@ -3074,21 +3069,20 @@ async function checkForLiquidityShocks() {
             const fullMarket = botStatus.watchlist.find(m => m.tokenYes === tokenId || m.tokenNo === tokenId);
             if (!fullMarket) continue; 
 
-            // 🔥 FIX QUANT: Lógica Direccional Estricta
             const isYesToken = (fullMarket.tokenYes === tokenId);
-            let outcomeToBuy;
             
+            // 🔥 FIX VECTORIAL: Calculamos el cambio de probabilidad real del evento
+            const eventProbabilityChange = isYesToken ? priceChangePct : -priceChangePct;
+
+            let outcomeToBuy;
             if (priceChangePct > 0) {
-                // PUMP IRRACIONAL: El precio se disparó hacia arriba. Compramos el lado contrario que está barato.
-                outcomeToBuy = isYesToken ? "NO" : "YES";
+                outcomeToBuy = isYesToken ? "NO" : "YES"; // Si sube mucho, compramos la contraparte barata
             } else {
-                // CRASH IRRACIONAL: El precio se cayó de golpe. Compramos el mismo token que está en descuento.
-                outcomeToBuy = isYesToken ? "YES" : "NO";
+                outcomeToBuy = isYesToken ? "YES" : "NO"; // Si cae mucho, compramos el descuento
             }
 
             const targetTokenId = outcomeToBuy === "YES" ? fullMarket.tokenYes : fullMarket.tokenNo;
 
-            // 🛡️ CANDADO 3: Filtro Anti-Ametralladora Estricto
             const alreadyInvested = botStatus.activePositions.some(p => p.tokenId === targetTokenId);
             const alreadyPending = pendingOrdersCache.has(targetTokenId);
 
@@ -3097,8 +3091,8 @@ async function checkForLiquidityShocks() {
             console.log(`🚨 [SHOCK DETECTADO] ${fullMarket.title}`);
             console.log(`📊 Movimiento de ${priceChangePct > 0 ? '+' : ''}${priceChangePct.toFixed(2)}% en el token ${isYesToken ? 'YES' : 'NO'}. Verificando con IA...`);
 
-            // Enviamos al verificador
-            await verifyShockWithIA(fullMarket, priceChangePct, currentEntry.price, targetTokenId, outcomeToBuy);
+            // Enviamos el "eventProbabilityChange" normalizado a la IA
+            await verifyShockWithIA(fullMarket, eventProbabilityChange, currentEntry.price, targetTokenId, outcomeToBuy);
         }
     }
 }
