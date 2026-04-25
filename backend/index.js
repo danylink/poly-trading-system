@@ -223,6 +223,7 @@ let botStatus = {
     aiStats: { wins: 0, losses: 0, totalTrades: 0, winRate: 0.0 },
     whaleStats: { wins: 0, losses: 0, totalTrades: 0, winRate: 0.0 },
     aiReserveAmount: 50,
+    positionEngines: {} // <-- NUEVO: Guardará los tatuajes de las posiciones
 };
 
 // ==========================================
@@ -235,6 +236,14 @@ const priceHistoryCache = {}; // Estructura: { tokenId: [{ timestamp, price }, .
 if (botStatus.equalizerEnabled === undefined) botStatus.equalizerEnabled = false;
 if (botStatus.equalizerShockThreshold === undefined) botStatus.equalizerShockThreshold = 15; // 15% de salto por defecto
 if (botStatus.equalizerBetAmount === undefined) botStatus.equalizerBetAmount = 5; // $5 USDC de disparo
+
+// ==========================================
+// ⏳ CHRONOS HARVESTER (Estado)
+// ==========================================
+if (botStatus.chronosEnabled === undefined) botStatus.chronosEnabled = false;
+if (botStatus.chronosBetAmount === undefined) botStatus.chronosBetAmount = 5;
+if (botStatus.chronosMinPrice === undefined) botStatus.chronosMinPrice = 0.75;
+if (botStatus.chronosMaxPrice === undefined) botStatus.chronosMaxPrice = 0.88;
 
 
 // ==========================================
@@ -269,7 +278,14 @@ function saveConfigToDisk(origen = "Sistema") {
             // 🌊 FIX QUANT: Guardado de estado del Quantum Equalizer
             equalizerEnabled: botStatus.equalizerEnabled,
             equalizerShockThreshold: botStatus.equalizerShockThreshold,
-            equalizerBetAmount: botStatus.equalizerBetAmount
+            equalizerBetAmount: botStatus.equalizerBetAmount,
+            // ⏳ CHRONOS HARVESTER
+            chronosEnabled: botStatus.chronosEnabled,
+            chronosBetAmount: botStatus.chronosBetAmount,
+            chronosMinPrice: botStatus.chronosMinPrice,
+            chronosMaxPrice: botStatus.chronosMaxPrice,
+            // 🏷️ MEMORIA DE ETIQUETAS
+            positionEngines: botStatus.positionEngines
         };
         fs.writeFileSync(CONFIG_FILE, JSON.stringify(configToSave, null, 2), 'utf8');
         console.log(`💾 Configuración guardada en el disco. (Origen: ${origen})`);
@@ -332,6 +348,15 @@ function loadConfigFromDisk() {
             if (savedConfig.equalizerEnabled !== undefined) botStatus.equalizerEnabled = savedConfig.equalizerEnabled;
             if (savedConfig.equalizerShockThreshold !== undefined) botStatus.equalizerShockThreshold = savedConfig.equalizerShockThreshold;
             if (savedConfig.equalizerBetAmount !== undefined) botStatus.equalizerBetAmount = savedConfig.equalizerBetAmount;
+
+            // ⏳ CHRONOS HARVESTER
+            if (savedConfig.chronosEnabled !== undefined) botStatus.chronosEnabled = savedConfig.chronosEnabled;
+            if (savedConfig.chronosBetAmount !== undefined) botStatus.chronosBetAmount = savedConfig.chronosBetAmount;
+            if (savedConfig.chronosMinPrice !== undefined) botStatus.chronosMinPrice = savedConfig.chronosMinPrice;
+            if (savedConfig.chronosMaxPrice !== undefined) botStatus.chronosMaxPrice = savedConfig.chronosMaxPrice;
+
+            // 🏷️ MEMORIA DE ETIQUETAS
+            if (savedConfig.positionEngines) botStatus.positionEngines = savedConfig.positionEngines;
 
             console.log("📂 Configuración y Memoria cargada con éxito.");
         } else {
@@ -467,6 +492,9 @@ async function updateRealBalances() {
                         else if (pos.assetName.toUpperCase().includes("-NO")) outcomeVal = "NO";
                     }
 
+                    // 🔥 FIX VITAL: Definir la variable antes de usarla
+                    const currentTokenId = pos.asset || pos.token_id || pos.asset_id;
+
                     botStatus.activePositions.push({
                         tokenId: pos.asset || pos.token_id || pos.asset_id,
                         conditionId: pos.conditionId || pos.condition_id,
@@ -478,7 +506,8 @@ async function updateRealBalances() {
                         cashPnl: cashPnl,
                         percentPnl: percentPnl,
                         category: getMarketCategoryEnhanced(pos.title || pos.market || ""),
-                        outcome: outcomeVal
+                        outcome: outcomeVal,
+                        engine: botStatus.positionEngines[currentTokenId] || null // 🔥 MAGIA: Restaura la etiqueta
                     });
                 }
             }
@@ -1941,7 +1970,7 @@ async function runBot() {
 }
 
 // ==========================================
-// AUTO SELL MANAGER - VERSIÓN FINAL QUANT (TP Parcial + TP Total + SL + Stats + Equalizer)
+// AUTO SELL MANAGER - VERSIÓN FINAL QUANT (TP Parcial + TP Total + SL + Stats + Equalizer + Chronos)
 // ==========================================
 async function autoSellManager() {
     if (!botStatus.autoTradeEnabled) return;
@@ -1957,12 +1986,14 @@ async function autoSellManager() {
         const currentSharePrice = pos.exactSize > 0 ? (parseFloat(pos.currentValue) / parseFloat(pos.exactSize)) : 0;
         const isMaxPriceReached = currentSharePrice >= 0.95;
 
-        // 🌊 FIX QUANT: Detección de 3 Orígenes (Whale, IA, Equalizer)
+        // 🌊⏳ FIX QUANT: Detección de 4 Orígenes (Whale, IA, Equalizer, Chronos)
         let originTag = 'IA';
         let isWhaleTrade = false;
 
         if (pos.engine === "EQUALIZER") {
             originTag = 'EQUALIZER';
+        } else if (pos.engine === "CHRONOS") {
+            originTag = 'CHRONOS'; // <-- NUEVO: Reconocimiento de Chronos
         } else {
             isWhaleTrade = botStatus.copiedPositions.some(cp => cp.tokenId === pos.tokenId) || 
                            botStatus.copiedTrades.some(ct => ct.tokenId === pos.tokenId);
@@ -2013,9 +2044,9 @@ async function autoSellManager() {
         }
 
         // ====================== 🌕 TAKE PROFIT TOTAL ======================
-        // Si es EQUALIZER, forzamos un TP rápido (15-20%) ignorando perfiles largos
         let effectiveTpThreshold = riskConfig.takeProfitThreshold;
-        if (originTag === "EQUALIZER") effectiveTpThreshold = 15; // Mean Reversion rápido
+        if (originTag === "EQUALIZER") effectiveTpThreshold = 15; 
+        else if (originTag === "CHRONOS") effectiveTpThreshold = 20; // <-- NUEVO: TP rápido para Chronos
         else if (isWhaleTrade && hasDonePartial) effectiveTpThreshold = 80;
 
         if (profit >= effectiveTpThreshold || isMaxPriceReached) {
@@ -2042,9 +2073,10 @@ async function autoSellManager() {
                 if (result?.success) {
                     console.log(`📈 TP EJECUTADO [${originTag}]: ${marketNameShort} (+${profit.toFixed(1)}%)`);
                     closedPositionsCache.add(pos.tokenId);
+                    delete botStatus.positionEngines[pos.tokenId]; // <-- LIMPIAR MEMORIA
                     
                     // Stats
-                    if (originTag !== "EQUALIZER") { // No ensuciamos stats principales con el Equalizer
+                    if (originTag !== "EQUALIZER" && originTag !== "CHRONOS") { // <-- NUEVO: Protegemos stats
                         const targetStats = isWhaleTrade ? botStatus.whaleStats : botStatus.aiStats;
                         targetStats.wins += 1;
                         targetStats.totalTrades += 1;
@@ -2054,12 +2086,14 @@ async function autoSellManager() {
                     
                     await updateRealBalances();
 
-                    // 📱 ALERTAS ENRUTADAS (Fábrica de Mensajes)
+                    // 📱 ALERTAS ENRUTADAS
                     const pnlText = `+${profit.toFixed(2)}%`;
                     let mensajeTelegram = "";
 
                     if (originTag === "EQUALIZER") {
                         mensajeTelegram = `🌊 *EQUALIZER CERRADO (TAKE PROFIT)*\n🎯 ${marketNameShort}\n📊 🟢 GANANCIA: ${pnlText}\n⚡ Shock de liquidez absorbido.`;
+                    } else if (originTag === "CHRONOS") {
+                        mensajeTelegram = `⏳ *CHRONOS CERRADO (TAKE PROFIT)*\n🎯 ${marketNameShort}\n📊 🟢 GANANCIA: ${pnlText}\n🕰️ Decaimiento cobrado con éxito.`;
                     } else if (originTag === "IA") {
                         mensajeTelegram = `🤖 *IA SNIPER (TAKE PROFIT)*\n🎯 ${marketNameShort}\n📊 🟢 GANANCIA: ${pnlText}\n🧠 Motor: Trinidad`;
                     } else {
@@ -2068,11 +2102,10 @@ async function autoSellManager() {
 
                     await sendAlert(mensajeTelegram);
 
-                    // Limpieza
                     if (isWhaleTrade) {
                         botStatus.copiedPositions = botStatus.copiedPositions.filter(p => p.tokenId !== pos.tokenId);
                     }
-                    botStatus.activePositions.splice(i, 1); // Borramos del arreglo principal
+                    botStatus.activePositions.splice(i, 1); 
                 }
             } catch (e) {
                 console.error(`❌ Take Profit error:`, e.message);
@@ -2130,8 +2163,9 @@ async function autoSellManager() {
 
                 if (result?.success) {
                     closedPositionsCache.add(pos.tokenId);
+                    delete botStatus.positionEngines[pos.tokenId]; // <-- LIMPIAR MEMORIA
 
-                    if (originTag !== "EQUALIZER") {
+                    if (originTag !== "EQUALIZER" && originTag !== "CHRONOS") { // <-- NUEVO: Protegemos stats
                         const targetStats = isWhaleTrade ? botStatus.whaleStats : botStatus.aiStats;
                         targetStats.losses += 1;
                         targetStats.totalTrades += 1;
@@ -2141,12 +2175,14 @@ async function autoSellManager() {
                     
                     await updateRealBalances();
 
-                    // 📱 ALERTAS ENRUTADAS (Fábrica de Mensajes)
+                    // 📱 ALERTAS ENRUTADAS
                     const pnlText = `${profit.toFixed(2)}%`;
                     let mensajeTelegram = "";
 
                     if (originTag === "EQUALIZER") {
                         mensajeTelegram = `🌊 *EQUALIZER CERRADO (STOP LOSS)*\n🎯 ${marketNameShort}\n📊 🔴 PÉRDIDA: ${pnlText}\n⚡ Error de corrección de liquidez.`;
+                    } else if (originTag === "CHRONOS") {
+                        mensajeTelegram = `⏳ *CHRONOS CERRADO (STOP LOSS)*\n🎯 ${marketNameShort}\n📊 🔴 PÉRDIDA: ${pnlText}\n🕰️ El evento finalmente ocurrió.`;
                     } else if (originTag === "IA") {
                         mensajeTelegram = `🤖 *IA SNIPER (STOP LOSS)*\n🎯 ${marketNameShort}\n📊 🔴 PÉRDIDA: ${pnlText}\n💸 Rescatado: $${(sharesToSell*worstPrice).toFixed(2)}`;
                     } else {
@@ -2155,11 +2191,10 @@ async function autoSellManager() {
 
                     await sendAlert(mensajeTelegram);
 
-                    // Limpieza
                     if (isWhaleTrade) {
                         botStatus.copiedPositions = botStatus.copiedPositions.filter(p => p.tokenId !== pos.tokenId);
                     }
-                    botStatus.activePositions.splice(i, 1); // Borramos del arreglo principal
+                    botStatus.activePositions.splice(i, 1); 
                 }
             } catch (e) {
                 console.error(`❌ Stop Loss error:`, e.message);
@@ -2167,7 +2202,6 @@ async function autoSellManager() {
         }
     }
 }
-
 // ==========================================
 // AUTO REDEEM POSITIONS - Versión que canjea TODO (ganadoras y perdedoras)
 // ==========================================
@@ -2603,41 +2637,35 @@ function recordPriceToMemory(tokenId, currentPrice) {
 }
 
 // ==========================================
-// 🤖 IA FLASH CHECK Y ESCUDO DE LATENCIA (VERSIÓN CASCADA)
+// 🤖 IA FLASH CHECK Y ESCUDO DE LATENCIA (VERSIÓN HOMOLOGADA)
 // ==========================================
 async function verifyShockWithIA(marketData, priceChangePct, triggerPrice, shockTokenId, outcomeToBuy) {
     const direction = priceChangePct > 0 ? "SUBIDO" : "CAÍDO";
     
-    // Prompt de francotirador: corto y exigente para el Equalizer
+    // 🛡️ FIX QUANT: Extraemos noticias reales para que la IA no alucine
+    const newsString = await getLatestNews(marketData.title, marketData.category); 
+    
+    // 🛡️ FIX QUANT: Usamos el sistema de respuestas nativo de la IA (BUY / WAIT)
     const flashPrompt = `
-        URGENCIA MÁXIMA: El mercado "${marketData.title}" ha ${direction} un ${Math.abs(priceChangePct).toFixed(1)}% en los últimos 5 minutos.
-        Busca noticias de los ÚLTIMOS 15 MINUTOS. 
-        ¿Hay un reporte oficial o noticia que justifique este salto? 
-        Responde STRICTAMENTE en JSON: {"isJustified": true/false, "reason": "...", "confidence": 0-100}
+        [ALERTA DE SHOCK DE LIQUIDEZ]: El mercado "${marketData.title}" ha ${direction} un ${Math.abs(priceChangePct).toFixed(1)}% en 5 minutos.
+        Noticias recientes: "${newsString || 'Ninguna noticia relevante'}".
+        INSTRUCCIÓN VITAL: Si este salto de precio NO tiene sentido y es puro pánico humano/error de dedo, tu "recommendation" debe ser "WAIT" y tu "reason" debe decir "Pánico irracional". Si el salto SÍ está justificado por las noticias, tu "recommendation" debe ser "BUY".
     `;
 
     try {
         console.log(`🧠 [EQUALIZER] Consultando a Claude (Vía Rápida)...`);
         let result;
         
-        // 1. INTENTO PRIMARIO: CLAUDE
-        const claudeResponse = await analyzeMarketWithClaude(marketData.title, flashPrompt, 1); // Solo 1 intento para no perder tiempo
+        const claudeResponse = await analyzeMarketWithClaude(marketData.title, flashPrompt, 1);
         
-        // Adaptamos la respuesta de tu función analyzeMarketWithClaude al formato JSON que esperamos
         if (!claudeResponse.isError) {
              result = {
-                 isJustified: claudeResponse.recommendation !== "WAIT", // Si Claude recomienda operar, asumimos que vio algo justificado.
+                 isJustified: claudeResponse.recommendation !== "WAIT", // Si NO es WAIT, asumimos que vio noticias reales
                  reason: claudeResponse.reason,
                  confidence: (claudeResponse.prob * 100) || 80
              };
-             // Si la estrategia es "HYPE" o "REVERSAL" o dice que no hay ventaja, lo tomamos como pánico irracional.
-             if(claudeResponse.reason.toLowerCase().includes("sin ventaja") || claudeResponse.strategy === "WAIT") {
-                 result.isJustified = false;
-                 result.confidence = 85;
-             }
         } else {
-             // 2. FALLBACK (CASCADA): GROK
-             console.log(`⚠️ [EQUALIZER] Claude falló o tardó. Lanzando a Grok (Backup de Emergencia)...`);
+             console.log(`⚠️ [EQUALIZER] Claude falló. Lanzando a Grok...`);
              const grokResponse = await analyzeMarketWithGrok(marketData.title, flashPrompt, 1);
              
              if (!grokResponse.isError) {
@@ -2646,47 +2674,36 @@ async function verifyShockWithIA(marketData, priceChangePct, triggerPrice, shock
                      reason: grokResponse.reason,
                      confidence: (grokResponse.prob * 100) || 80
                  };
-                 if(grokResponse.reason.toLowerCase().includes("sin ventaja") || grokResponse.strategy === "WAIT") {
-                     result.isJustified = false;
-                     result.confidence = 85;
-                 }
              } else {
-                 // 🛡️ CANDADO CRÍTICO: AMBOS FALLARON
-                 console.log(`❌ [EQUALIZER ABORTADO] Las APIs de IA están caídas. Modo Ciego activado. No se ejecutará la compra.`);
+                 console.log(`❌ [EQUALIZER ABORTADO] APIs caídas. No disparamos a ciegas.`);
                  delete priceHistoryCache[shockTokenId];
-                 return; // Salimos de la función inmediatamente.
+                 return; 
              }
         }
 
-        // ================= EVALUACIÓN DEL RESULTADO =================
-        // Solo disparamos si la IA asegura que NO hay justificación (es pánico humano puro)
+        // Solo disparamos si es un pánico injustificado
         if (result.isJustified === false && result.confidence >= 75) {
             console.log(`📉 [EQUALIZER] IA Confirma Pánico Humano (Confianza: ${result.confidence}%). Razón: ${result.reason}`);
             
-            // 🛡️ EL ESCUDO DE LATENCIA (Verificamos que el precio no haya regresado ya a la normalidad)
-            const currentLivePrice = outcomeToBuy === "YES" ? marketData.priceYes : marketData.priceNo;
+            const currentLivePrice = await getMarketPrice(shockTokenId) || (outcomeToBuy === "YES" ? marketData.priceYes : marketData.priceNo);
             const expectedDiscountPrice = outcomeToBuy === "YES" ? (1 - triggerPrice) : (1 - triggerPrice);
             
-            // Margen de error del 3%
-            if (currentLivePrice > expectedDiscountPrice + 0.03) {
-                console.log(`⚠️ [EQUALIZER ABORTADO] El mercado ya se corrigió mientras la IA pensaba. Esperado: $${expectedDiscountPrice.toFixed(2)}, Actual: $${currentLivePrice.toFixed(2)}. No regalaremos dinero.`);
+            if (parseFloat(currentLivePrice) > expectedDiscountPrice + 0.03) {
+                console.log(`⚠️ [EQUALIZER ABORTADO] El mercado ya se corrigió. Esperado: $${expectedDiscountPrice.toFixed(2)}, Actual: $${currentLivePrice}.`);
                 delete priceHistoryCache[shockTokenId];
                 return;
             }
 
-            // LUZ VERDE ABSOLUTA: Disparamos el Ecualizador
             await executeEqualizerTrade(marketData, outcomeToBuy);
-            
-            // Limpiamos el historial para evitar ametralladora en los siguientes minutos
             delete priceHistoryCache[shockTokenId];
 
         } else {
-            console.log(`⏩ [EQUALIZER IGNORADO] Movimiento justificado por noticias o IA insegura. Razón: ${result.reason}`);
+            console.log(`⏩ [EQUALIZER IGNORADO] Movimiento justificado por noticias reales. Razón: ${result.reason}`);
             delete priceHistoryCache[shockTokenId]; 
         }
     } catch (err) {
-        console.error("❌ Error grave en IA Equalizer:", err.message);
-        delete priceHistoryCache[shockTokenId]; // En caso de error fatal de código, purgamos la memoria.
+        console.error("❌ Error en IA Equalizer:", err.message);
+        delete priceHistoryCache[shockTokenId]; 
     }
 }
 
@@ -2740,6 +2757,7 @@ async function executeEqualizerTrade(marketData, outcomeToBuy) {
         if (result?.success) {
             pendingOrdersCache.add(targetTokenId);
             botStatus.lastTrades[targetTokenId] = Date.now();
+            botStatus.positionEngines[targetTokenId] = "EQUALIZER"; // <-- TATUAJE DE MEMORIA
             
             // 🎨 INYECCIÓN PARA EL FRONTEND (La Mejor Práctica)
             // Lo metemos al arreglo general, pero lo "tatuamos" como EQUALIZER
@@ -2777,25 +2795,128 @@ async function executeEqualizerTrade(marketData, outcomeToBuy) {
 }
 
 // ==========================================
-// 🧠 ALIMENTADOR DE MEMORIA HFT (Alta Frecuencia)
+// 🧠 RADAR DE ALTA FRECUENCIA (Alimenta Equalizer y Chronos)
 // ==========================================
-async function updateEqualizerMemory() {
-    if (!botStatus.equalizerEnabled) return;
+async function updateHighFrequencyRadar() {
+    // Si ambos están apagados, ahorramos recursos
+    if (!botStatus.equalizerEnabled && !botStatus.chronosEnabled) return;
     
     try {
-        // 1. Descargamos los precios más frescos de TODOS los mercados a la vez
+        // 1. Descargamos los precios frescos
         await refreshWatchlist(); 
         
-        // 2. Inyectamos todos los precios en la memoria RAM instantáneamente
-        botStatus.watchlist.forEach(market => {
-            if (market.priceYes) recordPriceToMemory(market.tokenYes, market.priceYes);
-            if (market.priceNo) recordPriceToMemory(market.tokenNo, market.priceNo);
-        });
-        
-        // Descomenta la siguiente línea si quieres ver en la consola cómo la memoria se llena
-        // console.log(`🌊 [EQUALIZER] Memoria inyectada. Radar vigilando ${Object.keys(priceHistoryCache).length} tokens en tiempo real.`);
+        // 2. Solo alimentamos la RAM del historial si el Equalizer está encendido
+        if (botStatus.equalizerEnabled) {
+            botStatus.watchlist.forEach(market => {
+                if (market.priceYes) recordPriceToMemory(market.tokenYes, market.priceYes);
+                if (market.priceNo) recordPriceToMemory(market.tokenNo, market.priceNo);
+            });
+        }
     } catch (error) {
-        console.error("❌ Error alimentando memoria Equalizer:", error.message);
+        console.error("❌ Error alimentando radar HFT:", error.message);
+    }
+}
+
+// ==========================================
+// ⏳ CHRONOS HARVESTER (THETA DECAY ENGINE)
+// ==========================================
+async function runChronosHarvester() {
+    if (!botStatus.chronosEnabled || botStatus.isPanicStopped) return;
+
+    console.log(`⏳ [CHRONOS] Escaneando Watchlist en busca de Theta Decay...`);
+
+    const now = Date.now();
+
+    for (const market of botStatus.watchlist) {
+        if (!market.endDate || !market.priceNo || !market.tokenNo) continue;
+
+        const endTime = new Date(market.endDate).getTime();
+        const hoursLeft = (endTime - now) / (1000 * 60 * 60);
+
+        if (hoursLeft > 0 && hoursLeft <= 96 && market.priceNo >= botStatus.chronosMinPrice && market.priceNo <= botStatus.chronosMaxPrice) {
+            
+            const alreadyInvested = botStatus.activePositions.some(p => p.tokenId === market.tokenNo);
+            const alreadyPending = pendingOrdersCache.has(market.tokenNo);
+            const alreadyClosed = closedPositionsCache.has(market.tokenNo);
+            if (alreadyInvested || alreadyPending || alreadyClosed) continue;
+
+            const saldoLibre = parseFloat(botStatus.clobOnlyUSDC || 0);
+            if (saldoLibre < botStatus.chronosBetAmount) continue;
+
+            console.log(`⏳ [CHRONOS DETECTADO] ${market.title} | Precio NO: $${market.priceNo} | Expira en: ${hoursLeft.toFixed(1)}h`);
+
+            const newsString = await getLatestNews(market.title, market.category);
+            
+            // 🛡️ FIX QUANT: Prompt adaptado al parser JSON nativo
+            const chronosPrompt = `
+                [INFO THETA DECAY]: El mercado "${market.title}" expira en solo ${hoursLeft.toFixed(1)} horas. 
+                Noticias recientes: "${newsString || 'Ninguna'}".
+                INSTRUCCIÓN VITAL: Si NO hay noticias fuertes que indiquen que el evento va a suceder de último minuto, tu "recommendation" debe ser "WAIT" y tu "reason" debe ser "Evento muerto por tiempo". Si hay peligro real de que suceda, pon "BUY".
+            `;
+
+            try {
+                let result;
+                const claudeRes = await analyzeMarketWithClaude(market.title, chronosPrompt, 1);
+                
+                if (!claudeRes.isError) {
+                    // Si Claude dice WAIT, significa que no pasará nada (El evento está muerto, compramos el NO)
+                    result = { isDead: claudeRes.recommendation === "WAIT" || claudeRes.reason.toLowerCase().includes("muerto"), reason: claudeRes.reason, confidence: (claudeRes.prob * 100) || 85 };
+                } else {
+                    const grokRes = await analyzeMarketWithGrok(market.title, chronosPrompt, 1);
+                    if (!grokRes.isError) {
+                        result = { isDead: grokRes.recommendation === "WAIT" || grokRes.reason.toLowerCase().includes("muerto"), reason: grokRes.reason, confidence: (grokRes.prob * 100) || 85 };
+                    } else continue; 
+                }
+
+                if (result.isDead && result.confidence >= 75) {
+                    console.log(`📉 [CHRONOS] IA Confirma Evento Muerto. Comprando el NO. Razón: ${result.reason}`);
+
+                    const currentLivePrice = await getMarketPrice(market.tokenNo) || market.priceNo;
+                    if (parseFloat(currentLivePrice) > market.priceNo + 0.03) {
+                        console.log(`⚠️ [CHRONOS] El precio subió mientras la IA pensaba. Abortando.`);
+                        continue;
+                    }
+
+                    const tradeResult = await executeTradeOnChain(market.conditionId, market.tokenNo, botStatus.chronosBetAmount, currentLivePrice, market.tickSize);
+                    
+                    if (tradeResult?.success) {
+                        pendingOrdersCache.add(market.tokenNo);
+                        botStatus.lastTrades[market.tokenNo] = Date.now();
+                        botStatus.positionEngines[market.tokenNo] = "CHRONOS"; // <-- TATUAJE DE MEMORIA
+                        
+                        botStatus.activePositions.push({
+                            tokenId: market.tokenNo,
+                            conditionId: market.conditionId,
+                            marketName: market.title,
+                            sizeCopied: botStatus.chronosBetAmount,        
+                            exactSize: botStatus.chronosBetAmount / currentLivePrice, 
+                            priceEntry: currentLivePrice,
+                            outcome: "NO",
+                            category: market.category || "THETA_DECAY",
+                            status: "ACTIVO 🟢",
+                            engine: "CHRONOS" 
+                        });
+                        saveConfigToDisk("Disparo Chronos");
+
+                        if (typeof sendSniperAlert === "function") {
+                            await sendSniperAlert({
+                                marketName: `⏳ [CHRONOS HARVESTER] ${market.title} (Compra: NO)`, 
+                                probability: result.confidence / 100, 
+                                marketPrice: currentLivePrice,
+                                edge: (0.99 - currentLivePrice), 
+                                suggestedInversion: botStatus.chronosBetAmount, 
+                                reasoning: "Expiración inminente sin catalizadores. Extrayendo valor del tiempo...",
+                                engine: "Chronos"
+                            });
+                        }
+                    }
+                } else {
+                    console.log(`⏩ [CHRONOS] Peligro: El evento podría ocurrir. Ignorando.`);
+                }
+            } catch (err) {
+                console.error("❌ Error en Chronos IA:", err.message);
+            }
+        }
     }
 }
 
@@ -3335,6 +3456,28 @@ app.post('/api/settings/equalizer', (req, res) => {
 });
 
 // ==========================================
+// 🎛️ ENDPOINTS: CHRONOS HARVESTER
+// ==========================================
+app.post('/api/settings/chronos', (req, res) => {
+    try {
+        const { enabled, betAmount, minPrice, maxPrice } = req.body;
+        
+        if (enabled !== undefined) botStatus.chronosEnabled = Boolean(enabled);
+        if (betAmount !== undefined) botStatus.chronosBetAmount = parseFloat(betAmount);
+        if (minPrice !== undefined) botStatus.chronosMinPrice = parseFloat(minPrice);
+        if (maxPrice !== undefined) botStatus.chronosMaxPrice = parseFloat(maxPrice);
+        
+        saveConfigToDisk("Ajuste Chronos Harvester");
+        
+        console.log(`⏳ [CHRONOS] Ajustes actualizados: ON=${botStatus.chronosEnabled} | Rango=$${botStatus.chronosMinPrice}-$${botStatus.chronosMaxPrice} | Disparo=$${botStatus.chronosBetAmount}`);
+        
+        res.json({ success: true, message: "Chronos actualizado" });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// ==========================================
 // REPORTES DIARIOS (Motor Cron de Alta Precisión)
 // ==========================================
 const MEXICO_TZ = 'America/Mexico_City';
@@ -3631,10 +3774,13 @@ app.listen(PORT, async () => {
     setTimeout(runWhaleRadar, 5000); // Primer escaneo a los 5s de arrancar
 
     // 🌊 7. Quantum Equalizer: Alimentador de Memoria (Cada 60 segundos)
-    setInterval(updateEqualizerMemory, 60 * 1000);
+    setInterval(updateHighFrequencyRadar, 60 * 1000);
 
     // 🌊 8. Quantum Equalizer: Escáner de Shocks de Liquidez (Cada 2 minutos)
     setInterval(checkForLiquidityShocks, 2 * 60 * 1000);
+
+    // ⏳ 9. Chronos Harvester: Cosechador de Theta Decay (Cada 15 minutos)
+    setInterval(runChronosHarvester, 15 * 60 * 1000);
 
     // 🔥 Reportes diarios automáticos (12:00 PM, 6:00 PM y 11:59 PM)
     scheduleDailyReports();
