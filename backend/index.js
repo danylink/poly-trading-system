@@ -1005,12 +1005,6 @@ async function refreshWatchlist() {
 
         const now = Date.now();
 
-        // const futureMarkets = res.data.filter(m => {
-        //     if (!m.conditionId || !m.endDate) return false;
-        //     const endTime = new Date(m.endDate).getTime();
-        //     const hoursLeft = (endTime - now) / (1000 * 60 * 60);
-        //     return endTime > now && hoursLeft <= 96;   // máximo 96 horas
-        // });
         const futureMarkets = res.data.filter(m => {
             if (!m.conditionId || !m.endDate) return false;
             const endTime = new Date(m.endDate).getTime();
@@ -1051,10 +1045,10 @@ async function refreshWatchlist() {
 
         // Limitamos fuertemente los crypto cortos
         shortTermCrypto.sort((a, b) => parseFloat(b.volume || 0) - parseFloat(a.volume || 0));
-        shortTermCrypto = shortTermCrypto.slice(0, 6);   // Máximo 4 mercados crypto corto
+        shortTermCrypto = shortTermCrypto.slice(0, 6);   // Máximo 6 mercados crypto corto
 
         // Armamos el pool final: primero alta calidad, luego pocos crypto
-        const finalPool = [...highQuality.slice(0, 40), ...shortTermCrypto];  // máximo ~15 mercados
+        const finalPool = [...highQuality.slice(0, 40), ...shortTermCrypto];  
 
         // Convertimos al formato que usa el bot
         const rawTrends = finalPool.map(market => {
@@ -1072,6 +1066,7 @@ async function refreshWatchlist() {
                 priceNo: parseFloat(prices[1] || 0),
                 tokenId: tokens[0] || null,
                 marketPrice: parseFloat(prices[0] || 0),
+                endDate: market.endDate, // 🔥 FIX QUANT: La cura para la ceguera de Chronos
                 endsIn: hrs < 1 ? `${Math.round(hrs*60)}m` : `${hrs.toFixed(1)}h`,
                 tickSize: market.minimum_tick_size || "0.01",
                 volume: parseFloat(market.volume || 0)
@@ -1080,7 +1075,8 @@ async function refreshWatchlist() {
 
         botStatus.watchlist = rawTrends;
 
-        console.log(`🎯 Pool seleccionado: ${rawTrends.length} mercados (${highQuality.length} Alta Calidad + ${shortTermCrypto.length} Crypto Corto)`);
+        // Log corregido para reflejar los límites aplicados
+        console.log(`🎯 Pool seleccionado: ${rawTrends.length} mercados (${Math.min(highQuality.length, 40)} Alta Calidad + ${shortTermCrypto.length} Crypto Corto)`);
 
     } catch (e) {
         console.error('❌ Error refreshWatchlist:', e.message);
@@ -3052,7 +3048,7 @@ async function runChronosHarvester() {
 }
 
 // ==========================================
-// 📈 ANALIZADOR DE SHOCKS DE LIQUIDEZ (BLINDADO)
+// 📈 ANALIZADOR DE SHOCKS DE LIQUIDEZ (BLINDADO QUANT)
 // ==========================================
 async function checkForLiquidityShocks() {
     if (!botStatus.equalizerEnabled) return;
@@ -3068,8 +3064,6 @@ async function checkForLiquidityShocks() {
         const oldestEntry = history[0]; 
 
         // 🛡️ CANDADO 2: Filtro de Precios Basura
-        // No nos interesa absorber shocks de mercados que valen 1 centavo o 99 centavos, 
-        // porque el riesgo matemático es asimétrico en nuestra contra.
         if (oldestEntry.price < 0.05 || oldestEntry.price > 0.85) continue;
 
         const priceChange = currentEntry.price - oldestEntry.price;
@@ -3077,24 +3071,34 @@ async function checkForLiquidityShocks() {
 
         if (Math.abs(priceChangePct) >= botStatus.equalizerShockThreshold) {
             
-            // Buscamos el mercado en la Watchlist, no en posiciones activas
             const fullMarket = botStatus.watchlist.find(m => m.tokenYes === tokenId || m.tokenNo === tokenId);
             if (!fullMarket) continue; 
 
-            const outcomeToBuy = priceChangePct > 0 ? "NO" : "YES";
+            // 🔥 FIX QUANT: Lógica Direccional Estricta
+            const isYesToken = (fullMarket.tokenYes === tokenId);
+            let outcomeToBuy;
+            
+            if (priceChangePct > 0) {
+                // PUMP IRRACIONAL: El precio se disparó hacia arriba. Compramos el lado contrario que está barato.
+                outcomeToBuy = isYesToken ? "NO" : "YES";
+            } else {
+                // CRASH IRRACIONAL: El precio se cayó de golpe. Compramos el mismo token que está en descuento.
+                outcomeToBuy = isYesToken ? "YES" : "NO";
+            }
+
             const targetTokenId = outcomeToBuy === "YES" ? fullMarket.tokenYes : fullMarket.tokenNo;
 
             // 🛡️ CANDADO 3: Filtro Anti-Ametralladora Estricto
             const alreadyInvested = botStatus.activePositions.some(p => p.tokenId === targetTokenId);
             const alreadyPending = pendingOrdersCache.has(targetTokenId);
 
-            if (alreadyInvested || alreadyPending) continue; // Ya estamos en esta guerra, no disparamos doble.
+            if (alreadyInvested || alreadyPending) continue;
 
             console.log(`🚨 [SHOCK DETECTADO] ${fullMarket.title}`);
-            console.log(`📊 Salto: ${priceChangePct > 0 ? '+' : ''}${priceChangePct.toFixed(2)}% detectado. Verificando con IA...`);
+            console.log(`📊 Movimiento de ${priceChangePct > 0 ? '+' : ''}${priceChangePct.toFixed(2)}% en el token ${isYesToken ? 'YES' : 'NO'}. Verificando con IA...`);
 
             // Enviamos al verificador
-            await verifyShockWithIA(fullMarket, priceChangePct, currentEntry.price, tokenId, outcomeToBuy);
+            await verifyShockWithIA(fullMarket, priceChangePct, currentEntry.price, targetTokenId, outcomeToBuy);
         }
     }
 }
