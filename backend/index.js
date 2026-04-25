@@ -453,7 +453,7 @@ async function conectarClob() {
 conectarClob();
 
 // ==========================================
-// 2. ACTUALIZACIÓN DE SALDOS (NATIVA CLOB) - VERSIÓN LIMPIA Y QUANT
+// 2. ACTUALIZACIÓN DE SALDOS (NATIVA CLOB) - VERSIÓN BLINDADA QUANT
 // ==========================================
 async function updateRealBalances() {
     try {
@@ -480,7 +480,8 @@ async function updateRealBalances() {
         try {
             const userAddress = process.env.POLY_PROXY_ADDRESS || "0x876E00CBF5c4fe22F4FA263F4cb713650cB758d2";
             
-            const response = await fetch(`https://data-api.polymarket.com/positions?user=${userAddress}&limit=50`);
+            // 🔥 FIX CRÍTICO 1: Límite a 500 para evitar posiciones invisibles
+            const response = await fetch(`https://data-api.polymarket.com/positions?user=${userAddress}&limit=500`);
             const positions = await response.json();
             
             botStatus.activePositions = []; 
@@ -489,7 +490,7 @@ async function updateRealBalances() {
             if (Array.isArray(positions) && positions.length > 0) {
                 for (const pos of positions) {
                     const size = parseFloat(pos.size || 0);
-                    if (size < 0.1) continue;
+                    if (size < 0.1) continue; // Ignoramos polvo (dust)
 
                     const cashPnl = parseFloat(pos.cashPnl || 0);
                     const percentPnl = parseFloat(pos.percentPnl || 0);
@@ -512,14 +513,13 @@ async function updateRealBalances() {
                         else if (pos.assetName.toUpperCase().includes("-NO")) outcomeVal = "NO";
                     }
 
-                    // 🔥 FIX VITAL: Definir la variable antes de usarla
                     const currentTokenId = pos.asset || pos.token_id || pos.asset_id;
 
-                    // 🔥 FIX QUANT VISUAL: Calcular Inversión y Precio de Entrada Matemáticamente
-                    const invested = valorActual - cashPnl;
-                    const entryPrice = size > 0 ? (invested / size) : 0;
+                    // 🔥 FIX CRÍTICO 2: Extracción Directa desde la API para precisión matemática total
+                    const invested = pos.initialValue ? parseFloat(pos.initialValue) : Math.max(0, valorActual - cashPnl);
+                    const entryPrice = pos.avgPrice ? parseFloat(pos.avgPrice) : (size > 0 ? (invested / size) : 0);
 
-                    // 🔥 FIX QUANT VISUAL: Recuperar Nickname de Ballena si existe
+                    // Recuperar Nickname de Ballena si existe
                     const whaleData = botStatus.copiedPositions?.find(p => p.tokenId === currentTokenId);
 
                     botStatus.activePositions.push({
@@ -534,17 +534,17 @@ async function updateRealBalances() {
                         percentPnl: percentPnl,
                         category: getMarketCategoryEnhanced(pos.title || pos.market || ""),
                         outcome: outcomeVal,
-                        engine: botStatus.positionEngines[currentTokenId] || null, // 🔥 MAGIA: Restaura la etiqueta
-                        sizeCopied: invested, // <-- RESTAURA VISUALMENTE LA INVERSIÓN
-                        priceEntry: entryPrice, // <-- RESTAURA VISUALMENTE EL PRECIO
-                        nickname: whaleData ? whaleData.nickname : null // <-- RESTAURA LA BALLENA
+                        engine: botStatus.positionEngines[currentTokenId] || null, 
+                        sizeCopied: invested, // <-- RESTAURA VISUALMENTE LA INVERSIÓN (Con precisión absoluta)
+                        priceEntry: entryPrice, // <-- RESTAURA VISUALMENTE EL PRECIO (Con precisión absoluta)
+                        nickname: whaleData ? whaleData.nickname : null 
                     });
                 }
             }
             
             botStatus.unclaimedUSDC = totalUnclaimed.toFixed(2);
 
-            // 🔥 LIMPIEZA AUTOMÁTICA de copiedTrades
+            // LIMPIEZA AUTOMÁTICA de copiedTrades
             await cleanupCopiedTrades();
 
         } catch (apiError) {
@@ -1039,6 +1039,9 @@ async function refreshWatchlist() {
         let shortTermCrypto = []; // Crypto corto y Up or Down
 
         for (const market of marketsWithCategory) {
+            // 🔥 FIX QUANT: Ignorar mercados ilíquidos (Menos de $2000 USD de volumen total)
+            if (parseFloat(market.volume || 0) < 2000) continue;
+
             const cat = market.category || "";
 
             if (["POLITICS", "BUSINESS", "GEOPOLITICS", "TRUMP", "FED", "CPI", "IRAN", "UKRAINE", "ISRAEL"].includes(cat)) {
@@ -1075,7 +1078,7 @@ async function refreshWatchlist() {
                 priceNo: parseFloat(prices[1] || 0),
                 tokenId: tokens[0] || null,
                 marketPrice: parseFloat(prices[0] || 0),
-                endDate: market.endDate, // 🔥 FIX QUANT: La cura para la ceguera de Chronos
+                endDate: market.endDate, 
                 endsIn: hrs < 1 ? `${Math.round(hrs*60)}m` : `${hrs.toFixed(1)}h`,
                 tickSize: market.minimum_tick_size || "0.01",
                 volume: parseFloat(market.volume || 0)
@@ -1849,6 +1852,17 @@ async function runBot() {
         botStatus.currentMarket = marketItem;
         botStatus.currentTopic = marketTitle;
 
+        // === OPTIMIZACIÓN QUANT: PRE-FILTRO DE PRECIO ===
+        // Si ambos lados del mercado están fuera de nuestro rango operable (muy caros o muy baratos),
+        // saltamos al siguiente mercado SIN gastar créditos de IA.
+        const prePriceYes = marketItem.priceYes || 0;
+        const prePriceNo = marketItem.priceNo || 0;
+        
+        if ((prePriceYes < 0.05 || prePriceYes > 0.85) && (prePriceNo < 0.05 || prePriceNo > 0.85)) {
+            // console.log(`⏩ Saltando ${marketTitle.substring(0,30)}... Precios fuera de rango operable.`);
+            watchlistIndex = (watchlistIndex + 1) % botStatus.watchlist.length;
+            return;
+        }
 
         // ====================================================
         // 🧠 EJECUCIÓN MULTI-AGENTE (CLAUDE + GEMINI + GROK)
@@ -1857,57 +1871,80 @@ async function runBot() {
         const cacheKey = `${marketItem.tokenId}-${newsString.substring(0, 60)}`;
 
         let finalAnalysis;
+        let useCache = false;
 
         if (analysisCache.has(cacheKey)) {
-            finalAnalysis = analysisCache.get(cacheKey);
-        } else {
+            const cached = analysisCache.get(cacheKey);
+            const ageMinutes = (Date.now() - (cached.timestamp || 0)) / 60000;
+            
+            // Si el análisis tiene menos de 45 minutos, usamos el caché
+            if (ageMinutes < 45) {
+                finalAnalysis = cached;
+                useCache = true;
+                console.log(`♻️ Usando caché para ${marketTitle.substring(0,30)} (${Math.round(ageMinutes)}m de antigüedad)`);
+            }
+        }
+
+        if (!useCache) {
             console.log(`\n🤖 Analizando con la Trinidad: ${marketTitle.substring(0,45)}...`);
 
+            // Disparamos las 3 APIs al mismo tiempo por velocidad
             const [claudeResult, geminiResult, grokResult] = await Promise.all([
                 analyzeMarketWithClaude(marketTitle, newsString),
                 analyzeMarketWithGemini(marketTitle, newsString),
                 analyzeMarketWithGrok(marketTitle, newsString)
             ]);
 
-            // === FUSIÓN DE OPINIONES (CONSENSO MÁS ESTRICTO) ===
-            const claudeBuy = claudeResult.recommendation.includes("BUY");
-            const geminiBuy = geminiResult.recommendation.includes("BUY");
-            const grokBuy   = grokResult.recommendation.includes("BUY");
+            // 🛡️ FIX QUANT: Purga de errores y Matriz de Supervivencia
+            const validResults = [];
+            if (!claudeResult.isError) validResults.push({ ...claudeResult, engine: "Claude", buy: claudeResult.recommendation.includes("BUY") });
+            if (!geminiResult.isError) validResults.push({ ...geminiResult, engine: "Gemini", buy: geminiResult.recommendation.includes("BUY") });
+            if (!grokResult.isError) validResults.push({ ...grokResult, engine: "Grok", buy: grokResult.recommendation.includes("BUY") });
 
-            const buyVotes = [claudeBuy, geminiBuy, grokBuy].filter(Boolean).length;
+            // 🚨 KILL SWITCH: Si las 3 APIs están caídas, abortamos para proteger el saldo
+            if (validResults.length === 0) {
+                console.log("🚫 [SNIPER ABORTADO] Las 3 IAs fallaron (Rate Limits). Protegiendo capital, no disparamos a ciegas.");
+                watchlistIndex = (watchlistIndex + 1) % botStatus.watchlist.length;
+                return;
+            }
 
+            // === FUSIÓN DE OPINIONES Y FALLBACK DINÁMICO ===
+            const buyVotes = validResults.filter(r => r.buy).length;
             finalAnalysis = { prob: 0, edge: 0, recommendation: "WAIT", reason: "", urgency: 5, engine: "None" };
 
-            if (buyVotes >= 2) {
-                console.log(`🔥 ¡CONSENSO FUERTE! (${buyVotes}/3 votos)`);
+            // CASO A: Sobrevivieron al menos 2 modelos y están de acuerdo en COMPRAR (Consenso Dinámico)
+            if (validResults.length >= 2 && buyVotes >= 2) {
+                console.log(`🔥 ¡CONSENSO DINÁMICO FUERTE! (${buyVotes}/${validResults.length} votos válidos)`);
                 
-                const activeResults = [];
-                let enginesStr = [];
-                if (claudeBuy) { activeResults.push(claudeResult); enginesStr.push("C"); }
-                if (geminiBuy) { activeResults.push(geminiResult); enginesStr.push("G"); }
-                if (grokBuy)   { activeResults.push(grokResult);   enginesStr.push("X"); }
-
-                finalAnalysis.prob = activeResults.reduce((sum, r) => sum + r.prob, 0) / buyVotes;
-                finalAnalysis.edge = activeResults.reduce((sum, r) => sum + r.edge, 0) / buyVotes;
-                finalAnalysis.urgency = Math.max(...activeResults.map(r => r.urgency));
+                const activeBuys = validResults.filter(r => r.buy);
+                
+                finalAnalysis.prob = activeBuys.reduce((sum, r) => sum + r.prob, 0) / buyVotes;
+                finalAnalysis.edge = activeBuys.reduce((sum, r) => sum + r.edge, 0) / buyVotes;
+                finalAnalysis.urgency = Math.max(...activeBuys.map(r => r.urgency));
                 finalAnalysis.recommendation = "STRONG_BUY"; 
-                finalAnalysis.reason = `[CONSENSO] ` + activeResults.map((r, i) => `${enginesStr[i]}: ${r.reason}`).join(" | ");
-                finalAnalysis.engine = buyVotes === 3 ? "Trinity (C+G+X)" : `Consenso (${enginesStr.join('+')})`;
+                finalAnalysis.reason = `[CONSENSO] ` + activeBuys.map(r => `${r.engine.charAt(0)}: ${r.reason}`).join(" | ");
+                finalAnalysis.engine = buyVotes === 3 ? "Trinity (C+G+X)" : `Consenso (${activeBuys.map(r => r.engine.charAt(0)).join('+')})`;
 
-            } else if (claudeBuy) {
-                finalAnalysis = { ...claudeResult, engine: "Claude" };
-            } else if (geminiBuy) {
-                finalAnalysis = { ...geminiResult, engine: "Gemini" };
-            } else if (grokBuy) {
-                finalAnalysis = { ...grokResult, engine: "Grok" };
             } else {
-                finalAnalysis = { ...claudeResult, engine: "Claude" };
+                // CASO B: CASCADA DE FALLBACK ESTRICTA (Si no hay consenso o cayeron modelos clave)
+                const claudeValid = validResults.find(r => r.engine === "Claude");
+                const geminiValid = validResults.find(r => r.engine === "Gemini");
+                const grokValid = validResults.find(r => r.engine === "Grok");
+
+                if (claudeValid) {
+                    finalAnalysis = { ...claudeValid };
+                } else if (geminiValid) {
+                    console.log("⚠️ [FALLBACK] Claude saturado. Gemini asume el control del disparo.");
+                    finalAnalysis = { ...geminiValid };
+                } else if (grokValid) {
+                    console.log("⚠️ [FALLBACK] Claude y Gemini saturados. Grok asume el control del disparo.");
+                    finalAnalysis = { ...grokValid };
+                }
             }
 
-            if (!claudeResult.isError && !geminiResult.isError && !grokResult.isError) {
-                analysisCache.set(cacheKey, finalAnalysis);
-                if (analysisCache.size > 60) analysisCache.delete(analysisCache.keys().next().value);
-            }
+            // Almacenamos en caché el resultado sanitizado CON TIMESTAMP
+            analysisCache.set(cacheKey, { ...finalAnalysis, timestamp: Date.now() });
+            if (analysisCache.size > 60) analysisCache.delete(analysisCache.keys().next().value);
         }
 
         botStatus.lastProbability = finalAnalysis.prob || 0;
@@ -1970,8 +2007,8 @@ async function runBot() {
         const isStrongSignal = 
             (!alreadyInvested && !alreadyClosed && !alreadyPending && !isSportsLimitReached) && (
                 
-                // CASO 1: Consenso Fuerte (Trinity)
-                (finalAnalysis.engine && finalAnalysis.engine.includes("Trinity") && 
+                // CASO 1: Consenso Fuerte (Trinity o Dinámico)
+                (finalAnalysis.engine && (finalAnalysis.engine.includes("Trinity") || finalAnalysis.engine.includes("Consenso")) && 
                  targetProb >= minProb - 0.05 && edge >= Math.max(0.04, minEdge - 0.015)) ||
                 
                 // CASO 2: Recomendación MUY FUERTE (STRONG_BUY).
@@ -2035,9 +2072,8 @@ async function runBot() {
 
             if (result?.success) {
                 pendingOrdersCache.add(targetTokenId);
-                setTimeout(() => pendingOrdersCache.delete(targetTokenId), 60000); // Limpieza Cuántic
+                setTimeout(() => pendingOrdersCache.delete(targetTokenId), 60000); 
                 
-                // 🔥 NUEVO: Tatuar en la memoria qué IA o Consenso disparó la orden
                 botStatus.positionEngines[targetTokenId] = finalAnalysis.engine || "IA";
                 saveConfigToDisk("Disparo Sniper IA");
                 
@@ -2767,12 +2803,10 @@ function recordPriceToMemory(tokenId, currentPrice) {
 }
 
 // ==========================================
-// 🤖 IA FLASH CHECK Y ESCUDO DE LATENCIA (BLINDADO VECTORIAL)
+// 🤖 IA FLASH CHECK Y ESCUDO DE LATENCIA (BLINDADO VECTORIAL 3 CAPAS)
 // ==========================================
 async function verifyShockWithIA(marketData, eventProbabilityChange, triggerPrice, shockTokenId, outcomeToBuy) {
-    // 🔥 FIX QUANT: La dirección ahora refleja la realidad del evento principal, no del token aislado.
     const direction = eventProbabilityChange > 0 ? "AUMENTADO" : "CAÍDO";
-    
     const newsString = await getLatestNews(marketData.title, marketData.category); 
     
     const flashPrompt = `
@@ -2787,25 +2821,29 @@ async function verifyShockWithIA(marketData, eventProbabilityChange, triggerPric
         const claudeResponse = await analyzeMarketWithClaude(marketData.title, flashPrompt, 1);
         
         if (!claudeResponse.isError) {
-             result = {
-                 isJustified: claudeResponse.recommendation !== "WAIT", 
-                 reason: claudeResponse.reason,
-                 confidence: (claudeResponse.prob * 100) || 80
-             };
+             result = { isJustified: claudeResponse.recommendation !== "WAIT", reason: claudeResponse.reason, confidence: (claudeResponse.prob * 100) || 80 };
         } else {
-             console.log(`⚠️ [EQUALIZER] Claude falló. Lanzando a Grok...`);
-             const grokResponse = await analyzeMarketWithGrok(marketData.title, flashPrompt, 1);
-             if (!grokResponse.isError) {
-                 result = { isJustified: grokResponse.recommendation !== "WAIT", reason: grokResponse.reason, confidence: (grokResponse.prob * 100) || 80 };
+             console.log(`⚠️ [EQUALIZER] Claude falló. Lanzando a Gemini...`);
+             const geminiResponse = await analyzeMarketWithGemini(marketData.title, flashPrompt, 1);
+             
+             if (!geminiResponse.isError) {
+                 result = { isJustified: geminiResponse.recommendation !== "WAIT", reason: geminiResponse.reason, confidence: (geminiResponse.prob * 100) || 80 };
              } else {
-                 console.log(`❌ [EQUALIZER ABORTADO] APIs caídas. No disparamos a ciegas.`);
-                 delete priceHistoryCache[shockTokenId];
-                 return; 
+                 console.log(`⚠️ [EQUALIZER] Gemini falló. Lanzando a Grok...`);
+                 const grokResponse = await analyzeMarketWithGrok(marketData.title, flashPrompt, 1);
+                 
+                 if (!grokResponse.isError) {
+                     result = { isJustified: grokResponse.recommendation !== "WAIT", reason: grokResponse.reason, confidence: (grokResponse.prob * 100) || 80 };
+                 } else {
+                     console.log(`❌ [EQUALIZER ABORTADO] Las 3 APIs están caídas. No disparamos a ciegas.`);
+                     delete priceHistoryCache[shockTokenId];
+                     return; 
+                 }
              }
         }
 
         if (result.isJustified === false && result.confidence >= 75) {
-            console.log(`📉 [EQUALIZER] IA Confirma Pánico Humano (Confianza: ${result.confidence}%). Razón: ${result.reason}`);
+            console.log(`📉 [EQUALIZER] IA Confirma Pánico Humano (Confianza: ${result.confidence.toFixed(0)}%). Razón: ${result.reason}`);
             
             const currentLivePrice = await getMarketPrice(shockTokenId) || (outcomeToBuy === "YES" ? marketData.priceYes : marketData.priceNo);
             const expectedDiscountPrice = outcomeToBuy === "YES" ? (1 - triggerPrice) : (1 - triggerPrice);
