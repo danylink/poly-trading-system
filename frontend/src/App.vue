@@ -91,6 +91,11 @@ const status = ref({
   chronosBetAmount: 5,
   chronosMinPrice: 0.75,
   chronosMaxPrice: 0.88,
+  // 🌊 Kinetic Pressure (Orderbook Imbalance)
+  kineticEnabled: false,
+  kineticBetAmount: 10,
+  kineticImbalanceRatio: 8,
+  kineticDepthPercent: 2,
 });
 
 // --- CONTROL DE PESTAÑAS MÓVILES ---
@@ -912,6 +917,28 @@ const updateChronos = async () => {
   }
 };
 
+// ==========================================
+// 🌊 KINETIC PRESSURE: FILTRO Y CONTROL
+// ==========================================
+const kineticPositions = computed(() => {
+  if (!status.value || !status.value.activePositions) return [];
+  return status.value.activePositions.filter(pos => pos.engine === 'KINETIC');
+});
+
+const updateKinetic = async () => {
+  try {
+    await axios.post(`${API_URL}/settings/kinetic`, { 
+      enabled: status.value.kineticEnabled,
+      betAmount: status.value.kineticBetAmount,
+      imbalanceRatio: status.value.kineticImbalanceRatio,
+      depthPercent: status.value.kineticDepthPercent
+    });
+    console.log("Configuración de Kinetic Pressure actualizada.");
+  } catch (error) {
+    console.error("Error actualizando Kinetic:", error);
+  }
+};
+
 // --- COMPUTED PROPERTIES ---
 
 // 1. Valor total de las posiciones que siguen vivas
@@ -954,14 +981,14 @@ const probColor = computed(() => {
 });
 
 // ==========================================
-// ORDENAMIENTO QUANT DE POSICIONES (BLINDADO)
+// 🛡️ ORDENAMIENTO QUANT DE POSICIONES (BLINDADO)
 // ==========================================
 const sortedActivePositions = computed(() => {
   if (!status.value.activePositions || status.value.activePositions.length === 0) return [];
   
   return [...status.value.activePositions]
-    // 🛡️ FIX QUANT: Ocultamos las posiciones especializadas para que no salgan duplicadas
-    .filter(pos => pos.engine !== 'EQUALIZER' && pos.engine !== 'CHRONOS')
+    // 🛡️ FIX QUANT: Ocultamos las TRES estrategias especializadas
+    .filter(pos => pos.engine !== 'EQUALIZER' && pos.engine !== 'CHRONOS' && pos.engine !== 'KINETIC')
     .sort((a, b) => {
       const pnlA = parseFloat(a.percentPnl || 0);
       const pnlB = parseFloat(b.percentPnl || 0);
@@ -1449,6 +1476,75 @@ onUnmounted(() => {
 
         </div>       
 
+        <!-- ====================== POSICIONES KINETIC PRESSURE EN VIVO SECTION ====================== -->
+        <div class="bg-[#111114] border border-zinc-800/80 rounded-[2rem] p-6 lg:p-8 transition-all duration-500 shadow-xl mt-8">
+          
+          <div class="flex items-center justify-between mb-6">
+            <div class="flex items-center gap-4">
+              <div class="p-3.5 rounded-2xl border transition-colors duration-500 shadow-inner bg-orange-500/10 border-orange-500/20 text-orange-400">
+                <Activity :size="24" />
+              </div>
+              <div>
+                <h3 class="text-white font-black text-lg tracking-tight">Kinetic Pressure</h3>
+                <p class="text-xs text-zinc-500 font-medium">Surfeando Muros de Liquidez Institucional</p>
+              </div>
+            </div>
+            <div class="px-3 py-1 rounded-full bg-orange-500/10 border border-orange-500/20 text-orange-400 text-xs font-bold flex items-center gap-2">
+              <Activity :size="12" />
+              {{ kineticPositions.length }} ACTIVAS
+            </div>
+          </div>
+
+          <div v-if="kineticPositions.length === 0" class="flex flex-col items-center justify-center py-10 px-4 border border-dashed border-zinc-800/50 rounded-2xl bg-[#09090b]/50">
+            <Activity :size="32" class="text-zinc-700 mb-3 opacity-50" />
+            <p class="text-zinc-500 text-sm font-medium text-center">No hay muros de liquidez activos.<br>Escaneando presión en el Top 5 de mercados...</p>
+          </div>
+
+          <div v-else class="space-y-4">
+            <div v-for="pos in kineticPositions" :key="pos.tokenId" 
+                class="group relative overflow-hidden bg-[#09090b] border border-zinc-800 hover:border-orange-500/30 rounded-2xl p-4 transition-all duration-300">
+              
+              <div class="absolute top-0 left-0 w-1 h-full bg-orange-500 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+              
+              <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                
+                <div class="flex-1">
+                  <div class="flex items-center gap-2 mb-1.5">
+                    <span class="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider"
+                          :class="pos.outcome === 'YES' ? 'bg-blue-500/20 text-blue-400 border border-blue-500/20' : 'bg-red-500/20 text-red-400 border border-red-500/20'">
+                      {{ pos.outcome === 'YES' ? 'SÍ' : 'NO' }}
+                    </span>
+                    <span class="text-[10px] text-orange-500 font-mono border border-orange-500/20 px-2 py-0.5 rounded bg-orange-500/5 flex items-center gap-1">
+                      <Activity :size="10" /> IMBALANCE SCALP
+                    </span>
+                  </div>
+                  <h4 class="text-zinc-200 font-semibold text-sm leading-tight line-clamp-2">{{ pos.marketName }}</h4>
+                </div>
+
+                <div class="flex items-center gap-6 shrink-0 bg-[#111114] p-3 rounded-xl border border-zinc-800/50">
+                  
+                  <div class="flex flex-col items-end">
+                    <span class="text-xs text-zinc-500 font-medium">Inversión (Scalp)</span>
+                    <div class="flex items-center gap-1.5">
+                      <span class="text-white font-mono font-bold">${{ parseFloat(pos.sizeCopied || 0).toFixed(2) }}</span>
+                      <span class="text-zinc-600 text-[10px]">@ ${{ parseFloat(pos.priceEntry || 0).toFixed(2) }}</span>
+                    </div>
+                  </div>
+
+                  <div class="flex flex-col items-end border-l border-zinc-800 pl-6">
+                    <span class="text-xs text-zinc-500 font-medium mb-0.5">PnL (Target 10%)</span>
+                    <span class="px-2.5 py-1 rounded-md text-xs font-mono font-black tracking-tight border"
+                          :class="getPnLColor(pos.percentPnl)">
+                      {{ formatPnL(pos.percentPnl) }}
+                    </span>
+                  </div>
+
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
 
         <!-- ====================== SEÑALES MULTI-AGENTE SECTION ====================== -->
         <div class="bg-[#111114] border-2 border-zinc-800 rounded-3xl p-8 mb-8">
@@ -2373,7 +2469,7 @@ onUnmounted(() => {
           </div>
         </div>
 
-        <!-- ====================== Filtro Quantum Equalizer SECTION ====================== -->
+        <!-- ====================== FILTRO QUAUNTUM EQUALIZER SECTION ====================== -->
         <div class="bg-[#111114] border border-zinc-800/80 rounded-[2rem] p-6 lg:p-8 transition-all duration-500 relative overflow-hidden group shadow-[0_0_50px_rgba(6,182,212,0.02)] hover:border-cyan-500/30 mb-8">
           <div class="absolute -top-32 -right-32 w-64 h-64 bg-cyan-500 rounded-full blur-[100px] opacity-10 pointer-events-none transition-colors duration-700"></div>
           <div class="absolute -right-6 -top-6 opacity-5 group-hover:opacity-10 transition-all duration-700 pointer-events-none">
@@ -2444,8 +2540,7 @@ onUnmounted(() => {
           </div>
         </div>
 
-
-        <!-- ====================== Filtro Chronos Harvester SECTION ====================== -->
+        <!-- ====================== FILTRO CHRONOS HARVESTER SECTION ====================== -->
         <div class="bg-[#111114] border border-zinc-800/80 rounded-[2rem] p-6 lg:p-8 transition-all duration-500 relative overflow-hidden group shadow-[0_0_50px_rgba(139,92,246,0.02)] hover:border-violet-500/30 mb-8">
           <div class="absolute -top-32 -right-32 w-64 h-64 bg-violet-500 rounded-full blur-[100px] opacity-10 pointer-events-none transition-colors duration-700"></div>
           <div class="absolute -right-6 -top-6 opacity-5 group-hover:opacity-10 transition-all duration-700 pointer-events-none">
@@ -2498,6 +2593,58 @@ onUnmounted(() => {
           </div>
         </div>
 
+        <!-- ====================== FILTRO KINETIC PRESSURE SECTION ====================== -->
+        <div class="bg-[#111114] border border-zinc-800/80 rounded-[2rem] p-6 lg:p-8 transition-all duration-500 relative overflow-hidden group shadow-[0_0_50px_rgba(249,115,22,0.02)] hover:border-orange-500/30 mb-8">
+          <div class="absolute -top-32 -right-32 w-64 h-64 bg-orange-500 rounded-full blur-[100px] opacity-10 pointer-events-none transition-colors duration-700"></div>
+          <div class="absolute -right-6 -top-6 opacity-5 group-hover:opacity-10 transition-all duration-700 pointer-events-none">
+            <Activity :size="150" class="text-orange-500" />
+          </div>
+          
+          <div class="flex items-center justify-between relative z-10 mb-6">
+            <div class="flex items-center gap-4">
+              <div class="p-3.5 rounded-2xl border transition-colors duration-500 shadow-inner shrink-0 bg-orange-500/10 border-orange-500/20 text-orange-400">
+                <Activity :size="24" />
+              </div>
+              <div>
+                <h3 class="text-white font-black text-lg tracking-tight">Kinetic Pressure</h3>
+                <p class="text-xs text-zinc-500 font-medium">Front-running a Ballenas (Orderbook Imbalance)</p>
+              </div>
+            </div>
+            
+            <label class="relative inline-flex items-center cursor-pointer group/toggle">
+              <input type="checkbox" v-model="status.kineticEnabled" @change="updateKinetic" class="sr-only peer">
+              <div class="w-11 h-6 bg-[#09090b] border border-zinc-700 rounded-full peer peer-focus:ring-2 peer-focus:ring-orange-500/20 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-zinc-400 after:border-zinc-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-orange-500 peer-checked:border-orange-500 group-hover/toggle:shadow-[0_0_15px_rgba(249,115,22,0.3)]"></div>
+            </label>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-6 relative z-10 pt-4 border-t border-zinc-800/50">
+            
+            <div>
+              <div class="flex justify-between items-center mb-3">
+                <span class="text-xs font-bold text-zinc-400 uppercase tracking-wider">Ratio (Bids:Asks)</span>
+                <span class="text-sm font-mono font-black text-orange-400">{{ status.kineticImbalanceRatio }}:1</span>
+              </div>
+              <input type="range" v-model="status.kineticImbalanceRatio" min="3" max="15" step="1" @change="updateKinetic" class="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-orange-500" />
+            </div>
+
+            <div>
+              <div class="flex justify-between items-center mb-3">
+                <span class="text-xs font-bold text-zinc-400 uppercase tracking-wider">Profundidad del Libro</span>
+                <span class="text-sm font-mono font-black text-orange-400">{{ status.kineticDepthPercent }}%</span>
+              </div>
+              <input type="range" v-model="status.kineticDepthPercent" min="0.5" max="5" step="0.5" @change="updateKinetic" class="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-orange-500" />
+            </div>
+
+            <div>
+              <div class="flex justify-between items-center mb-3">
+                <span class="text-xs font-bold text-zinc-400 uppercase tracking-wider">Inversión Scalp</span>
+                <span class="text-sm font-mono font-black text-orange-400">${{ status.kineticBetAmount }} USDC</span>
+              </div>
+              <input type="range" v-model="status.kineticBetAmount" min="5" max="100" step="5" @change="updateKinetic" class="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-orange-500" />
+            </div>
+            
+          </div>
+        </div>
 
         <!-- ====================== COPY TRADING CUSTOM ====================== -->
         <div class="bg-[#111114] border border-zinc-800/80 rounded-[2rem] p-6 lg:p-8 transition-all duration-500 relative overflow-hidden group shadow-[0_0_50px_rgba(168,85,247,0.02)] hover:border-purple-500/30">
