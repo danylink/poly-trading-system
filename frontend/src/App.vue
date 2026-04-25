@@ -931,9 +931,10 @@ const updateKinetic = async () => {
       enabled: status.value.kineticEnabled,
       betAmount: status.value.kineticBetAmount,
       imbalanceRatio: status.value.kineticImbalanceRatio,
-      depthPercent: status.value.kineticDepthPercent
+      depthPercent: status.value.kineticDepthPercent,
+      maxPositions: status.value.kineticMaxPositions // 🔥 Vital para que el backend lo reciba
     });
-    console.log("Configuración de Kinetic Pressure actualizada.");
+    console.log("🌊 [FRONTEND] Configuración de Kinetic enviada.");
   } catch (error) {
     console.error("Error actualizando Kinetic:", error);
   }
@@ -2628,7 +2629,7 @@ onUnmounted(() => {
             </label>
           </div>
 
-          <div class="grid grid-cols-1 md:grid-cols-3 gap-6 relative z-10 pt-4 border-t border-zinc-800/50">
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 relative z-10 pt-4 border-t border-zinc-800/50">
             
             <div>
               <div class="flex justify-between items-center mb-3">
@@ -2640,7 +2641,7 @@ onUnmounted(() => {
 
             <div>
               <div class="flex justify-between items-center mb-3">
-                <span class="text-xs font-bold text-zinc-400 uppercase tracking-wider">Profundidad del Libro</span>
+                <span class="text-xs font-bold text-zinc-400 uppercase tracking-wider">Profundidad</span>
                 <span class="text-sm font-mono font-black text-orange-400">{{ status.kineticDepthPercent }}%</span>
               </div>
               <input type="range" v-model="status.kineticDepthPercent" min="0.5" max="5" step="0.5" @change="updateKinetic" class="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-orange-500" />
@@ -2652,6 +2653,14 @@ onUnmounted(() => {
                 <span class="text-sm font-mono font-black text-orange-400">${{ status.kineticBetAmount }} USDC</span>
               </div>
               <input type="range" v-model="status.kineticBetAmount" min="5" max="100" step="5" @change="updateKinetic" class="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-orange-500" />
+            </div>
+
+            <div>
+              <div class="flex justify-between items-center mb-3">
+                <span class="text-xs font-bold text-zinc-400 uppercase tracking-wider">Límite Ráfaga</span>
+                <span class="text-sm font-mono font-black text-orange-500">{{ status.kineticMaxPositions }} POS</span>
+              </div>
+              <input type="range" v-model="status.kineticMaxPositions" min="1" max="10" step="1" @change="updateKinetic" class="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-orange-500" />
             </div>
             
           </div>

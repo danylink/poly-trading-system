@@ -223,7 +223,8 @@ let botStatus = {
     aiStats: { wins: 0, losses: 0, totalTrades: 0, winRate: 0.0 },
     whaleStats: { wins: 0, losses: 0, totalTrades: 0, winRate: 0.0 },
     aiReserveAmount: 50,
-    positionEngines: {} // <-- NUEVO: Guardará los tatuajes de las posiciones
+    positionEngines: {}, // <-- NUEVO: Guardará los tatuajes de las posiciones
+    kineticMaxPositions: 3
 };
 
 // ==========================================
@@ -571,6 +572,12 @@ async function updateRealBalances() {
 // ==========================================
 async function runKineticPressureScanner() {
     if (!botStatus.kineticEnabled || botStatus.isPanicStopped) return;
+
+    // 🔥 USAR EL LÍMITE DINÁMICO DEL DASHBOARD
+    const kineticActiveCount = botStatus.activePositions.filter(p => p.engine === 'KINETIC').length;
+    if (kineticActiveCount >= botStatus.kineticMaxPositions) {
+        return; 
+    }
 
     // 🛡️ REGLA QUANT: Solo escaneamos los 5 mercados con más volumen para evitar Rate Limits
     const topMarkets = [...botStatus.watchlist]
@@ -3577,20 +3584,23 @@ app.post('/api/settings/chronos', (req, res) => {
 });
 
 // ==========================================
-// 🎛️ ENDPOINTS: KINETIC PRESSURE
+// 🎛️ ENDPOINTS: KINETIC PRESSURE (ACTUALIZADO)
 // ==========================================
 app.post('/api/settings/kinetic', (req, res) => {
     try {
-        const { enabled, betAmount, imbalanceRatio, depthPercent } = req.body;
+        const { enabled, betAmount, imbalanceRatio, depthPercent, maxPositions } = req.body;
         
         if (enabled !== undefined) botStatus.kineticEnabled = Boolean(enabled);
         if (betAmount !== undefined) botStatus.kineticBetAmount = parseFloat(betAmount);
         if (imbalanceRatio !== undefined) botStatus.kineticImbalanceRatio = parseFloat(imbalanceRatio);
         if (depthPercent !== undefined) botStatus.kineticDepthPercent = parseFloat(depthPercent);
         
+        // 🔥 Guardamos el nuevo límite dinámico
+        if (maxPositions !== undefined) botStatus.kineticMaxPositions = parseInt(maxPositions);
+        
         saveConfigToDisk("Ajuste Kinetic Pressure");
         
-        console.log(`🌊 [KINETIC] Ajustes actualizados: ON=${botStatus.kineticEnabled} | Ratio=${botStatus.kineticImbalanceRatio}:1 | Disparo=$${botStatus.kineticBetAmount}`);
+        console.log(`🌊 [KINETIC] Ajustes: ON=${botStatus.kineticEnabled} | Ratio=${botStatus.kineticImbalanceRatio}:1 | Límite=${botStatus.kineticMaxPositions} POS`);
         
         res.json({ success: true, message: "Kinetic actualizado" });
     } catch (error) {
