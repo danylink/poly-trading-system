@@ -1281,6 +1281,17 @@ onUnmounted(() => {
                         class="inline-flex items-center gap-1 text-[9px] font-black text-purple-400 bg-purple-500/10 border border-purple-500/30 px-2 py-0.5 rounded-md">
                     🐋 {{ pos.nickname }}
                   </span>
+
+                  <span v-else-if="pos.engine && !['EQUALIZER', 'CHRONOS', 'KINETIC'].includes(pos.engine)" 
+                        class="inline-flex items-center gap-1 text-[9px] font-black px-2 py-0.5 rounded-md border shadow-inner uppercase tracking-widest"
+                        :class="pos.engine.includes('Trinity') || pos.engine.includes('Consenso') ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30' : 
+                               (pos.engine === 'Grok' ? 'text-red-400 bg-red-500/10 border-red-500/30' : 
+                               (pos.engine === 'Gemini' ? 'text-blue-400 bg-blue-500/10 border-blue-500/30' : 
+                               'text-[#D4AF37] bg-[#D4AF37]/10 border-[#D4AF37]/30'))">
+                    {{ pos.engine.includes('Trinity') || pos.engine.includes('Consenso') ? '🔥' : 
+                       (pos.engine === 'Grok' ? '𝕏' : 
+                       (pos.engine === 'Gemini' ? '🔮' : '🧠')) }} {{ pos.engine }}
+                  </span>
                 </div>
                 <span class="text-zinc-200 font-bold text-sm line-clamp-2" :title="pos.marketName">{{ pos.marketName }}</span>
                 <span class="text-[#D4AF37] font-mono text-[10px] mt-1">{{ pos.size }} Acciones</span>

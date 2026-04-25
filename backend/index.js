@@ -2028,7 +2028,11 @@ async function runBot() {
             );
 
             if (result?.success) {
-                pendingOrdersCache.add(targetTokenId); 
+                pendingOrdersCache.add(targetTokenId);
+                
+                // 🔥 NUEVO: Tatuar en la memoria qué IA o Consenso disparó la orden
+                botStatus.positionEngines[targetTokenId] = finalAnalysis.engine || "IA";
+                saveConfigToDisk("Disparo Sniper IA");
                 
                 await sendSniperAlert({
                     marketName: `${marketTitle} (Apuesta al ${targetSideLabel})`, 
