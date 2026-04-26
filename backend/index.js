@@ -1749,6 +1749,54 @@ function getCustomMarketRules(marketTitle = "") {
 }
 
 // ==========================================
+// AUTO SELL MANAGER - VERSIÓN FINAL QUANT (Matemática Pura y Blindada)
+// ==========================================
+async function autoSellManager() {
+    if (!botStatus.autoTradeEnabled) return;
+
+    // 🔥 FIX CRÍTICO: Iteramos sobre una COPIA inmutable. 
+    // Evita el colapso de índices cuando updateRealBalances reemplaza el array.
+    const positionsToReview = [...botStatus.activePositions];
+
+    for (const pos of positionsToReview) {
+        if (pos.status && pos.status.includes('CANJEAR')) continue;
+
+        const marketNameShort = (pos.marketName || "Mercado desconocido").substring(0, 45);
+        
+        const currentSharePrice = pos.exactSize > 0 ? (parseFloat(pos.currentValue) / parseFloat(pos.exactSize)) : 0;
+        const entryPrice = parseFloat(pos.priceEntry || 0);
+        
+        const profit = (entryPrice > 0 && currentSharePrice > 0) ? ((currentSharePrice - entryPrice) / entryPrice) * 100 : 0;
+        const isMaxPriceReached = currentSharePrice >= 0.95;
+
+        let originTag = 'IA';
+        let isWhaleTrade = false;
+
+        if (pos.engine === "EQUALIZER") originTag = 'EQUALIZER';
+        else if (pos.engine === "CHRONOS") originTag = 'CHRONOS';
+        else if (pos.engine === "KINETIC") originTag = 'KINETIC';
+        else {
+            isWhaleTrade = botStatus.copiedPositions?.some(cp => cp.tokenId === pos.tokenId) || botStatus.copiedTrades?.some(ct => ct.tokenId === pos.tokenId);
+            if (isWhaleTrade) originTag = 'WHALE';
+        }
+
+        const { config: riskConfig, profileType } = getRiskProfile(pos.marketName, isWhaleTrade);
+
+        if (!botStatus.partialSells) botStatus.partialSells = [];
+        const hasDonePartial = botStatus.partialSells.includes(pos.tokenId);
+
+        if (profit >= (riskConfig.takeProfitThreshold - 5) || profit <= (riskConfig.stopLossThreshold + 5) || currentSharePrice >= 0.90) {
+            console.log(`📊 [AUTO-SELL] ${originTag}-${profileType} | ${marketNameShort} | PnL Real: ${profit.toFixed(1)}% | Precio Acc: $${currentSharePrice.toFixed(2)}`);
+        }
+
+        // ====================== 🌓 TAKE PROFIT PARCIAL ======================
+        if (isWhaleTrade && profit >= 45 && !hasDonePartial) {
+            try {
+                // 🔥 Aumentado el timeout a 10s para evitar fallos de red
+                const bookResp = await axios.get(`https://clob.polymarket.com/book?token_id=${pos.tokenId}`, { httpsAgent: agent, timeout: 10000 });
+                const bids = bookResp.data?.bids || [];
+
+// ==========================================
 // 10. CICLO PRINCIPAL (EL CEREBRO DEL BOT)
 // ==========================================
 let watchlistIndex = 0;
