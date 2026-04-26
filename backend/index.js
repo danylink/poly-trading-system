@@ -1025,7 +1025,7 @@ function isMarketAllowed(title = "", slug = "") {
 }
 
 // ==========================================
-// 7. ACTUALIZACIÓN DE WATCHLIST - VERSIÓN MEJORADA (Prioridad Real)
+// 7. ACTUALIZACIÓN DE WATCHLIST - VERSIÓN MEJORADA DUAL-CACHE (Prioridad Real)
 // ==========================================
 async function refreshWatchlist() {
     try {
@@ -1039,57 +1039,71 @@ async function refreshWatchlist() {
 
         const now = Date.now();
 
-        const futureMarkets = res.data.filter(m => {
-            if (!m.conditionId || !m.endDate) return false;
-            const endTime = new Date(m.endDate).getTime();
-            const hoursLeft = (endTime - now) / (1000 * 60 * 60);
-            
-            const cat = getMarketCategoryEnhanced(m.question);
-            
-            // 🔥 MEJORA QUANT: Visión a 30 días (720 hrs) para Macro, 4 días (96 hrs) para Crypto/Ruido
-            if (["POLITICS", "BUSINESS", "GEOPOLITICS", "TRUMP", "FED", "CPI", "IRAN", "UKRAINE", "ISRAEL"].includes(cat)) {
-                return endTime > now && hoursLeft <= 720; 
-            }
-            return endTime > now && hoursLeft <= 96;   
-        });
-
-        // Categorizamos
-        const marketsWithCategory = futureMarkets.map(m => ({
+        // 1. Filtrado Base (Limpiar expirados y categorizar)
+        const activeMarkets = res.data.filter(m => m.conditionId && m.endDate).map(m => ({
             ...m,
-            category: getMarketCategoryEnhanced(m.question)
+            category: getMarketCategoryEnhanced(m.question),
+            endTime: new Date(m.endDate).getTime(),
+            hoursLeft: (new Date(m.endDate).getTime() - now) / (1000 * 60 * 60)
         }));
 
-        // ==================== FILTRADO INTELIGENTE ====================
+        // ===============================================================
+        // 🐋 CONSTRUCCIÓN DE LA MACRO-WATCHLIST (Para Ballenas y Copy-Trading)
+        // ===============================================================
+        // Aquí metemos el Top 500 de mercados válidos (sin basura ilíquida y no a años de distancia)
+        const macroPool = activeMarkets.filter(m => {
+            const vol = parseFloat(m.volume || 0);
+            if (vol < 1000) return false; // Ignorar si el mercado está muerto
+            
+            // Si tú apagaste deportes, las ballenas tampoco deberían operarlos
+            if (m.category === 'SPORTS' && botStatus.marketFilters?.sports === false) return false;
+            
+            // Tolerancia Macro: Dejar que operen a mediano plazo (ej: 6 meses), pero no 2028
+            return m.endTime > now && m.hoursLeft <= 4320; // 4320 hrs = 6 meses
+        }).slice(0, 600); // Top 600 mercados globales
+
+        // Guardamos la memoria macro en bruto
+        botStatus.macroWatchlist = macroPool.map(market => {
+            const tokens = JSON.parse(market.clobTokenIds || "[]");
+            return {
+                title: market.question,
+                conditionId: market.conditionId,
+                tokenIdYes: tokens[0] || null,
+                tokenIdNo: tokens[1] || null
+            };
+        });
+
+        // ===============================================================
+        // 🧠 CONSTRUCCIÓN DE LA MICRO-WATCHLIST (El Menú de la IA)
+        // ===============================================================
         let highQuality = [];   // Política, Trump, Fed, Geopolítica, Business
         let shortTermCrypto = []; // Crypto corto y Up or Down
 
-        for (const market of marketsWithCategory) {
-            // 🔥 FIX QUANT: Ignorar mercados ilíquidos (Menos de $2000 USD de volumen total)
-            if (parseFloat(market.volume || 0) < 2000) continue;
+        for (const market of activeMarkets) {
+            // IA solo mira mercados muy líquidos (>$2000) y que no hayan expirado
+            if (parseFloat(market.volume || 0) < 2000 || market.endTime < now) continue;
 
             const cat = market.category || "";
 
             if (["POLITICS", "BUSINESS", "GEOPOLITICS", "TRUMP", "FED", "CPI", "IRAN", "UKRAINE", "ISRAEL"].includes(cat)) {
-                highQuality.push(market);
+                // IA: Política y Macro a 30 días máximo (720 hrs)
+                if (market.hoursLeft <= 720) highQuality.push(market);
             } 
             else if (cat === "CRYPTO" || cat === "SHORT_TERM" || market.question.toLowerCase().includes("up or down") || market.question.toLowerCase().includes("above")) {
-                shortTermCrypto.push(market);
+                // IA: Crypto o volatilidad a 4 días máximo (96 hrs)
+                if (market.hoursLeft <= 96) shortTermCrypto.push(market);
             }
         }
 
-        // Ordenamos highQuality por volumen descendente
+        // Ordenamos y limitamos el menú de la IA
         highQuality.sort((a, b) => parseFloat(b.volume || 0) - parseFloat(a.volume || 0));
-
-        // Limitamos fuertemente los crypto cortos
         shortTermCrypto.sort((a, b) => parseFloat(b.volume || 0) - parseFloat(a.volume || 0));
+        
         shortTermCrypto = shortTermCrypto.slice(0, 6);   // Máximo 6 mercados crypto corto
-
-        // Armamos el pool final: primero alta calidad, luego pocos crypto
         const finalPool = [...highQuality.slice(0, 40), ...shortTermCrypto];  
 
-        // Convertimos al formato que usa el bot
-        const rawTrends = finalPool.map(market => {
-            const hrs = hoursUntilClose(market.endDate);
+        // Convertimos al formato rico que necesita el bot para operar
+        botStatus.watchlist = finalPool.map(market => {
             const tokens = JSON.parse(market.clobTokenIds || "[]");
             const prices = JSON.parse(market.outcomePrices || "[]");
 
@@ -1104,16 +1118,13 @@ async function refreshWatchlist() {
                 tokenId: tokens[0] || null,
                 marketPrice: parseFloat(prices[0] || 0),
                 endDate: market.endDate, 
-                endsIn: hrs < 1 ? `${Math.round(hrs*60)}m` : `${hrs.toFixed(1)}h`,
+                endsIn: market.hoursLeft < 1 ? `${Math.round(market.hoursLeft*60)}m` : `${market.hoursLeft.toFixed(1)}h`,
                 tickSize: market.minimum_tick_size || "0.01",
                 volume: parseFloat(market.volume || 0)
             };
         });
 
-        botStatus.watchlist = rawTrends;
-
-        // Log corregido para reflejar los límites aplicados
-        console.log(`🎯 Pool seleccionado: ${rawTrends.length} mercados (${Math.min(highQuality.length, 40)} Alta Calidad + ${shortTermCrypto.length} Crypto Corto)`);
+        console.log(`🎯 [DUAL-CACHE] Macro Watchlist (Ballenas): ${botStatus.macroWatchlist.length} | Micro Watchlist (IA): ${botStatus.watchlist.length} mercados`);
 
     } catch (e) {
         console.error('❌ Error refreshWatchlist:', e.message);
@@ -1479,18 +1490,14 @@ async function sendCopyAlert(type, whaleName, marketTitle, amount) {
 
 
 // ==========================================
-// CHECK AND COPY WHALE TRADES - VERSIÓN QUANT FINAL (Anti-Ametralladora + Anti-Iceberg)
+// CHECK AND COPY WHALE TRADES - VERSIÓN QUANT DEFINITIVA
 // ==========================================
 let isScanningWhales = false;
 
 async function checkAndCopyWhaleTrades() {
     if (isScanningWhales) return;
 
-    // =========================================================
-    // 🧹 RUTINA DE SINCRONIZACIÓN DE MEMORIA
-    // Compara las posiciones reales activas con el registro de ballenas.
-    // Si vendiste manualmente, esto elimina a los "fantasmas".
-    // =========================================================
+    // 1. Sincronización de Memoria (Limpieza de Fantasmas)
     if (botStatus.copiedPositions && botStatus.activePositions) {
         const activeTokens = new Set(botStatus.activePositions.map(p => p.tokenId));
         const originalCount = botStatus.copiedPositions.length;
@@ -1498,8 +1505,8 @@ async function checkAndCopyWhaleTrades() {
         botStatus.copiedPositions = botStatus.copiedPositions.filter(cp => activeTokens.has(cp.tokenId));
         
         if (originalCount !== botStatus.copiedPositions.length) {
-            console.log(`🧹 [SYNC] Memoria de Ballenas purgada. Se borraron ${originalCount - botStatus.copiedPositions.length} trades huérfanos (venta manual detectada).`);
-            saveConfigToDisk("Limpieza de fantasmas CopyTrading");
+            console.log(`🧹 [SYNC] Memoria purgada. Se borraron ${originalCount - botStatus.copiedPositions.length} trades huérfanos.`);
+            saveConfigToDisk("Limpieza de fantasmas");
         }
     }
 
@@ -1539,8 +1546,6 @@ async function checkAndCopyWhaleTrades() {
             return;
         }
 
-        console.log(`🔄 [COPY-TRADING] Revisando trades de ${allWhales.length} ballenas (Custom: ${botStatus.copyTradingCustomEnabled ? '✅ ON' : '❌ OFF'} | Auto: ${botStatus.copyTradingAutoEnabled ? '✅ ON' : '❌ OFF'})...`);
-
         const getWhaleDisplayName = (whale) => {
             if (whale.nickname && whale.nickname.trim() !== '') return whale.nickname;
             const configWhale = botStatus.customWhales.find(w => w.address.toLowerCase() === whale.address.toLowerCase());
@@ -1557,7 +1562,7 @@ async function checkAndCopyWhaleTrades() {
                 const limitPerWhale = botStatus.maxCopyMarketsPerWhale || 1;
 
                 if (limitPerWhale > 0 && copiedFromThisWhale >= limitPerWhale) {
-                    continue;
+                    continue; // Freno preventivo para saltar rápido si la ballena ya está topada
                 }
 
                 const response = await axios.get(
@@ -1569,18 +1574,11 @@ async function checkAndCopyWhaleTrades() {
                     ? response.data 
                     : (response.data.data || response.data.trades || []);
 
+                // Registrar actividad
                 if (recentTrades.length > 0) {
-                    const latestTrade = recentTrades[0];
-                    const lastTimestamp = String(latestTrade.timestamp).length === 10 
-                        ? parseInt(latestTrade.timestamp) * 1000 
-                        : parseInt(latestTrade.timestamp);
-                    
-                    const customWhaleIndex = botStatus.customWhales.findIndex(w => 
-                        w.address.toLowerCase() === whale.address.toLowerCase()
-                    );
-                    
+                    const customWhaleIndex = botStatus.customWhales.findIndex(w => w.address.toLowerCase() === whale.address.toLowerCase());
                     if (customWhaleIndex !== -1) {
-                        botStatus.customWhales[customWhaleIndex].lastActive = lastTimestamp;
+                        botStatus.customWhales[customWhaleIndex].lastActive = Date.now();
                     }
                 }
 
@@ -1592,35 +1590,59 @@ async function checkAndCopyWhaleTrades() {
                     const side = (trade.side || "").toUpperCase();
                     const tokenId = trade.asset || trade.token_id || trade.asset_id;
                     const conditionIdAPI = trade.condition_id || trade.conditionId;
+                    const txHash = trade.transaction_hash || trade.transactionHash || trade.id || '';
                     
                     const whaleShares = parseFloat(trade.size || 0);
                     const price = parseFloat(trade.price || 0);
                     
-                    // 🔥 Inversión real de la ballena en Dólares
+                    // Inversión real en DÓLARES de la ballena
                     const whaleUsdValue = whaleShares * price;
-                    
-                    const txHash = trade.transaction_hash || trade.transactionHash || trade.id || '';
 
-                    const timestamp = String(trade.timestamp).length === 10 
-                        ? parseInt(trade.timestamp) * 1000 
-                        : parseInt(trade.timestamp);
+                    // 🔥 FIX CRÍTICO 1: PARSEO DE TIEMPO (El Error del Viaje en el Tiempo)
+                    let tradeDate;
+                    if (typeof trade.timestamp === 'string' && trade.timestamp.includes('T')) {
+                        tradeDate = new Date(trade.timestamp).getTime(); // Formato ISO "2026-04-26T12:00:00Z"
+                    } else {
+                        const tsNum = parseInt(trade.timestamp);
+                        tradeDate = String(tsNum).length <= 10 ? tsNum * 1000 : tsNum;
+                    }
+                    if (isNaN(tradeDate)) tradeDate = Date.now();
 
-                    // Filtros iniciales de convicción y tiempo
+                    // Filtros Duros Iniciales
                     if (!tokenId || whaleUsdValue < botStatus.copyMinWhaleSize) continue;
-                    if (Date.now() - timestamp > botStatus.copyTimeWindowMinutes * 60 * 1000) continue;
+                    if (Date.now() - tradeDate > botStatus.copyTimeWindowMinutes * 60 * 1000) continue;
 
-                    // 🔥 BLINDAJE: Buscar mercado en Watchlist por tokenId o conditionId
-                    const marketInfo = botStatus.watchlist.find(m => 
-                        m.tokenId === tokenId || 
-                        m.tokenYes === tokenId || 
-                        m.tokenNo === tokenId || 
-                        m.conditionId === conditionIdAPI
-                    );
+                    // 🔥 FIX CRÍTICO 2: EL ESCUDO MACRO DE DOBLE CACHÉ
+                    let title = trade.title || trade.market_title || trade.asset_name;
+                    let finalConditionId = conditionIdAPI;
 
-                    if (!marketInfo) continue; // Descartado: Basura, expiración larga o ilíquido.
+                    // 1. Buscamos primero en el diccionario Macro (El Top 600 de Polymarket sin basura)
+                    if (!title && botStatus.macroWatchlist) {
+                        const macroMarket = botStatus.macroWatchlist.find(m => 
+                            m.conditionId === finalConditionId || m.tokenIdYes === tokenId || m.tokenIdNo === tokenId
+                        );
+                        if (macroMarket) {
+                            title = macroMarket.title;
+                            finalConditionId = macroMarket.conditionId;
+                        }
+                    }
 
-                    const title = marketInfo.title;
-                    const finalConditionId = marketInfo.conditionId; // Garantizamos tener el ID correcto
+                    // 2. Buscamos en la Watchlist de la IA por si acaso
+                    if (!title && botStatus.watchlist) {
+                        const cachedMarket = botStatus.watchlist.find(m => m.conditionId === finalConditionId || m.tokenId === tokenId);
+                        if (cachedMarket) {
+                            title = cachedMarket.title;
+                            finalConditionId = cachedMarket.conditionId;
+                        }
+                    }
+
+                    // 3. Si no está en ninguna de las dos listas, ES BASURA. 
+                    // Abortamos la copia y le cerramos la puerta en la cara.
+                    if (!title) {
+                        continue; 
+                    }
+                    
+                    if (!title) title = "Mercado Quant (Copia)";
 
                     // ==================== COPIA DE COMPRA ====================
                     if (side === "BUY") {
@@ -1631,7 +1653,7 @@ async function checkAndCopyWhaleTrades() {
                         if (isCustomWhale && !botStatus.copyTradingCustomEnabled) continue;
 
                         if (limitPerWhale > 0 && copiedFromThisWhale >= limitPerWhale) {
-                            console.log(`⛔ [COPY LIMIT] Freno dinámico. ${getWhaleDisplayName(whale)} excedió el límite de ${limitPerWhale} mercados simultáneos.`);
+                            console.log(`⛔ [COPY LIMIT] Freno Dinámico. ${getWhaleDisplayName(whale)} intentó abrir más de ${limitPerWhale} mercados de golpe.`);
                             break; 
                         }
 
@@ -1662,7 +1684,7 @@ async function checkAndCopyWhaleTrades() {
 
                         const RESERVE_FOR_AI = botStatus.aiReserveAmount !== undefined ? botStatus.aiReserveAmount : 50; 
                         if (currentBalance - montoInversion < RESERVE_FOR_AI) {
-                            console.log(`🛡️ [RESERVA IA] Saldo ($${currentBalance.toFixed(2)}) muy cerca de reserva ($${RESERVE_FOR_AI}). Copy Trading bloqueado.`);
+                            console.log(`🛡️ [RESERVA IA] Saldo libre ($${currentBalance.toFixed(2)}) muy cerca de reserva ($${RESERVE_FOR_AI}). Copy bloqueado.`);
                             isScanningWhales = false; 
                             return; 
                         }
