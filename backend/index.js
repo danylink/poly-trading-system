@@ -1609,6 +1609,9 @@ async function checkAndCopyWhaleTrades() {
 
                                 if (result?.success) {
                                     setTimeout(() => pendingOrdersCache.delete(tokenId), 60000); 
+
+                                    // 🔥 EL FIX ESTÁ AQUÍ: Le "tatuamos" el nombre de la ballena a la posición
+                                    botStatus.positionEngines[tokenId] = whale.nickname || getWhaleDisplayName(whale);
                                     
                                     copiedFromThisWhale++;
                                     uniqueMarketsCopiedNow.add(tokenId);
