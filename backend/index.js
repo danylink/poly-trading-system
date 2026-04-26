@@ -1461,6 +1461,24 @@ let isScanningWhales = false;
 async function checkAndCopyWhaleTrades() {
     if (isScanningWhales) return;
 
+    // =========================================================
+    // 🧹 FIX QUANT: RUTINA DE SINCRONIZACIÓN DE MEMORIA
+    // Compara las posiciones reales activas con el registro de ballenas.
+    // Si vendiste manualmente, esto elimina a los "fantasmas".
+    // =========================================================
+    if (botStatus.copiedPositions && botStatus.activePositions) {
+        const activeTokens = new Set(botStatus.activePositions.map(p => p.tokenId));
+        const originalCount = botStatus.copiedPositions.length;
+        
+        botStatus.copiedPositions = botStatus.copiedPositions.filter(cp => activeTokens.has(cp.tokenId));
+        
+        if (originalCount !== botStatus.copiedPositions.length) {
+            console.log(`🧹 [SYNC] Memoria de Ballenas purgada. Se borraron ${originalCount - botStatus.copiedPositions.length} trades huérfanos (venta manual detectada).`);
+            saveConfigToDisk("Limpieza de fantasmas CopyTrading");
+        }
+    }
+    // =========================================================
+
     const hasActiveCopiedPositions = (botStatus.copiedPositions || []).length > 0;
 
     if (!botStatus.copyTradingCustomEnabled && 
