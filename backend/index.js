@@ -1754,7 +1754,13 @@ async function checkAndCopyWhaleTrades() {
                         }
                     }
                 } catch (err) {
-                    if (!err.message.includes('429') && !err.message.includes('timeout')) {
+                    // 🔥 FIX 2: Auto-Sanación de Fantasmas
+                    if (err.message.includes('not enough balance')) {
+                        console.log(`🧹 [AUTO-HEAL] Limpiando posición fantasma de memoria (Ya fue vendida previamente)`);
+                        // Forzamos la limpieza
+                        botStatus.copiedPositions = botStatus.copiedPositions.filter(p => p.tokenId !== tokenId);
+                        botStatus.activePositions = botStatus.activePositions.filter(p => p.tokenId !== tokenId);
+                    } else if (!err.message.includes('429') && !err.message.includes('timeout')) {
                         console.error(`❌ Error whale ${whale.address}:`, err.message);
                     }
                 }
@@ -2191,7 +2197,7 @@ async function autoSellManager() {
         // ====================== 🌓 TAKE PROFIT PARCIAL ======================
         if (isWhaleTrade && profit >= 45 && !hasDonePartial) {
             try {
-                const bookResp = await axios.get(`https://clob.polymarket.com/book?token_id=${pos.tokenId}`, { httpsAgent: agent, timeout: 6500 });
+                const bookResp = await axios.get(`https://clob.polymarket.com/book?token_id=${pos.tokenId}`, { httpsAgent: agent, timeout: 10000 });
                 const bids = bookResp.data?.bids || [];
                 
                 if (bids.length > 0) {
@@ -2414,10 +2420,10 @@ async function autoRedeemPositions() {
     }
 }
 
-// Haz lo mismo (agregar let isRedeemingGasless = false; y el try/finally) para autoRedeemPositionsGasless.
+
 
 // ==========================================
-// AUTO REDEEM GASLESS - Versión ultra-estable (sin constructor problemático)
+// AUTO REDEEM GASLESS - Versión ultra-estable
 // ==========================================
 async function autoRedeemPositionsGasless() {
     let redeemedCount = 0;
@@ -2432,9 +2438,9 @@ async function autoRedeemPositionsGasless() {
             return 0;
         }
 
-        // Configuración mínima y estable (evita constructores problemáticos)
+        // 🔥 FIX 1: La librería exige "relayerUrl", no "url"
         const relayerClient = new RelayClient({
-            url: "https://relayer-v2.polymarket.com",
+            relayerUrl: "https://relayer-v2.polymarket.com",
             chainId: 137,
             privateKey: process.env.POLY_PRIVATE_KEY || "",
             builderKey: process.env.POLY_API_KEY,
@@ -2468,7 +2474,12 @@ async function autoRedeemPositionsGasless() {
                 };
 
                 const response = await relayerClient.execute([redeemTx], `Redeem ${pos.marketName?.substring(0, 30) || 'Position'}`);
-                await response.wait();
+                
+                // Dependiendo de la versión, response.wait() puede no ser necesario, 
+                // pero si lo estabas usando y no daba error, lo mantenemos protegido.
+                if (response && typeof response.wait === 'function') {
+                    await response.wait();
+                }
 
                 console.log(`✅ [REDEEM GASLESS] Canjeado: ${pos.marketName?.substring(0, 45)}...`);
 
@@ -2477,7 +2488,7 @@ async function autoRedeemPositionsGasless() {
 
                 await sendAlert(`🔄 *REDEEM GASLESS EXITOSO*\nMercado: ${pos.marketName?.substring(0, 45)}...\nCanjeado sin pagar gas`);
 
-                // 🔥 OPTIMIZACIÓN QUANT: Delay Anti-Ban para el Relayer de Polymarket
+                // Delay Anti-Ban para el Relayer de Polymarket
                 await new Promise(resolve => setTimeout(resolve, 1500));
 
             } catch (err) {
@@ -2503,6 +2514,8 @@ async function autoRedeemPositionsGasless() {
         return 0;
     }
 }
+
+
 // ==========================================
 // 🚨 VIGILANTE DE PORTAFOLIO (PNL MONITOR)
 // ==========================================
