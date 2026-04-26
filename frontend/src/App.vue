@@ -2,7 +2,7 @@
 import { ref, onMounted, computed, onUnmounted } from 'vue'
 import axios from 'axios'
 import { 
-  Activity, ShieldCheck, Target, Cpu, Bot, Clock3, Power, ArrowUpRight, Lock, LifeBuoy, Server
+  Activity, ShieldCheck, Target, Cpu, Bot, Clock3, Power, ArrowUpRight, Lock, LifeBuoy, Server, Download
 } from 'lucide-vue-next'
 import Swal from 'sweetalert2';
 
@@ -999,6 +999,58 @@ const sortedActivePositions = computed(() => {
   });
 });
 
+// ==========================================
+// 📊 EXPORTAR POSICIONES (Para Análisis Quant)
+// ==========================================
+const exportPositionsCSV = () => {
+  if (!status.value.activePositions || status.value.activePositions.length === 0) {
+    Swal.fire({
+      icon: 'warning',
+      title: 'Portafolio Vacío',
+      text: 'No tienes posiciones activas para exportar.',
+      background: '#18181b',
+      color: '#fff'
+    });
+    return;
+  }
+
+  // 1. Cabeceras estrictas del Quant
+  let csvContent = "Mercado,Resultado,Inversion_USD,Precio_Entrada,Precio_Actual,PnL_%,Origen\n";
+
+  // 2. Extracción de datos limpia
+  status.value.activePositions.forEach(pos => {
+    // Escapar comillas en el nombre del mercado
+    const market = `"${(pos.marketName || 'Desconocido').replace(/"/g, '""')}"`;
+    const outcome = pos.outcome || 'N/A';
+    const investment = parseFloat(pos.sizeCopied || 0).toFixed(2);
+    const entryPrice = parseFloat(pos.priceEntry || 0).toFixed(3);
+    
+    // Cálculo de precio real
+    const currentPrice = pos.exactSize > 0 
+      ? (parseFloat(pos.currentValue || 0) / parseFloat(pos.exactSize)).toFixed(3) 
+      : "0.000";
+      
+    const pnl = parseFloat(pos.percentPnl || 0).toFixed(2);
+    
+    // Identificar el motor (IA, CHRONOS, COPY, etc.)
+    let engine = pos.engine || 'IA';
+    if (!pos.engine && pos.nickname) engine = `COPY (${pos.nickname})`;
+
+    csvContent += `${market},${outcome},$${investment},$${entryPrice},$${currentPrice},${pnl}%,${engine}\n`;
+  });
+
+  // 3. Crear y descargar el archivo
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const link = document.createElement("a");
+  const url = URL.createObjectURL(blob);
+  link.setAttribute("href", url);
+  link.setAttribute("download", `PolyBot_Posiciones_${new Date().toISOString().split('T')[0]}.csv`);
+  link.style.visibility = 'hidden';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+};
+
 // --- CICLO DE VIDA ---
 
 onMounted(() => {
@@ -1259,8 +1311,21 @@ onUnmounted(() => {
                 <p class="text-xs text-zinc-500 font-medium">Mercados operados on-chain</p>
               </div>
             </div>
-            <div class="hidden sm:block text-[10px] font-black uppercase tracking-widest bg-emerald-500/10 text-emerald-400 px-3 py-1.5 rounded-lg border border-emerald-500/20">
-              {{ status.activePositions ? status.activePositions.length : 0 }} Activas
+            
+            <div class="flex items-center gap-3">
+              
+              <button 
+                @click="exportPositionsCSV"
+                class="flex items-center gap-2 bg-[#111114] hover:bg-emerald-500/10 border border-zinc-700 hover:border-emerald-500/30 text-zinc-400 hover:text-emerald-400 px-3 py-1.5 rounded-lg text-xs font-bold transition-all duration-300 shadow-sm"
+              >
+                <Download :size="14" />
+                <span class="hidden sm:inline">Exportar CSV</span>
+              </button>
+
+              <div class="hidden sm:block text-[10px] font-black uppercase tracking-widest bg-emerald-500/10 text-emerald-400 px-3 py-1.5 rounded-lg border border-emerald-500/20">
+                {{ status.activePositions ? status.activePositions.length : 0 }} Activas
+              </div>
+              
             </div>
           </div>
           

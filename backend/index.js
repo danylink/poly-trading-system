@@ -1022,7 +1022,7 @@ async function refreshWatchlist() {
             
             const cat = getMarketCategoryEnhanced(m.question);
             
-            // 🔥 MEJORA QUANT: Visión a 60 días (1440 hrs) para Macro, 4 días (96 hrs) para Crypto/Ruido
+            // 🔥 MEJORA QUANT: Visión a 30 días (720 hrs) para Macro, 4 días (96 hrs) para Crypto/Ruido
             if (["POLITICS", "BUSINESS", "GEOPOLITICS", "TRUMP", "FED", "CPI", "IRAN", "UKRAINE", "ISRAEL"].includes(cat)) {
                 return endTime > now && hoursLeft <= 720; 
             }
@@ -1589,7 +1589,7 @@ async function checkAndCopyWhaleTrades() {
                         // Opcional: console.log(`⏩ [COPY SKIP] Ballena operando basura ilíquida o a largo plazo: ${title.substring(0,30)}`);
                         continue; 
                     }
-                    
+
                     // ==================== COPIA DE COMPRA ====================
                     if (side === "BUY") {
 
