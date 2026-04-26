@@ -954,9 +954,9 @@ function getMarketCategory(title) {
     return null; 
 }
 
-// 🛡️ ESCÁNER DE CATEGORÍAS (VERSIÓN BLINDADA QUANT)
+// 🛡️ ESCÁNER DE CATEGORÍAS (VERSIÓN BLINDADA QUANT FINAL)
 function getMarketCategoryEnhanced(title) {
-    const lower = title.toLowerCase();
+    const lower = (title || "").toLowerCase();
 
     // Mercados de alta frecuencia
     if (lower.includes("5m") || lower.includes("15m") || lower.includes("up or down") || 
@@ -978,8 +978,8 @@ function getMarketCategoryEnhanced(title) {
     if (lower.includes("israel") || lower.includes("ukraine") || lower.includes("russia") || lower.includes("trump") || lower.includes("biden") || lower.includes("war")) return 'GEOPOLITICS';
     if (lower.includes("elon") || lower.includes("musk") || lower.includes("tweet")) return 'SOCIAL';
 
-    // 🔥 EL FIX QUANT: Diccionario masivo con límites de palabra (\b) para evitar falsos positivos
-    if (/\b(nba|nfl|mlb|nhl|soccer|tennis|f1|ufc|wwe|mma|league|champions|madrid|lakers|yankees|athletics|club|fc|cf|atp|wta|tour|match|inning|halftime|half-time|quarter|basketball|football|baseball|hockey|fifa|uefa|goals|points|rebounds|assists|touchdown|spread|over\/under|o\/u)\b/i.test(lower)) return 'SPORTS';
+    // 🔥 FILTRO QUANT: Regex purgada estricta (Eliminadas palabras financieras que causan colisión)
+    if (/\b(nba|nfl|mlb|nhl|soccer|tennis|f1|ufc|wwe|mma|league|champions|madrid|lakers|yankees|athletics|club|fc|cf|atp|wta|tour|match|inning|halftime|half-time|quarter|basketball|football|baseball|hockey|fifa|uefa|goals|points|rebounds|assists|touchdown)\b/i.test(lower)) return 'SPORTS';
     if (lower.includes(" vs ") || lower.includes(" vs. ")) return 'SPORTS'; 
 
     return null;
@@ -2529,6 +2529,9 @@ async function autoRedeemPositionsGasless() {
                 redeemedCount++;
 
                 await sendAlert(`🔄 *REDEEM GASLESS EXITOSO*\nMercado: ${pos.marketName?.substring(0, 45)}...\nCanjeado sin pagar gas`);
+
+                // 🔥 OPTIMIZACIÓN QUANT: Delay Anti-Ban para el Relayer de Polymarket
+                await new Promise(resolve => setTimeout(resolve, 1500));
 
             } catch (err) {
                 const msg = err.message.toLowerCase();
