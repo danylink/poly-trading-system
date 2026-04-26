@@ -44,6 +44,7 @@ const status = ref({
   copyTradingAutoEnabled: false,     // ← Card Auto (leaderboard)
   
   maxWhalesToCopy: 5,
+  autoWhaleCount: 5,
   autoSelectedWhales: [],
   customWhales: [],                  // ← Tus ballenas manuales
   copiedTrades: [],
@@ -562,6 +563,7 @@ const updateCopyFilters = async () => {
       copyMinWhaleSize: status.value.copyMinWhaleSize,
       copyTimeWindowMinutes: status.value.copyTimeWindowMinutes,
       maxCopyMarketsPerWhale: status.value.maxCopyMarketsPerWhale,
+      autoWhaleCount: status.value.autoWhaleCount,
       whalePostPartialTp: status.value.whalePostPartialTp   // ← NUEVO
     });
     console.log(`📋 Filtros de Copy Trading actualizados (incluyendo Post-Partial TP)`);
@@ -2949,6 +2951,37 @@ onUnmounted(() => {
                 </p>
               </div>
             </div>
+
+              <!-- 🔥 NUEVO: Número de Ballenas Auto (Leaderboard) -->
+              <div>
+                <div class="flex justify-between items-center mb-2">
+                  <label class="text-xs text-zinc-400 font-medium flex items-center gap-2">
+                    <Target :size="14" class="text-purple-400" /> 
+                    Ballenas Auto (Leaderboard)
+                  </label>
+                  <span class="font-mono font-black text-purple-400">{{ status.autoWhaleCount }}</span>
+                </div>
+                <div class="flex items-center gap-4">
+                  <input 
+                    type="range" 
+                    min="1" 
+                    max="15" 
+                    step="1" 
+                    v-model.number="status.autoWhaleCount" 
+                    @change="updateCopyFilters" 
+                    class="flex-1 accent-purple-500" 
+                  />
+                  <input 
+                    type="number"
+                    v-model.number="status.autoWhaleCount"
+                    @change="updateCopyFilters"
+                    class="w-20 bg-[#09090b] border border-purple-500/30 text-purple-400 font-mono text-center rounded-xl px-3 py-1 outline-none focus:border-purple-500" 
+                  />
+                </div>
+                <p class="text-[10px] text-zinc-500 mt-1">
+                  Cantidad de ballenas top del leaderboard que copiar automáticamente
+                </p>
+              </div>
 
             <!-- ==================== SLIDER LÍMITE POR BALLENA ==================== -->
             <div class="bg-[#161619] border border-purple-500/20 p-6 rounded-2xl">
