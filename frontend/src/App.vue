@@ -2587,72 +2587,87 @@ onUnmounted(() => {
             </label>
           </div>
 
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-6 relative z-10 pt-4 border-t border-zinc-800/50">
+          <div class="grid grid-cols-1 gap-6 relative z-10 pt-6 border-t border-zinc-800/50">
             
-            <!-- Umbral de Shock -->
             <div>
-              <div class="flex justify-between items-center mb-3">
-                <span class="text-xs font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-2">
+              <div class="flex justify-between items-center mb-2">
+                <label class="text-xs font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-2">
                   <Zap :size="14" class="text-cyan-500" /> Umbral de Shock
-                </span>
-                <span class="text-sm font-mono font-black text-cyan-400">{{ status.equalizerShockThreshold || 15 }}%</span>
+                </label>
+                <span class="font-mono text-cyan-400">{{ status.equalizerShockThreshold || 15 }}%</span>
               </div>
-              <input 
-                type="range" 
-                v-model="status.equalizerShockThreshold" 
-                min="10" 
-                max="40" 
-                step="1"
-                @change="updateEqualizer"
-                class="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-cyan-500"
-              />
-              <p class="text-[10px] text-zinc-500 mt-2 leading-relaxed">
-                El precio debe saltar este porcentaje en menos de 10 min para activar la IA.
-              </p>
+              <div class="flex items-center gap-4">
+                <input 
+                  type="range" 
+                  min="10" 
+                  max="40" 
+                  step="1" 
+                  v-model.number="status.equalizerShockThreshold" 
+                  @change="updateEqualizer" 
+                  class="flex-1 accent-cyan-500" 
+                />
+                <input 
+                  type="number"
+                  v-model.number="status.equalizerShockThreshold"
+                  @change="updateEqualizer"
+                  class="w-20 bg-[#09090b] border border-cyan-500/30 text-cyan-400 font-mono text-center rounded-xl px-3 py-1 outline-none focus:border-cyan-500" 
+                />
+              </div>
+              <p class="text-[10px] text-zinc-500 mt-1">El precio debe saltar este porcentaje en menos de 10 min para activar la IA.</p>
             </div>
 
-            <!-- Tamaño de Disparo -->
             <div>
-              <div class="flex justify-between items-center mb-3">
-                <span class="text-xs font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-2">
+              <div class="flex justify-between items-center mb-2">
+                <label class="text-xs font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-2">
                   <Coins :size="14" class="text-cyan-500" /> Tamaño de Disparo
-                </span>
-                <span class="text-sm font-mono font-black text-cyan-400">${{ status.equalizerBetAmount || 5 }} USDC</span>
+                </label>
+                <span class="font-mono text-cyan-400">${{ status.equalizerBetAmount || 5 }} USDC</span>
               </div>
-              <input 
-                type="range" 
-                v-model="status.equalizerBetAmount" 
-                min="1" 
-                max="50" 
-                step="1"
-                @change="updateEqualizer"
-                class="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-cyan-500"
-              />
-              <p class="text-[10px] text-zinc-500 mt-2 leading-relaxed">
-                Capital a invertir cuando se cace un vacío de liquidez.
-              </p>
+              <div class="flex items-center gap-4">
+                <input 
+                  type="range" 
+                  min="1" 
+                  max="50" 
+                  step="1" 
+                  v-model.number="status.equalizerBetAmount" 
+                  @change="updateEqualizer" 
+                  class="flex-1 accent-cyan-500" 
+                />
+                <input 
+                  type="number"
+                  v-model.number="status.equalizerBetAmount"
+                  @change="updateEqualizer"
+                  class="w-20 bg-[#09090b] border border-cyan-500/30 text-cyan-400 font-mono text-center rounded-xl px-3 py-1 outline-none focus:border-cyan-500" 
+                />
+              </div>
+              <p class="text-[10px] text-zinc-500 mt-1">Capital a invertir cuando se cace un vacío de liquidez.</p>
             </div>
 
-            <!-- 🔥 NUEVO: Take Profit -->
             <div>
-              <div class="flex justify-between items-center mb-3">
-                <span class="text-xs font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-2">
+              <div class="flex justify-between items-center mb-2">
+                <label class="text-xs font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-2">
                   <TrendingUp :size="14" class="text-cyan-500" /> Take Profit
-                </span>
-                <span class="text-sm font-mono font-black text-cyan-400">{{ status.equalizerTpThreshold }}%</span>
+                </label>
+                <span class="font-mono text-cyan-400">{{ status.equalizerTpThreshold || 15 }}%</span>
               </div>
-              <input 
-                type="range" 
-                v-model="status.equalizerTpThreshold" 
-                min="8" 
-                max="45" 
-                step="1"
-                @change="updateEqualizer"
-                class="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-cyan-500"
-              />
-              <p class="text-[10px] text-zinc-500 mt-2 leading-relaxed">
-                Porcentaje de ganancia para cerrar automáticamente la posición.
-              </p>
+              <div class="flex items-center gap-4">
+                <input 
+                  type="range" 
+                  min="8" 
+                  max="45" 
+                  step="1" 
+                  v-model.number="status.equalizerTpThreshold" 
+                  @change="updateEqualizer" 
+                  class="flex-1 accent-cyan-500" 
+                />
+                <input 
+                  type="number"
+                  v-model.number="status.equalizerTpThreshold"
+                  @change="updateEqualizer"
+                  class="w-20 bg-[#09090b] border border-cyan-500/30 text-cyan-400 font-mono text-center rounded-xl px-3 py-1 outline-none focus:border-cyan-500" 
+                />
+              </div>
+              <p class="text-[10px] text-zinc-500 mt-1">Porcentaje de ganancia para cerrar automáticamente la posición.</p>
             </div>
             
           </div>
@@ -2682,64 +2697,141 @@ onUnmounted(() => {
             </label>
           </div>
 
-          <div class="grid grid-cols-1 md:grid-cols-5 gap-6 relative z-10 pt-4 border-t border-zinc-800/50">
+          <div class="grid grid-cols-1 gap-6 relative z-10 pt-6 border-t border-zinc-800/50">
             
-            <!-- Ventana (Horas) -->
             <div>
-              <div class="flex justify-between items-center mb-3">
-                <span class="text-xs font-bold text-zinc-400 uppercase tracking-wider">Ventana (Horas)</span>
-                <span class="text-sm font-mono font-black text-violet-400">{{ status.chronosHoursLeft }}h</span>
+              <div class="flex justify-between items-center mb-2">
+                <label class="text-xs font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-2">
+                  <Clock3 :size="14" class="text-violet-500" /> Ventana de Tiempo
+                </label>
+                <span class="font-mono text-violet-400">{{ status.chronosHoursLeft }}h</span>
               </div>
-              <input type="range" v-model.number="status.chronosHoursLeft" min="24" max="336" step="24" @change="updateChronos" class="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-violet-500" />
+              <div class="flex items-center gap-4">
+                <input 
+                  type="range" 
+                  min="24" 
+                  max="336" 
+                  step="24" 
+                  v-model.number="status.chronosHoursLeft" 
+                  @change="updateChronos" 
+                  class="flex-1 accent-violet-500" 
+                />
+                <input 
+                  type="number"
+                  v-model.number="status.chronosHoursLeft"
+                  @change="updateChronos"
+                  class="w-20 bg-[#09090b] border border-violet-500/30 text-violet-400 font-mono text-center rounded-xl px-3 py-1 outline-none focus:border-violet-500" 
+                />
+              </div>
+              <p class="text-[10px] text-zinc-500 mt-1">Horas restantes para la expiración del mercado.</p>
             </div>
 
-            <!-- P. Mínimo (NO) -->
             <div>
-              <div class="flex justify-between items-center mb-3">
-                <span class="text-xs font-bold text-zinc-400 uppercase tracking-wider">P. Mínimo (NO)</span>
-                <span class="text-sm font-mono font-black text-violet-400">${{ status.chronosMinPrice }}</span>
+              <div class="flex justify-between items-center mb-2">
+                <label class="text-xs font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-2">
+                  <Activity :size="14" class="text-violet-500" /> P. Mínimo (NO)
+                </label>
+                <span class="font-mono text-violet-400">${{ status.chronosMinPrice }}</span>
               </div>
-              <input type="range" v-model="status.chronosMinPrice" min="0.50" max="0.90" step="0.01" @change="updateChronos" class="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-violet-500" />
+              <div class="flex items-center gap-4">
+                <input 
+                  type="range" 
+                  min="0.50" 
+                  max="0.90" 
+                  step="0.01" 
+                  v-model.number="status.chronosMinPrice" 
+                  @change="updateChronos" 
+                  class="flex-1 accent-violet-500" 
+                />
+                <input 
+                  type="number"
+                  v-model.number="status.chronosMinPrice"
+                  @change="updateChronos"
+                  class="w-20 bg-[#09090b] border border-violet-500/30 text-violet-400 font-mono text-center rounded-xl px-3 py-1 outline-none focus:border-violet-500" 
+                />
+              </div>
+              <p class="text-[10px] text-zinc-500 mt-1">Precio mínimo de entrada para posiciones 'NO'.</p>
             </div>
 
-            <!-- P. Máximo (NO) -->
             <div>
-              <div class="flex justify-between items-center mb-3">
-                <span class="text-xs font-bold text-zinc-400 uppercase tracking-wider">P. Máximo (NO)</span>
-                <span class="text-sm font-mono font-black text-violet-400">${{ status.chronosMaxPrice }}</span>
+              <div class="flex justify-between items-center mb-2">
+                <label class="text-xs font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-2">
+                  <Activity :size="14" class="text-violet-500" /> P. Máximo (NO)
+                </label>
+                <span class="font-mono text-violet-400">${{ status.chronosMaxPrice }}</span>
               </div>
-              <input type="range" v-model="status.chronosMaxPrice" min="0.75" max="0.95" step="0.01" @change="updateChronos" class="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-violet-500" />
+              <div class="flex items-center gap-4">
+                <input 
+                  type="range" 
+                  min="0.75" 
+                  max="0.95" 
+                  step="0.01" 
+                  v-model.number="status.chronosMaxPrice" 
+                  @change="updateChronos" 
+                  class="flex-1 accent-violet-500" 
+                />
+                <input 
+                  type="number"
+                  v-model.number="status.chronosMaxPrice"
+                  @change="updateChronos"
+                  class="w-20 bg-[#09090b] border border-violet-500/30 text-violet-400 font-mono text-center rounded-xl px-3 py-1 outline-none focus:border-violet-500" 
+                />
+              </div>
+              <p class="text-[10px] text-zinc-500 mt-1">Precio máximo de entrada para posiciones 'NO'.</p>
             </div>
 
-            <!-- Capital -->
             <div>
-              <div class="flex justify-between items-center mb-3">
-                <span class="text-xs font-bold text-zinc-400 uppercase tracking-wider">Capital</span>
-                <span class="text-sm font-mono font-black text-violet-400">${{ status.chronosBetAmount }} USDC</span>
+              <div class="flex justify-between items-center mb-2">
+                <label class="text-xs font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-2">
+                  <Coins :size="14" class="text-violet-500" /> Tamaño de Disparo
+                </label>
+                <span class="font-mono text-violet-400">${{ status.chronosBetAmount }} USDC</span>
               </div>
-              <input type="range" v-model="status.chronosBetAmount" min="1" max="50" step="1" @change="updateChronos" class="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-violet-500" />
+              <div class="flex items-center gap-4">
+                <input 
+                  type="range" 
+                  min="1" 
+                  max="50" 
+                  step="1" 
+                  v-model.number="status.chronosBetAmount" 
+                  @change="updateChronos" 
+                  class="flex-1 accent-violet-500" 
+                />
+                <input 
+                  type="number"
+                  v-model.number="status.chronosBetAmount"
+                  @change="updateChronos"
+                  class="w-20 bg-[#09090b] border border-violet-500/30 text-violet-400 font-mono text-center rounded-xl px-3 py-1 outline-none focus:border-violet-500" 
+                />
+              </div>
+              <p class="text-[10px] text-zinc-500 mt-1">Capital a invertir por mercado farmeado.</p>
             </div>
 
-            <!-- 🔥 NUEVO: Take Profit -->
             <div>
-              <div class="flex justify-between items-center mb-3">
-                <span class="text-xs font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-2">
+              <div class="flex justify-between items-center mb-2">
+                <label class="text-xs font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-2">
                   <TrendingUp :size="14" class="text-violet-500" /> Take Profit
-                </span>
-                <span class="text-sm font-mono font-black text-violet-400">{{ status.chronosTpThreshold }}%</span>
+                </label>
+                <span class="font-mono text-violet-400">{{ status.chronosTpThreshold }}%</span>
               </div>
-              <input 
-                type="range" 
-                v-model="status.chronosTpThreshold" 
-                min="10" 
-                max="50" 
-                step="1"
-                @change="updateChronos"
-                class="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-violet-500"
-              />
-              <p class="text-[10px] text-zinc-500 mt-2 leading-relaxed">
-                % objetivo para cerrar antes de que expire el mercado.
-              </p>
+              <div class="flex items-center gap-4">
+                <input 
+                  type="range" 
+                  min="10" 
+                  max="50" 
+                  step="1" 
+                  v-model.number="status.chronosTpThreshold" 
+                  @change="updateChronos" 
+                  class="flex-1 accent-violet-500" 
+                />
+                <input 
+                  type="number"
+                  v-model.number="status.chronosTpThreshold"
+                  @change="updateChronos"
+                  class="w-20 bg-[#09090b] border border-violet-500/30 text-violet-400 font-mono text-center rounded-xl px-3 py-1 outline-none focus:border-violet-500" 
+                />
+              </div>
+              <p class="text-[10px] text-zinc-500 mt-1">% objetivo para cerrar antes de que expire el mercado.</p>
             </div>
             
           </div>
@@ -2769,64 +2861,141 @@ onUnmounted(() => {
             </label>
           </div>
 
-          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 relative z-10 pt-4 border-t border-zinc-800/50">
+          <div class="grid grid-cols-1 gap-6 relative z-10 pt-6 border-t border-zinc-800/50">
             
-            <!-- Ratio (Bids:Asks) -->
             <div>
-              <div class="flex justify-between items-center mb-3">
-                <span class="text-xs font-bold text-zinc-400 uppercase tracking-wider">Ratio (Bids:Asks)</span>
-                <span class="text-sm font-mono font-black text-orange-400">{{ status.kineticImbalanceRatio }}:1</span>
+              <div class="flex justify-between items-center mb-2">
+                <label class="text-xs font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-2">
+                  <Activity :size="14" class="text-orange-500" /> Ratio (Bids:Asks)
+                </label>
+                <span class="font-mono text-orange-400">{{ status.kineticImbalanceRatio }}:1</span>
               </div>
-              <input type="range" v-model="status.kineticImbalanceRatio" min="3" max="15" step="1" @change="updateKinetic" class="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-orange-500" />
+              <div class="flex items-center gap-4">
+                <input 
+                  type="range" 
+                  min="3" 
+                  max="15" 
+                  step="1" 
+                  v-model.number="status.kineticImbalanceRatio" 
+                  @change="updateKinetic" 
+                  class="flex-1 accent-orange-500" 
+                />
+                <input 
+                  type="number"
+                  v-model.number="status.kineticImbalanceRatio"
+                  @change="updateKinetic"
+                  class="w-20 bg-[#09090b] border border-orange-500/30 text-orange-400 font-mono text-center rounded-xl px-3 py-1 outline-none focus:border-orange-500" 
+                />
+              </div>
+              <p class="text-[10px] text-zinc-500 mt-1">Nivel de desequilibrio en el libro de órdenes para disparar el front-running.</p>
             </div>
 
-            <!-- Profundidad -->
             <div>
-              <div class="flex justify-between items-center mb-3">
-                <span class="text-xs font-bold text-zinc-400 uppercase tracking-wider">Profundidad</span>
-                <span class="text-sm font-mono font-black text-orange-400">{{ status.kineticDepthPercent }}%</span>
+              <div class="flex justify-between items-center mb-2">
+                <label class="text-xs font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-2">
+                  <Activity :size="14" class="text-orange-500" /> Profundidad
+                </label>
+                <span class="font-mono text-orange-400">{{ status.kineticDepthPercent }}%</span>
               </div>
-              <input type="range" v-model="status.kineticDepthPercent" min="0.5" max="5" step="0.5" @change="updateKinetic" class="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-orange-500" />
+              <div class="flex items-center gap-4">
+                <input 
+                  type="range" 
+                  min="0.5" 
+                  max="5" 
+                  step="0.5" 
+                  v-model.number="status.kineticDepthPercent" 
+                  @change="updateKinetic" 
+                  class="flex-1 accent-orange-500" 
+                />
+                <input 
+                  type="number"
+                  v-model.number="status.kineticDepthPercent"
+                  @change="updateKinetic"
+                  class="w-20 bg-[#09090b] border border-orange-500/30 text-orange-400 font-mono text-center rounded-xl px-3 py-1 outline-none focus:border-orange-500" 
+                />
+              </div>
+              <p class="text-[10px] text-zinc-500 mt-1">Porcentaje de distancia del precio actual para escanear el muro de liquidez.</p>
             </div>
 
-            <!-- Inversión Scalp -->
             <div>
-              <div class="flex justify-between items-center mb-3">
-                <span class="text-xs font-bold text-zinc-400 uppercase tracking-wider">Inversión Scalp</span>
-                <span class="text-sm font-mono font-black text-orange-400">${{ status.kineticBetAmount }} USDC</span>
+              <div class="flex justify-between items-center mb-2">
+                <label class="text-xs font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-2">
+                  <Coins :size="14" class="text-orange-500" /> Inversión Scalp
+                </label>
+                <span class="font-mono text-orange-400">${{ status.kineticBetAmount }} USDC</span>
               </div>
-              <input type="range" v-model="status.kineticBetAmount" min="5" max="100" step="5" @change="updateKinetic" class="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-orange-500" />
+              <div class="flex items-center gap-4">
+                <input 
+                  type="range" 
+                  min="5" 
+                  max="100" 
+                  step="5" 
+                  v-model.number="status.kineticBetAmount" 
+                  @change="updateKinetic" 
+                  class="flex-1 accent-orange-500" 
+                />
+                <input 
+                  type="number"
+                  v-model.number="status.kineticBetAmount"
+                  @change="updateKinetic"
+                  class="w-20 bg-[#09090b] border border-orange-500/30 text-orange-400 font-mono text-center rounded-xl px-3 py-1 outline-none focus:border-orange-500" 
+                />
+              </div>
+              <p class="text-[10px] text-zinc-500 mt-1">Capital a inyectar en las operaciones súper rápidas de imbalance.</p>
             </div>
 
-            <!-- Límite Ráfaga -->
             <div>
-              <div class="flex justify-between items-center mb-3">
-                <span class="text-xs font-bold text-zinc-400 uppercase tracking-wider">Límite Ráfaga</span>
-                <span class="text-sm font-mono font-black text-orange-500">{{ status.kineticMaxPositions }} POS</span>
+              <div class="flex justify-between items-center mb-2">
+                <label class="text-xs font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-2">
+                  <Target :size="14" class="text-orange-500" /> Límite Ráfaga
+                </label>
+                <span class="font-mono text-orange-500">{{ status.kineticMaxPositions }} POS</span>
               </div>
-              <input type="range" v-model="status.kineticMaxPositions" min="1" max="10" step="1" @change="updateKinetic" class="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-orange-500" />
+              <div class="flex items-center gap-4">
+                <input 
+                  type="range" 
+                  min="1" 
+                  max="10" 
+                  step="1" 
+                  v-model.number="status.kineticMaxPositions" 
+                  @change="updateKinetic" 
+                  class="flex-1 accent-orange-500" 
+                />
+                <input 
+                  type="number"
+                  v-model.number="status.kineticMaxPositions"
+                  @change="updateKinetic"
+                  class="w-20 bg-[#09090b] border border-orange-500/30 text-orange-400 font-mono text-center rounded-xl px-3 py-1 outline-none focus:border-orange-500" 
+                />
+              </div>
+              <p class="text-[10px] text-zinc-500 mt-1">Cantidad máxima de operaciones simultáneas que este motor puede tener abiertas.</p>
             </div>
 
-            <!-- 🔥 NUEVO: Take Profit -->
             <div>
-              <div class="flex justify-between items-center mb-3">
-                <span class="text-xs font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-2">
+              <div class="flex justify-between items-center mb-2">
+                <label class="text-xs font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-2">
                   <TrendingUp :size="14" class="text-orange-500" /> Take Profit
-                </span>
-                <span class="text-sm font-mono font-black text-orange-400">{{ status.kineticTpThreshold }}%</span>
+                </label>
+                <span class="font-mono text-orange-400">{{ status.kineticTpThreshold }}%</span>
               </div>
-              <input 
-                type="range" 
-                v-model="status.kineticTpThreshold" 
-                min="5" 
-                max="35" 
-                step="1"
-                @change="updateKinetic"
-                class="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-orange-500"
-              />
-              <p class="text-[10px] text-zinc-500 mt-2 leading-relaxed">
-                % rápido para cerrar en scalping por imbalance.
-              </p>
+              <div class="flex items-center gap-4">
+                <input 
+                  type="range" 
+                  min="5" 
+                  max="35" 
+                  step="1" 
+                  v-model.number="status.kineticTpThreshold" 
+                  @change="updateKinetic" 
+                  class="flex-1 accent-orange-500" 
+                />
+                <input 
+                  type="number"
+                  v-model.number="status.kineticTpThreshold"
+                  @change="updateKinetic"
+                  class="w-20 bg-[#09090b] border border-orange-500/30 text-orange-400 font-mono text-center rounded-xl px-3 py-1 outline-none focus:border-orange-500" 
+                />
+              </div>
+              <p class="text-[10px] text-zinc-500 mt-1">Porcentaje rápido de ganancia para cerrar la posición de scalping.</p>
             </div>
             
           </div>
@@ -2866,163 +3035,162 @@ onUnmounted(() => {
 
           <div v-if="status.copyTradingCustomEnabled" class="relative z-10 space-y-8">
 
-            <!-- ==================== FILTROS CONFIGURABLES ==================== -->
-            <div class="bg-[#161619] border border-purple-500/20 p-6 rounded-2xl space-y-6">
-              <h4 class="text-[11px] font-black uppercase tracking-widest text-purple-400 mb-4">Filtros de Copy Trading</h4>
-              
-              <!-- Tamaño mínimo de trade -->
-              <div>
-                <div class="flex justify-between items-center mb-2">
-                  <label class="text-xs text-zinc-400 font-medium">Tamaño mínimo de trade de ballena</label>
-                  <span class="font-mono text-purple-400">${{ status.copyMinWhaleSize }}</span>
-                </div>
-                <div class="flex items-center gap-4">
-                  <input 
-                    type="range" 
-                    min="50" 
-                    max="500" 
-                    step="1" 
-                    v-model.number="status.copyMinWhaleSize" 
-                    @change="updateCopyFilters" 
-                    class="flex-1 accent-purple-500" 
-                  />
-                  <input 
-                    type="number"
-                    v-model.number="status.copyMinWhaleSize"
-                    @change="updateCopyFilters"
-                    class="w-20 bg-[#09090b] border border-purple-500/30 text-purple-400 font-mono text-center rounded-xl px-3 py-1 outline-none focus:border-purple-500" 
-                  />
-                </div>
-              </div>
-
-              <!-- Ventana de tiempo -->
-              <div>
-                <div class="flex justify-between items-center mb-2">
-                  <label class="text-xs text-zinc-400 font-medium">Ventana de tiempo (minutos)</label>
-                  <span class="font-mono text-purple-400">{{ status.copyTimeWindowMinutes }} min</span>
-                </div>
-                <div class="flex items-center gap-4">
-                  <input 
-                    type="range" 
-                    min="15" 
-                    max="90" 
-                    step="1" 
-                    v-model.number="status.copyTimeWindowMinutes" 
-                    @change="updateCopyFilters" 
-                    class="flex-1 accent-purple-500" 
-                  />
-                  <input 
-                    type="number"
-                    v-model.number="status.copyTimeWindowMinutes"
-                    @change="updateCopyFilters"
-                    class="w-20 bg-[#09090b] border border-purple-500/30 text-purple-400 font-mono text-center rounded-xl px-3 py-1 outline-none focus:border-purple-500" 
-                  />
-                </div>
-                <p class="text-[10px] text-zinc-500 mt-1">Tiempo máximo desde que la ballena hizo el trade</p>
-              </div>
-
-              <!-- 🔥 NUEVO: Whale Post-Partial Take Profit -->
-              <div>
-                <div class="flex justify-between items-center mb-2">
-                  <label class="text-xs text-amber-400 font-medium flex items-center gap-2">
-                    <TrendingUp :size="14" /> Post-Partial TP (Ballenas)
-                  </label>
-                  <span class="font-mono font-black text-amber-400">{{ status.whalePostPartialTp }}%</span>
-                </div>
-                <div class="flex items-center gap-4">
-                  <input 
-                    type="range" 
-                    min="60" 
-                    max="95" 
-                    step="5" 
-                    v-model.number="status.whalePostPartialTp" 
-                    @change="updateCopyFilters" 
-                    class="flex-1 accent-amber-500" 
-                  />
-                  <input 
-                    type="number"
-                    v-model.number="status.whalePostPartialTp"
-                    @change="updateCopyFilters"
-                    class="w-20 bg-[#09090b] border border-amber-500/30 text-amber-400 font-mono text-center rounded-xl px-3 py-1 outline-none focus:border-amber-500" 
-                  />
-                </div>
-                <p class="text-[10px] text-zinc-500 mt-1">
-                  Después de vender el 50% (+45%), cierra el resto cuando llegue a este porcentaje.
-                </p>
-              </div>
-            </div>
-
-              <!-- 🔥 NUEVO: Número de Ballenas Auto (Leaderboard) -->
-              <div>
-                <div class="flex justify-between items-center mb-2">
-                  <label class="text-xs text-zinc-400 font-medium flex items-center gap-2">
-                    <Target :size="14" class="text-purple-400" /> 
-                    Ballenas Auto (Leaderboard)
-                  </label>
-                  <span class="font-mono font-black text-purple-400">{{ status.autoWhaleCount }}</span>
-                </div>
-                <div class="flex items-center gap-4">
-                  <input 
-                    type="range" 
-                    min="1" 
-                    max="15" 
-                    step="1" 
-                    v-model.number="status.autoWhaleCount" 
-                    @change="updateCopyFilters" 
-                    class="flex-1 accent-purple-500" 
-                  />
-                  <input 
-                    type="number"
-                    v-model.number="status.autoWhaleCount"
-                    @change="updateCopyFilters"
-                    class="w-20 bg-[#09090b] border border-purple-500/30 text-purple-400 font-mono text-center rounded-xl px-3 py-1 outline-none focus:border-purple-500" 
-                  />
-                </div>
-                <p class="text-[10px] text-zinc-500 mt-1">
-                  Cantidad de ballenas top del leaderboard que copiar automáticamente
-                </p>
-              </div>
-
-            <!-- ==================== SLIDER LÍMITE POR BALLENA ==================== -->
             <div class="bg-[#161619] border border-purple-500/20 p-6 rounded-2xl">
-              <div class="flex items-center justify-between mb-4">
-                <h4 class="text-[11px] font-black uppercase tracking-widest text-purple-400">Límite de mercados por ballena</h4>
-                <span class="text-[10px] font-mono font-bold px-3 py-1 rounded-md transition-colors"
-                      :class="status.maxCopyMarketsPerWhale === 0 ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30' : 'bg-purple-500/10 text-purple-400 border border-purple-500/30'">
-                  {{ status.maxCopyMarketsPerWhale === 0 ? 'ILIMITADO' : status.maxCopyMarketsPerWhale + ' MERCADOS' }}
-                </span>
-              </div>
-
-              <div class="flex items-center gap-4">
-                <input 
-                  type="range" 
-                  min="0" 
-                  max="20" 
-                  v-model.number="status.maxCopyMarketsPerWhale"
-                  @change="updateCopyLimitPerWhale" 
-                  class="flex-1 accent-purple-500 h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer"
-                />
-                <button 
-                  @click="status.maxCopyMarketsPerWhale = 0; updateCopyLimitPerWhale()"
-                  class="text-[10px] font-black tracking-widest px-5 py-2.5 rounded-xl transition-all duration-300"
-                  :class="status.maxCopyMarketsPerWhale === 0 ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 shadow-[0_0_10px_rgba(16,185,129,0.1)]' : 'bg-[#161619] text-zinc-500 border border-zinc-800/60 hover:border-purple-500 hover:text-purple-400'"
-                >
-                  AUTO (Ilimitado)
-                </button>
-              </div>
+              <h4 class="text-[11px] font-black uppercase tracking-widest text-purple-400 mb-6">Parámetros de Precisión</h4>
               
-              <p class="text-[10px] text-zinc-500 mt-4 font-medium">
-                <span class="text-purple-400">•</span> 
-                Valor actual: <strong class="font-mono">{{ status.maxCopyMarketsPerWhale === 0 ? 'Sin límite' : status.maxCopyMarketsPerWhale + ' mercado(s) por ballena' }}</strong><br>
-                <span class="text-[9px]">Ejemplo: Si pones 1, cada ballena solo puede tener 1 posición activa al mismo tiempo.</span>
-              </p>
-            </div>
+              <div class="grid grid-cols-1 gap-6">
+                
+                <div>
+                  <div class="flex justify-between items-center mb-2">
+                    <label class="text-xs font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-2">
+                      <Coins :size="14" class="text-purple-500" /> Tamaño mínimo de trade
+                    </label>
+                    <span class="font-mono text-purple-400">${{ status.copyMinWhaleSize }}</span>
+                  </div>
+                  <div class="flex items-center gap-4">
+                    <input 
+                      type="range" 
+                      min="50" 
+                      max="500" 
+                      step="1" 
+                      v-model.number="status.copyMinWhaleSize" 
+                      @change="updateCopyFilters" 
+                      class="flex-1 accent-purple-500" 
+                    />
+                    <input 
+                      type="number"
+                      v-model.number="status.copyMinWhaleSize"
+                      @change="updateCopyFilters"
+                      class="w-20 bg-[#09090b] border border-purple-500/30 text-purple-400 font-mono text-center rounded-xl px-3 py-1 outline-none focus:border-purple-500" 
+                    />
+                  </div>
+                  <p class="text-[10px] text-zinc-500 mt-1">Capital mínimo invertido por la ballena para considerarlo un trade de convicción.</p>
+                </div>
 
-            <!-- Agregar ballena -->
-            <div class="flex flex-col sm:flex-row gap-3">
+                <div>
+                  <div class="flex justify-between items-center mb-2">
+                    <label class="text-xs font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-2">
+                      <Clock3 :size="14" class="text-purple-500" /> Ventana de Tiempo
+                    </label>
+                    <span class="font-mono text-purple-400">{{ status.copyTimeWindowMinutes }} min</span>
+                  </div>
+                  <div class="flex items-center gap-4">
+                    <input 
+                      type="range" 
+                      min="15" 
+                      max="90" 
+                      step="1" 
+                      v-model.number="status.copyTimeWindowMinutes" 
+                      @change="updateCopyFilters" 
+                      class="flex-1 accent-purple-500" 
+                    />
+                    <input 
+                      type="number"
+                      v-model.number="status.copyTimeWindowMinutes"
+                      @change="updateCopyFilters"
+                      class="w-20 bg-[#09090b] border border-purple-500/30 text-purple-400 font-mono text-center rounded-xl px-3 py-1 outline-none focus:border-purple-500" 
+                    />
+                  </div>
+                  <p class="text-[10px] text-zinc-500 mt-1">Tiempo máximo de antigüedad permitido desde que la ballena ejecutó la operación.</p>
+                </div>
+
+                <div>
+                  <div class="flex justify-between items-center mb-2">
+                    <label class="text-xs font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-2">
+                      <ShieldCheck :size="14" class="text-purple-500" /> Mercados Simultáneos
+                    </label>
+                    <span class="font-mono font-bold" :class="status.maxCopyMarketsPerWhale === 0 ? 'text-emerald-400' : 'text-purple-400'">
+                      {{ status.maxCopyMarketsPerWhale === 0 ? 'ILIMITADO' : status.maxCopyMarketsPerWhale }}
+                    </span>
+                  </div>
+                  <div class="flex items-center gap-4">
+                    <input 
+                      type="range" 
+                      min="0" 
+                      max="20" 
+                      v-model.number="status.maxCopyMarketsPerWhale"
+                      @change="updateCopyLimitPerWhale" 
+                      class="flex-1 accent-purple-500"
+                    />
+                    <div class="flex gap-2">
+                      <input 
+                        type="number"
+                        v-model.number="status.maxCopyMarketsPerWhale"
+                        @change="updateCopyLimitPerWhale"
+                        class="w-16 bg-[#09090b] border border-purple-500/30 text-purple-400 font-mono text-center rounded-xl px-3 py-1 outline-none focus:border-purple-500" 
+                      />
+                      <button 
+                        @click="status.maxCopyMarketsPerWhale = 0; updateCopyLimitPerWhale()"
+                        class="text-[10px] font-black tracking-widest px-3 py-1 rounded-xl transition-all duration-300"
+                        :class="status.maxCopyMarketsPerWhale === 0 ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30' : 'bg-[#09090b] text-zinc-500 border border-zinc-800 hover:border-purple-500 hover:text-purple-400'"
+                      >
+                        AUTO
+                      </button>
+                    </div>
+                  </div>
+                  <p class="text-[10px] text-zinc-500 mt-1">Evita que una ballena ametralle el portafolio. Cero (0) significa sin límite.</p>
+                </div>
+
+                <div>
+                  <div class="flex justify-between items-center mb-2">
+                    <label class="text-xs font-bold text-amber-400 uppercase tracking-wider flex items-center gap-2">
+                      <TrendingUp :size="14" class="text-amber-500" /> Post-Partial TP (Runner)
+                    </label>
+                    <span class="font-mono text-amber-400">{{ status.whalePostPartialTp }}%</span>
+                  </div>
+                  <div class="flex items-center gap-4">
+                    <input 
+                      type="range" 
+                      min="60" 
+                      max="95" 
+                      step="5" 
+                      v-model.number="status.whalePostPartialTp" 
+                      @change="updateCopyFilters" 
+                      class="flex-1 accent-amber-500" 
+                    />
+                    <input 
+                      type="number"
+                      v-model.number="status.whalePostPartialTp"
+                      @change="updateCopyFilters"
+                      class="w-20 bg-[#09090b] border border-amber-500/30 text-amber-400 font-mono text-center rounded-xl px-3 py-1 outline-none focus:border-amber-500" 
+                    />
+                  </div>
+                  <p class="text-[10px] text-zinc-500 mt-1">Después de vender la mitad (+45%), cierra la posición restante automáticamente en este nivel.</p>
+                </div>
+
+                <div>
+                  <div class="flex justify-between items-center mb-2">
+                    <label class="text-xs font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-2">
+                      <Target :size="14" class="text-purple-500" /> Auto Whales (Leaderboard)
+                    </label>
+                    <span class="font-mono text-purple-400">{{ status.autoWhaleCount }} Top</span>
+                  </div>
+                  <div class="flex items-center gap-4">
+                    <input 
+                      type="range" 
+                      min="1" 
+                      max="20" 
+                      step="1" 
+                      v-model.number="status.autoWhaleCount" 
+                      @change="updateCopyFilters" 
+                      class="flex-1 accent-purple-500" 
+                    />
+                    <input 
+                      type="number"
+                      v-model.number="status.autoWhaleCount"
+                      @change="updateCopyFilters"
+                      class="w-20 bg-[#09090b] border border-purple-500/30 text-purple-400 font-mono text-center rounded-xl px-3 py-1 outline-none focus:border-purple-500" 
+                    />
+                  </div>
+                  <p class="text-[10px] text-zinc-500 mt-1">Cantidad de ballenas rentables a extraer automáticamente del leaderboard de Polymarket.</p>
+                </div>
+
+              </div>
+            </div>
+            <div class="flex flex-col sm:flex-row gap-3 pt-2">
               <input 
                 v-model="newWhaleAddress"
-                :placeholder="(status.customWhales?.length || 0) >= 20 ? 'Límite de 10 ballenas alcanzado' : '0x1234...abcd'"
+                :placeholder="(status.customWhales?.length || 0) >= 20 ? 'Límite de 20 ballenas alcanzado' : '0x1234...abcd'"
                 class="w-full sm:flex-1 bg-[#09090b] border border-zinc-700 rounded-2xl px-4 py-3 text-sm font-mono focus:outline-none focus:border-purple-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               />
               <div class="flex gap-3 w-full sm:w-auto">
@@ -3040,7 +3208,6 @@ onUnmounted(() => {
               </div>
             </div>
 
-            <!-- Lista de ballenas -->
             <div v-if="status.customWhales && status.customWhales.length > 0" class="max-h-52 overflow-y-auto custom-scroll space-y-2 pr-2">
               <div v-for="(whale, index) in status.customWhales" :key="index"
                   class="bg-[#0a0806] border border-amber-600/30 rounded-xl p-3.5 flex justify-between items-center hover:border-amber-500/60 transition-colors group">
@@ -3093,7 +3260,7 @@ onUnmounted(() => {
 
           <div v-else class="text-center py-10 bg-[#09090b] rounded-2xl border border-zinc-800/50 relative z-10 mt-6">
             <Target :size="32" class="text-zinc-700 mx-auto mb-3" />
-            <p class="text-zinc-500 text-sm font-medium">Activa Copy Trading Custom para agregar tus propias ballenas</p>
+            <p class="text-zinc-500 text-sm font-medium">Activa Copy Trading Custom para agregar y configurar a tus traders</p>
           </div>
         </div>
 
