@@ -1550,7 +1550,6 @@ async function checkAndCopyWhaleTrades() {
         const whaleChunks = chunkArray(allWhales, 5);
 
         for (const chunk of whaleChunks) {
-            // 🔥 FIX QUANT: Promise.allSettled evita que el bloque entero colapse si una IP falla
             await Promise.allSettled(chunk.map(async (whale) => {
                 try {
                     let copiedFromThisWhale = botStatus.copiedPositions.filter(p => 
@@ -1628,140 +1627,144 @@ async function checkAndCopyWhaleTrades() {
                         if (!title) continue; 
                         if (!title) title = "Mercado Quant (Copia)";
 
-                        if (side === "BUY") {
-                            const isAutoWhale = (botStatus.autoSelectedWhales || []).some(w => w.address.toLowerCase() === whale.address.toLowerCase());
-                            const isCustomWhale = (botStatus.customWhales || []).some(w => w.address.toLowerCase() === whale.address.toLowerCase());
-                            
-                            if (isAutoWhale && !botStatus.copyTradingAutoEnabled) continue;
-                            if (isCustomWhale && !botStatus.copyTradingCustomEnabled) continue;
+                        try { // 🔥 Añadido un try/catch interno para cada trade
+                            if (side === "BUY") {
+                                const isAutoWhale = (botStatus.autoSelectedWhales || []).some(w => w.address.toLowerCase() === whale.address.toLowerCase());
+                                const isCustomWhale = (botStatus.customWhales || []).some(w => w.address.toLowerCase() === whale.address.toLowerCase());
+                                
+                                if (isAutoWhale && !botStatus.copyTradingAutoEnabled) continue;
+                                if (isCustomWhale && !botStatus.copyTradingCustomEnabled) continue;
 
-                            if (limitPerWhale > 0 && copiedFromThisWhale >= limitPerWhale) {
-                                console.log(`⛔ [COPY LIMIT] Freno Dinámico. ${getWhaleDisplayName(whale)} intentó abrir más de ${limitPerWhale} mercados de golpe.`);
-                                break; 
+                                if (limitPerWhale > 0 && copiedFromThisWhale >= limitPerWhale) {
+                                    console.log(`⛔ [COPY LIMIT] Freno Dinámico. ${getWhaleDisplayName(whale)} intentó abrir más de ${limitPerWhale} mercados de golpe.`);
+                                    break; 
+                                }
+
+                                if (uniqueMarketsCopiedNow.has(tokenId)) continue;
+                                if (botStatus.isPanicStopped) continue;
+                                if (!isMarketAllowed(title)) continue;
+
+                                const marketCat = getMarketCategoryEnhanced(title);
+                                if (marketCat === 'SPORTS' && botStatus.maxActiveSportsMarkets > 0) {
+                                    const activeSportsCount = botStatus.activePositions.filter(p => p.category === 'SPORTS').length;
+                                    if (activeSportsCount >= botStatus.maxActiveSportsMarkets) continue;
+                                }
+
+                                const alreadyHavePosition = botStatus.activePositions.some(p => p.tokenId === tokenId);
+                                const alreadyCopied = botStatus.copiedTrades.some(t => t.txHash === txHash);
+                                const alreadyPending = pendingOrdersCache.has(tokenId);
+
+                                if (alreadyHavePosition || alreadyCopied || alreadyPending) continue;
+
+                                const { config: riskConfig } = getRiskProfile(title, true);
+                                const currentBalance = parseFloat(botStatus.clobOnlyUSDC || 0);
+
+                                const maxPct = riskConfig.maxCopyPercentOfBalance || 8; 
+                                const maxAllowedPercent = currentBalance * (maxPct / 100);
+                                
+                                let montoInversion = Math.min(riskConfig.maxCopySize || 50, maxAllowedPercent);
+                                if (montoInversion < 1) montoInversion = 1;
+
+                                const RESERVE_FOR_AI = botStatus.aiReserveAmount !== undefined ? botStatus.aiReserveAmount : 50; 
+                                if (currentBalance - montoInversion < RESERVE_FOR_AI) {
+                                    console.log(`🛡️ [RESERVA IA] Saldo libre ($${currentBalance.toFixed(2)}) muy cerca de reserva ($${RESERVE_FOR_AI}). Copy bloqueado.`);
+                                    return; 
+                                }
+
+                                if (currentBalance < montoInversion) continue;
+
+                                let limitPrice = price * 1.04;
+                                if (limitPrice > 0.99) limitPrice = 0.99;
+
+                                const lastTradeTime = botStatus.lastTrades[tokenId];
+                                if (lastTradeTime) {
+                                    const minutesSince = (Date.now() - lastTradeTime) / 60000;
+                                    if (minutesSince < botStatus.riskSettings.tradeCooldownMin) continue;
+                                }
+
+                                pendingOrdersCache.add(tokenId);
+
+                                console.log(`🔥 [COPY BUY] ${getWhaleDisplayName(whale)} → ${title.substring(0,45)}... (Inversión Whale: $${whaleUsdValue.toFixed(0)})`);
+
+                                const result = await executeTradeOnChain(finalConditionId, tokenId, montoInversion, limitPrice, "0.01");
+
+                                if (result?.success) {
+                                    setTimeout(() => pendingOrdersCache.delete(tokenId), 60000); 
+                                    
+                                    copiedFromThisWhale++;
+                                    uniqueMarketsCopiedNow.add(tokenId);
+
+                                    botStatus.copiedTrades.unshift({
+                                        id: Date.now(),
+                                        txHash,
+                                        whale: whale.address.substring(0,10) + "...",
+                                        nickname: whale.nickname || getWhaleDisplayName(whale),
+                                        tokenId,
+                                        size: montoInversion,
+                                        price: limitPrice,
+                                        time: new Date().toLocaleTimeString(),
+                                        market: title
+                                    });
+
+                                    if (botStatus.copiedTrades.length > 20) botStatus.copiedTrades.pop();
+
+                                    botStatus.copiedPositions.push({
+                                        tokenId,
+                                        whale: whale.address,
+                                        nickname: whale.nickname || getWhaleDisplayName(whale),
+                                        sizeCopied: montoInversion,
+                                        priceEntry: limitPrice,
+                                        marketName: title
+                                    });
+
+                                    saveConfigToDisk("Nueva Ballena Copiada");
+
+                                    botStatus.copyTradingStats.totalCopied = (botStatus.copyTradingStats.totalCopied || 0) + 1;
+                                    botStatus.copyTradingStats.successful = (botStatus.copyTradingStats.successful || 0) + 1;
+
+                                    await sendCopyAlert('BUY', getWhaleDisplayName(whale), title, montoInversion.toFixed(2));
+                                    botStatus.lastTrades[tokenId] = Date.now();
+                                } else {
+                                    pendingOrdersCache.delete(tokenId);
+                                }
                             }
+                            else if (side === "SELL") {
+                                const copiedIndex = botStatus.copiedPositions.findIndex(p => p.tokenId === tokenId && p.whale === whale.address);
+                                if (copiedIndex === -1) continue;
 
-                            if (uniqueMarketsCopiedNow.has(tokenId)) continue;
-                            if (botStatus.isPanicStopped) continue;
-                            if (!isMarketAllowed(title)) continue;
+                                const position = botStatus.copiedPositions[copiedIndex];
+                                const activePos = botStatus.activePositions.find(p => p.tokenId === tokenId);
+                                if (!activePos) continue; 
 
-                            const marketCat = getMarketCategoryEnhanced(title);
-                            if (marketCat === 'SPORTS' && botStatus.maxActiveSportsMarkets > 0) {
-                                const activeSportsCount = botStatus.activePositions.filter(p => p.category === 'SPORTS').length;
-                                if (activeSportsCount >= botStatus.maxActiveSportsMarkets) continue;
+                                const sharesToSell = parseFloat(activePos.exactSize || activePos.size);
+                                const slippagePct = botStatus.riskSettings?.entrySlippage || 5;
+                                let limitSellPrice = price * (1 - (slippagePct / 100));
+                                if (limitSellPrice < 0.01) limitSellPrice = 0.01;
+
+                                const sellResult = await executeSellOnChain(finalConditionId, tokenId, sharesToSell, limitSellPrice, "0.01");
+
+                                if (sellResult?.success) {
+                                    botStatus.copiedPositions.splice(copiedIndex, 1);
+                                    saveConfigToDisk("Ballena Vendida");
+                                    const rescateEst = (sharesToSell * limitSellPrice).toFixed(2);
+                                    await sendCopyAlert('SELL', position.nickname || getWhaleDisplayName(whale), title, rescateEst);
+                                }
                             }
-
-                            const alreadyHavePosition = botStatus.activePositions.some(p => p.tokenId === tokenId);
-                            const alreadyCopied = botStatus.copiedTrades.some(t => t.txHash === txHash);
-                            const alreadyPending = pendingOrdersCache.has(tokenId);
-
-                            if (alreadyHavePosition || alreadyCopied || alreadyPending) continue;
-
-                            const { config: riskConfig } = getRiskProfile(title, true);
-                            const currentBalance = parseFloat(botStatus.clobOnlyUSDC || 0);
-
-                            const maxPct = riskConfig.maxCopyPercentOfBalance || 8; 
-                            const maxAllowedPercent = currentBalance * (maxPct / 100);
-                            
-                            let montoInversion = Math.min(riskConfig.maxCopySize || 50, maxAllowedPercent);
-                            if (montoInversion < 1) montoInversion = 1;
-
-                            const RESERVE_FOR_AI = botStatus.aiReserveAmount !== undefined ? botStatus.aiReserveAmount : 50; 
-                            if (currentBalance - montoInversion < RESERVE_FOR_AI) {
-                                console.log(`🛡️ [RESERVA IA] Saldo libre ($${currentBalance.toFixed(2)}) muy cerca de reserva ($${RESERVE_FOR_AI}). Copy bloqueado.`);
-                                return; 
+                        } catch (err) {
+                            // 🔥 FIX 2: Auto-Sanación de Fantasmas AHORA SÍ EN EL SCOPE CORRECTO
+                            if (err.message.includes('not enough balance')) {
+                                console.log(`🧹 [AUTO-HEAL] Limpiando posición fantasma de memoria (Ya fue vendida previamente)`);
+                                botStatus.copiedPositions = botStatus.copiedPositions.filter(p => p.tokenId !== tokenId);
+                                botStatus.activePositions = botStatus.activePositions.filter(p => p.tokenId !== tokenId);
+                            } else if (!err.message.includes('429') && !err.message.includes('timeout')) {
+                                console.error(`❌ Error operando trade de ballena:`, err.message);
                             }
-
-                        if (currentBalance < montoInversion) continue;
-
-                        let limitPrice = price * 1.04;
-                        if (limitPrice > 0.99) limitPrice = 0.99;
-
-                        const lastTradeTime = botStatus.lastTrades[tokenId];
-                        if (lastTradeTime) {
-                            const minutesSince = (Date.now() - lastTradeTime) / 60000;
-                            if (minutesSince < botStatus.riskSettings.tradeCooldownMin) continue;
                         }
+                    } // fin del for (const trade of recentTrades)
 
-                        // 🔥 FIX CRÍTICO (HFT RACE CONDITION): Bloqueo instantáneo síncrono 
-                        // Evita que dos ballenas compren lo mismo si operan al mismo tiempo.
-                        pendingOrdersCache.add(tokenId);
-
-                        console.log(`🔥 [COPY BUY] ${getWhaleDisplayName(whale)} → ${title.substring(0,45)}... (Inversión Whale: $${whaleUsdValue.toFixed(0)})`);
-
-                        const result = await executeTradeOnChain(finalConditionId, tokenId, montoInversion, limitPrice, "0.01");
-
-                        if (result?.success) {
-                            setTimeout(() => pendingOrdersCache.delete(tokenId), 60000); 
-                            
-                            copiedFromThisWhale++;
-                            uniqueMarketsCopiedNow.add(tokenId);
-
-                            botStatus.copiedTrades.unshift({
-                                id: Date.now(),
-                                txHash,
-                                whale: whale.address.substring(0,10) + "...",
-                                nickname: whale.nickname || getWhaleDisplayName(whale),
-                                tokenId,
-                                size: montoInversion,
-                                price: limitPrice,
-                                time: new Date().toLocaleTimeString(),
-                                market: title
-                            });
-
-                            if (botStatus.copiedTrades.length > 20) botStatus.copiedTrades.pop();
-
-                            botStatus.copiedPositions.push({
-                                tokenId,
-                                whale: whale.address,
-                                nickname: whale.nickname || getWhaleDisplayName(whale),
-                                sizeCopied: montoInversion,
-                                priceEntry: limitPrice,
-                                marketName: title
-                            });
-
-                            saveConfigToDisk("Nueva Ballena Copiada");
-
-                            botStatus.copyTradingStats.totalCopied = (botStatus.copyTradingStats.totalCopied || 0) + 1;
-                            botStatus.copyTradingStats.successful = (botStatus.copyTradingStats.successful || 0) + 1;
-
-                            await sendCopyAlert('BUY', getWhaleDisplayName(whale), title, montoInversion.toFixed(2));
-                            botStatus.lastTrades[tokenId] = Date.now();
-                        } else {
-                            // 🔥 Si falla la transacción, liberamos el candado para intentar con otra ballena
-                            pendingOrdersCache.delete(tokenId);
-                        }
-                    }
-                    else if (side === "SELL") {
-                        const copiedIndex = botStatus.copiedPositions.findIndex(p => p.tokenId === tokenId && p.whale === whale.address);
-                        if (copiedIndex === -1) continue;
-
-                        const position = botStatus.copiedPositions[copiedIndex];
-                        const activePos = botStatus.activePositions.find(p => p.tokenId === tokenId);
-                        if (!activePos) continue; 
-
-                        const sharesToSell = parseFloat(activePos.exactSize || activePos.size);
-                        const slippagePct = botStatus.riskSettings?.entrySlippage || 5;
-                        let limitSellPrice = price * (1 - (slippagePct / 100));
-                        if (limitSellPrice < 0.01) limitSellPrice = 0.01;
-
-                        const sellResult = await executeSellOnChain(finalConditionId, tokenId, sharesToSell, limitSellPrice, "0.01");
-
-                        if (sellResult?.success) {
-                            botStatus.copiedPositions.splice(copiedIndex, 1);
-                            saveConfigToDisk("Ballena Vendida");
-                            const rescateEst = (sharesToSell * limitSellPrice).toFixed(2);
-                            await sendCopyAlert('SELL', position.nickname || getWhaleDisplayName(whale), title, rescateEst);
-                        }
-                    }
                 } catch (err) {
-                    // 🔥 FIX 2: Auto-Sanación de Fantasmas
-                    if (err.message.includes('not enough balance')) {
-                        console.log(`🧹 [AUTO-HEAL] Limpiando posición fantasma de memoria (Ya fue vendida previamente)`);
-                        // Forzamos la limpieza
-                        botStatus.copiedPositions = botStatus.copiedPositions.filter(p => p.tokenId !== tokenId);
-                        botStatus.activePositions = botStatus.activePositions.filter(p => p.tokenId !== tokenId);
-                    } else if (!err.message.includes('429') && !err.message.includes('timeout')) {
-                        console.error(`❌ Error whale ${whale.address}:`, err.message);
+                    if (!err.message.includes('429') && !err.message.includes('timeout')) {
+                        console.error(`❌ Error consultando a la ballena ${whale.address}:`, err.message);
                     }
                 }
             })); // Fin Promise.allSettled
@@ -2158,179 +2161,103 @@ async function runBot() {
 }
 
 // ==========================================
-// AUTO SELL MANAGER - VERSIÓN FINAL QUANT (Matemática Pura y Blindada)
+// 8.5 EJECUCIÓN DE VENTA (VERSIÓN PULIDA)
 // ==========================================
-async function autoSellManager() {
-    if (!botStatus.autoTradeEnabled) return;
+const recentlySoldTokens = new Set();
 
-    // 🔥 FIX CRÍTICO: Iteramos sobre una COPIA inmutable. 
-    // Evita el colapso de índices cuando updateRealBalances reemplaza el array.
-    const positionsToReview = [...botStatus.activePositions];
-
-    for (const pos of positionsToReview) {
-        if (pos.status && pos.status.includes('CANJEAR')) continue;
-
-        const marketNameShort = (pos.marketName || "Mercado desconocido").substring(0, 45);
-        
-        const currentSharePrice = pos.exactSize > 0 ? (parseFloat(pos.currentValue) / parseFloat(pos.exactSize)) : 0;
-        const entryPrice = parseFloat(pos.priceEntry || 0);
-        
-        const profit = (entryPrice > 0 && currentSharePrice > 0) ? ((currentSharePrice - entryPrice) / entryPrice) * 100 : 0;
-        const isMaxPriceReached = currentSharePrice >= 0.95;
-
-        let originTag = 'IA';
-        let isWhaleTrade = false;
-
-        if (pos.engine === "EQUALIZER") originTag = 'EQUALIZER';
-        else if (pos.engine === "CHRONOS") originTag = 'CHRONOS';
-        else if (pos.engine === "KINETIC") originTag = 'KINETIC';
-        else {
-            isWhaleTrade = botStatus.copiedPositions?.some(cp => cp.tokenId === pos.tokenId) || botStatus.copiedTrades?.some(ct => ct.tokenId === pos.tokenId);
-            if (isWhaleTrade) originTag = 'WHALE';
+async function executeSellOnChain(conditionId, tokenId, exactShares, limitPrice, marketTickSize = "0.01") {
+    try {
+        if (recentlySoldTokens.has(tokenId)) {
+            console.log(`      ⏳ Token en cooldown. Venta ignorada.`);
+            return { success: false, reason: "COOLDOWN_ACTIVE" };
         }
 
-        const { config: riskConfig, profileType } = getRiskProfile(pos.marketName, isWhaleTrade);
+        console.log(`\n--- 🔴 EJECUCIÓN DE VENTA ON-CHAIN ---`);
 
-        if (!botStatus.partialSells) botStatus.partialSells = [];
-        const hasDonePartial = botStatus.partialSells.includes(pos.tokenId);
+        let sharesToSell = parseFloat(exactShares);
+        if (sharesToSell <= 0) return { success: false, reason: "NO_SHARES" };
 
-        // ====================== 🌓 TAKE PROFIT PARCIAL ======================
-        if (isWhaleTrade && profit >= 45 && !hasDonePartial) {
-            try {
-                const bookResp = await axios.get(`https://clob.polymarket.com/book?token_id=${pos.tokenId}`, { httpsAgent: agent, timeout: 10000 });
-                const bids = bookResp.data?.bids || [];
-                
-                if (bids.length > 0) {
-                    const bestPrice = parseFloat(bids[0].price);
-                    const spreadDropPct = currentSharePrice > 0 ? ((currentSharePrice - bestPrice) / currentSharePrice) * 100 : 0;
-                    
-                    if (spreadDropPct <= 35 && bestPrice > 0.005) {
-                        const halfShares = parseFloat(pos.exactSize || pos.size || 0) / 2;
-                        const result = await executeSellOnChain(pos.conditionId || null, pos.tokenId, halfShares, bestPrice, "0.01");
-                        
-                        if (result?.success) {
-                            botStatus.partialSells.push(pos.tokenId);
-                            saveConfigToDisk("Take Profit Parcial Ejecutado");
-                            await updateRealBalances();
-                            await sendAlert(`🌓 *TAKE PROFIT PARCIAL (50%)*\nOrigen: ${originTag} ${profileType}\n\n📈 Mercado: *${marketNameShort}*\n🎯 PnL: *+${profit.toFixed(1)}%*\n🛡️ Asegurado 50%, el resto corre gratis.`);
-                        }
-                    }
-                }
-            } catch (e) {}
-            continue; 
+        // Obtener saldo real
+        let realBalance = 0;
+        let balanceChecked = false;
+        try {
+            const userAddress = process.env.POLY_PROXY_ADDRESS || "0x876E00CBF5c4fe22F4FA263F4cb713650cB758d2";
+            const response = await fetch(`https://data-api.polymarket.com/positions?user=${userAddress}&limit=50`);
+            
+            if (response.ok) {
+                const positions = await response.json();
+                const targetPos = positions.find(p => p.asset === tokenId || p.token_id === tokenId);
+                realBalance = targetPos ? parseFloat(targetPos.size || 0) : 0;
+                balanceChecked = true;
+            }
+        } catch (e) {
+            console.log("⚠️ No se pudo verificar el saldo real en la API. Se intentará vender la cantidad estimada.");
         }
 
-        // ====================== 🌕 TAKE PROFIT TOTAL ======================
-        let effectiveTpThreshold = riskConfig.takeProfitThreshold;
-        if (originTag === "EQUALIZER") effectiveTpThreshold = botStatus.equalizerTpThreshold ?? 15;
-        else if (originTag === "CHRONOS") effectiveTpThreshold = botStatus.chronosTpThreshold ?? 20;
-        else if (originTag === "KINETIC") effectiveTpThreshold = botStatus.kineticTpThreshold ?? 10;
-        else if (isWhaleTrade && hasDonePartial) effectiveTpThreshold = botStatus.whalePostPartialTp ?? 80;
-
-        if (profit >= effectiveTpThreshold || isMaxPriceReached) {
-            try {
-                const bookResp = await axios.get(`https://clob.polymarket.com/book?token_id=${pos.tokenId}`, { httpsAgent: agent, timeout: 6500 });
-                const bids = bookResp.data?.bids || [];
-                
-                if (bids.length === 0) continue;
-
-                const sharesToSell = parseFloat(pos.exactSize || pos.size || 0);
-                const bestPrice = parseFloat(bids[0].price);
-                const spreadDropPct = currentSharePrice > 0 ? ((currentSharePrice - bestPrice) / currentSharePrice) * 100 : 0;
-                
-                if (spreadDropPct > 35) continue;
-                if (bestPrice <= 0.005) continue;
-
-                const result = await executeSellOnChain(pos.conditionId || null, pos.tokenId, sharesToSell, bestPrice, "0.01");
-
-                if (result?.success) {
-                    console.log(`📈 TP EJECUTADO [${originTag}]: ${marketNameShort} (+${profit.toFixed(1)}%)`);
-                    closedPositionsCache.add(pos.tokenId);
-                    delete botStatus.positionEngines[pos.tokenId]; 
-                    
-                    if (originTag !== "EQUALIZER" && originTag !== "CHRONOS" && originTag !== "KINETIC") { 
-                        if (!botStatus.whaleStats) botStatus.whaleStats = { wins: 0, losses: 0, totalTrades: 0, winRate: 0 };
-                        if (!botStatus.aiStats) botStatus.aiStats = { wins: 0, losses: 0, totalTrades: 0, winRate: 0 };
-                        const targetStats = isWhaleTrade ? botStatus.whaleStats : botStatus.aiStats;
-                        targetStats.wins += 1;
-                        targetStats.totalTrades += 1;
-                        targetStats.winRate = (targetStats.wins / targetStats.totalTrades) * 100;
-                    }
-                    
-                    saveConfigToDisk(`TP ${originTag} Ejecutado`);
-                    await updateRealBalances();
-
-                    await sendAlert(`📈 *TAKE PROFIT (${originTag})*\n🎯 ${marketNameShort}\n📊 🟢 GANANCIA: +${profit.toFixed(2)}%`);
-
-                    if (isWhaleTrade) botStatus.copiedPositions = botStatus.copiedPositions.filter(p => p.tokenId !== pos.tokenId);
-                    // 🔥 FIX: Eliminación segura, nunca usamos splice.
-                    botStatus.activePositions = botStatus.activePositions.filter(p => p.tokenId !== pos.tokenId);
-                }
-            } catch (e) {}
-            continue;
+        // 🔥 FIX CRÍTICO: Si comprobamos el saldo y es 0, abortamos la venta antes de mandarla a Polymarket
+        if (balanceChecked) {
+            if (realBalance === 0) {
+                console.log(`👻 Posición fantasma detectada (Saldo Real: 0). Cancelando orden de venta.`);
+                recentlySoldTokens.add(tokenId); // Añadir a cooldown corto para no spamear
+                setTimeout(() => recentlySoldTokens.delete(tokenId), 60000);
+                return { success: false, reason: "ZERO_REAL_BALANCE" };
+            }
+            if (sharesToSell > realBalance) {
+                sharesToSell = realBalance;
+            }
         }
 
-        // ====================== 🛑 STOP LOSS ======================
-        if (profit <= riskConfig.stopLossThreshold) {
-            const isLotteryTicket = currentSharePrice <= 0.03; 
-            const isWorthRescuing = parseFloat(pos.currentValue || 0) >= 0.50;    
+        sharesToSell = Math.max(0, Math.floor((sharesToSell - 0.01) * 100) / 100);
 
-            if (isLotteryTicket || !isWorthRescuing) continue; 
-
-            console.log(`🛑 STOP LOSS DETECTADO [${originTag}]: ${marketNameShort} (${profit.toFixed(1)}%)`);
-
-            try {
-                const bookResp = await axios.get(`https://clob.polymarket.com/book?token_id=${pos.tokenId}`, { httpsAgent: agent, timeout: 6500 });
-                const bids = bookResp.data?.bids || [];
-                
-                if (bids.length === 0) continue;
-
-                const sharesToSell = parseFloat(pos.exactSize || pos.size || 0);
-                let bestBidPrice = parseFloat(bids[0].price);
-
-                const spreadDropPct = currentSharePrice > 0 ? ((currentSharePrice - bestBidPrice) / currentSharePrice) * 100 : 0;
-                if (spreadDropPct > 35) continue; 
-
-                if (bestBidPrice <= 0.001) bestBidPrice = 0.001;
-
-                let worstPrice = bestBidPrice;
-                let accumulated = 0;
-                for (const bid of bids) {
-                    accumulated += parseFloat(bid.size || 0);
-                    worstPrice = parseFloat(bid.price);
-                    if (accumulated >= sharesToSell) break;
-                }
-
-                const maxPanicSlippage = botStatus.riskSettings?.panicSlippage || 40;
-                if ((((bestBidPrice - worstPrice) / bestBidPrice) * 100) > maxPanicSlippage) worstPrice = bestBidPrice * (1 - (maxPanicSlippage / 100));
-
-                const result = await executeSellOnChain(pos.conditionId || null, pos.tokenId, sharesToSell, worstPrice, "0.01");
-
-                if (result?.success) {
-                    closedPositionsCache.add(pos.tokenId);
-                    delete botStatus.positionEngines[pos.tokenId]; 
-
-                    if (originTag !== "EQUALIZER" && originTag !== "CHRONOS" && originTag !== "KINETIC") {
-                        if (!botStatus.whaleStats) botStatus.whaleStats = { wins: 0, losses: 0, totalTrades: 0, winRate: 0 };
-                        if (!botStatus.aiStats) botStatus.aiStats = { wins: 0, losses: 0, totalTrades: 0, winRate: 0 };
-                        const targetStats = isWhaleTrade ? botStatus.whaleStats : botStatus.aiStats;
-                        targetStats.losses += 1;
-                        targetStats.totalTrades += 1;
-                        targetStats.winRate = (targetStats.wins / targetStats.totalTrades) * 100;
-                    }
-                    saveConfigToDisk(`SL ${originTag} Ejecutado`);
-                    await updateRealBalances();
-
-                    await sendAlert(`🛑 *STOP LOSS (${originTag})*\n🎯 ${marketNameShort}\n📊 🔴 PÉRDIDA: ${profit.toFixed(2)}%\n💸 Rescatado: $${(sharesToSell*worstPrice).toFixed(2)}`);
-
-                    if (isWhaleTrade) botStatus.copiedPositions = botStatus.copiedPositions.filter(p => p.tokenId !== pos.tokenId);
-                    botStatus.activePositions = botStatus.activePositions.filter(p => p.tokenId !== pos.tokenId);
-                }
-            } catch (e) {}
+        if (sharesToSell <= 0) {
+            recentlySoldTokens.add(tokenId);
+            return { success: false, reason: "LOW_BALANCE" };
         }
+
+        // Configuración de tick y precio
+        let trueTickSize = marketTickSize;
+        let isNegRisk = false;
+
+        try {
+            const clobMarket = await axios.get(`https://clob.polymarket.com/markets/${conditionId}`);
+            if (clobMarket.data) {
+                isNegRisk = clobMarket.data.neg_risk === true;
+                const tokenData = clobMarket.data.tokens?.find(t => t.token_id === tokenId);
+                if (tokenData?.minimum_tick_size) trueTickSize = tokenData.minimum_tick_size;
+            }
+        } catch (e) {}
+
+        const decimales = trueTickSize === "0.001" ? 3 : (trueTickSize === "0.0001" ? 4 : 2);
+        let safeLimitPrice = Number(parseFloat(limitPrice).toFixed(decimales));
+        if (safeLimitPrice <= 0) safeLimitPrice = parseFloat(trueTickSize);
+
+        console.log(`📡 Orden SELL: ${sharesToSell} shares | Precio: $${safeLimitPrice}`);
+
+        const response = await clobClient.createAndPostOrder(
+            {
+                tokenID: tokenId,
+                price: safeLimitPrice,
+                side: Side.SELL,
+                size: sharesToSell,
+            },
+            { tickSize: String(trueTickSize), negRisk: isNegRisk },
+            OrderType.GTC
+        );
+
+        if (response && response.success) {
+            console.log(`🎉 ¡VENTA ACEPTADA! Order ID: ${response.orderID}`);
+            recentlySoldTokens.add(tokenId);
+            setTimeout(() => recentlySoldTokens.delete(tokenId), 3 * 60 * 1000);
+            return { success: true, hash: response.orderID };
+        } else {
+            throw new Error(`Orden rechazada: ${JSON.stringify(response)}`);
+        }
+
+    } catch (error) {
+        console.error("❌ Error en executeSellOnChain:", error.message);
+        throw error;
     }
 }
-
 
 // ==========================================
 // AUTO REDEEM POSITIONS - Versión que canjea TODO (ganadoras y perdedoras)
