@@ -1743,29 +1743,36 @@ async function checkAndCopyWhaleTrades() {
                                 botStatus.lastTrades[tokenId] = Date.now();
                             }
                         }
-                        // ==================== COPIA DE VENTA ====================
-                        else if (side === "SELL") {
-                            const copiedIndex = botStatus.copiedPositions.findIndex(p => 
-                                p.tokenId === tokenId && p.whale === whale.address
-                            );
-                            if (copiedIndex === -1) continue;
+                    // ==================== COPIA DE VENTA ====================
+                    else if (side === "SELL") {
+                        const copiedIndex = botStatus.copiedPositions.findIndex(p => 
+                            p.tokenId === tokenId && p.whale === whale.address
+                        );
+                        if (copiedIndex === -1) continue;
 
-                            const position = botStatus.copiedPositions[copiedIndex];
+                        const position = botStatus.copiedPositions[copiedIndex];
 
-                            // 🔥 FIX LÓGICO: Usar slippage dinámico de configuración
-                            const slippagePct = botStatus.riskSettings?.entrySlippage || 5;
-                            let limitSellPrice = price * (1 - (slippagePct / 100));
-                            if (limitSellPrice < 0.01) limitSellPrice = 0.01;
+                        // 🔥 FIX CRÍTICO: Buscar los shares reales que poseemos, no los dólares invertidos
+                        const activePos = botStatus.activePositions.find(p => p.tokenId === tokenId);
+                        if (!activePos) continue; // Si ya se vendió por TP/SL, saltamos
 
-                            const sellResult = await executeSellOnChain(finalConditionId, tokenId, position.sizeCopied, limitSellPrice, "0.01");
+                        const sharesToSell = parseFloat(activePos.exactSize || activePos.size);
 
-                            if (sellResult?.success) {
-                                botStatus.copiedPositions.splice(copiedIndex, 1);
-                                saveConfigToDisk("Ballena Vendida");
-                                const rescateEst = (position.sizeCopied * limitSellPrice).toFixed(2);
-                                await sendCopyAlert('SELL', position.nickname || getWhaleDisplayName(whale), title, rescateEst);
-                            }
+                        // Usar slippage dinámico de configuración
+                        const slippagePct = botStatus.riskSettings?.entrySlippage || 5;
+                        let limitSellPrice = price * (1 - (slippagePct / 100));
+                        if (limitSellPrice < 0.01) limitSellPrice = 0.01;
+
+                        // 🔥 Enviamos sharesToSell, no position.sizeCopied
+                        const sellResult = await executeSellOnChain(finalConditionId, tokenId, sharesToSell, limitSellPrice, "0.01");
+
+                        if (sellResult?.success) {
+                            botStatus.copiedPositions.splice(copiedIndex, 1);
+                            saveConfigToDisk("Ballena Vendida");
+                            const rescateEst = (sharesToSell * limitSellPrice).toFixed(2);
+                            await sendCopyAlert('SELL', position.nickname || getWhaleDisplayName(whale), title, rescateEst);
                         }
+                    }
                     }
                 } catch (err) {
                     if (!err.message.includes('429') && !err.message.includes('timeout')) {
@@ -2389,7 +2396,11 @@ async function autoSellManager() {
 // ==========================================
 // AUTO REDEEM POSITIONS - Versión que canjea TODO (ganadoras y perdedoras)
 // ==========================================
+let isRedeeming = false; // 🔥 CANDADO ANTI-COLISIÓN
+
 async function autoRedeemPositions() {
+    if (isRedeeming) return 0;
+    isRedeeming = true;
     let redeemedCount = 0;
 
     try {
@@ -2417,7 +2428,6 @@ async function autoRedeemPositions() {
         for (const pos of [...botStatus.activePositions]) {
             const statusLower = (pos.status || "").toLowerCase();
             if (!statusLower.includes("canjear")) continue;
-
             if (!pos.conditionId) continue;
 
             try {
@@ -2438,12 +2448,12 @@ async function autoRedeemPositions() {
                 await tx.wait(1);
 
                 console.log(`✅ [REDEEM] Canjeado: ${pos.marketName?.substring(0, 50)}...`);
-
-                // Marcamos como canjeado (aunque ya no aparecerá en el próximo refresh)
                 pos.status = "CANJEADO ✅";
                 redeemedCount++;
 
                 await sendAlert(`🔄 *REDEEM EXITOSO*\nMercado: ${pos.marketName?.substring(0, 45)}...\nCanjeado automáticamente`);
+                
+                await new Promise(resolve => setTimeout(resolve, 1500)); // Delay seguro
 
             } catch (err) {
                 const msg = err.message.toLowerCase();
@@ -2454,7 +2464,7 @@ async function autoRedeemPositions() {
         }
 
         if (redeemedCount > 0) {
-            await updateRealBalances();
+            await updateRealBalances(); // 🔥 Variable global garantizada
             saveConfigToDisk("Auto Redeem ejecutado");
             console.log(`🎉 [AUTO-REDEEM] ${redeemedCount} posiciones canjeadas`);
         } else {
@@ -2466,8 +2476,12 @@ async function autoRedeemPositions() {
     } catch (err) {
         console.error("❌ Error general en autoRedeemPositions:", err.message);
         return 0;
+    } finally {
+        isRedeeming = false; // Liberar candado
     }
 }
+
+// Haz lo mismo (agregar let isRedeemingGasless = false; y el try/finally) para autoRedeemPositionsGasless.
 
 // ==========================================
 // AUTO REDEEM GASLESS - Versión ultra-estable (sin constructor problemático)
