@@ -2,7 +2,7 @@
 import { ref, onMounted, computed, onUnmounted } from 'vue'
 import axios from 'axios'
 import { 
-  Activity, ShieldCheck, Target, Cpu, Bot, Clock3, Power, ArrowUpRight, Lock, LifeBuoy, Server, Download
+  Activity, ShieldCheck, Target, Cpu, Bot, Clock3, Power, ArrowUpRight, Lock, LifeBuoy, Server, Download, TrendingUp
 } from 'lucide-vue-next'
 import Swal from 'sweetalert2';
 
@@ -86,17 +86,25 @@ const status = ref({
   newRuleBet: 2,
   newRuleEdgePct: 7,
   newRuleProbPct: 70,
-  // ⏳ Chronos Harvester
+// ⏳ Chronos Harvester
   chronosEnabled: false,
   chronosBetAmount: 5,
   chronosMinPrice: 0.75,
   chronosMaxPrice: 0.88,
   chronosHoursLeft: 96,
-  // 🌊 Kinetic Pressure (Orderbook Imbalance)
+
+  // 🌊 Kinetic Pressure
   kineticEnabled: false,
   kineticBetAmount: 10,
   kineticImbalanceRatio: 8,
   kineticDepthPercent: 2,
+  kineticMaxPositions: 3,
+
+  // 🔥 NUEVAS: Take Profit por Engine (configurables desde dashboard)
+  equalizerTpThreshold: 15,
+  chronosTpThreshold: 20,
+  kineticTpThreshold: 10,
+  whalePostPartialTp: 80,
 });
 
 // --- CONTROL DE PESTAÑAS MÓVILES ---
@@ -552,9 +560,11 @@ const updateCopyFilters = async () => {
   try {
     await axios.post(`${API_URL}/settings/copy-filters`, {
       copyMinWhaleSize: status.value.copyMinWhaleSize,
-      copyTimeWindowMinutes: status.value.copyTimeWindowMinutes
+      copyTimeWindowMinutes: status.value.copyTimeWindowMinutes,
+      maxCopyMarketsPerWhale: status.value.maxCopyMarketsPerWhale,
+      whalePostPartialTp: status.value.whalePostPartialTp   // ← NUEVO
     });
-    console.log(`📋 Filtros de Copy Trading actualizados`);
+    console.log(`📋 Filtros de Copy Trading actualizados (incluyendo Post-Partial TP)`);
   } catch (error) {
     console.error("❌ Error actualizando filtros de copy trading", error);
     Swal.fire('Error', 'No se pudieron guardar los filtros', 'error');
@@ -858,30 +868,6 @@ onMounted(() => {
   setInterval(fetchRadar, 30000);
 });
 
-// ==========================================
-// 📡 Quantum Equalizer Functions
-// ==========================================
-const updateEqualizer = async () => {
-  try {
-    await axios.post(`${API_URL}/settings/equalizer`, { 
-      enabled: status.value.equalizerEnabled,
-      shockThreshold: status.value.equalizerShockThreshold,
-      betAmount: status.value.equalizerBetAmount
-    });
-    console.log("Configuración de Quantum Equalizer actualizada.");
-  } catch (error) {
-    console.error("Error actualizando Quantum Equalizer:", error);
-  }
-};
-
-// ==========================================
-// FILTRO: POSICIONES DEL QUANTUM EQUALIZER
-// ==========================================
-const equalizerPositions = computed(() => {
-  if (!status.value || !status.value.activePositions) return [];
-  return status.value.activePositions.filter(pos => pos.engine === 'EQUALIZER');
-});
-
 // Función auxiliar para colorear el PnL (si no tienes una global ya hecha)
 const formatPnL = (pnl) => {
   if (pnl === undefined || pnl === null) return '0.00%';
@@ -897,13 +883,33 @@ const getPnLColor = (pnl) => {
 };
 
 // ==========================================
-// ⏳ CHRONOS HARVESTER: FILTRO Y CONTROL
+// FILTRO: POSICIONES DEL QUANTUM EQUALIZER
 // ==========================================
-const chronosPositions = computed(() => {
+const equalizerPositions = computed(() => {
   if (!status.value || !status.value.activePositions) return [];
-  return status.value.activePositions.filter(pos => pos.engine === 'CHRONOS');
+  return status.value.activePositions.filter(pos => pos.engine === 'EQUALIZER');
 });
 
+// ==========================================
+// 📡 Quantum Equalizer Functions
+// ==========================================
+const updateEqualizer = async () => {
+  try {
+    await axios.post(`${API_URL}/settings/equalizer`, { 
+      enabled: status.value.equalizerEnabled,
+      shockThreshold: status.value.equalizerShockThreshold,
+      betAmount: status.value.equalizerBetAmount,
+      tpThreshold: status.value.equalizerTpThreshold   // ← NUEVO
+    });
+    console.log("✅ Quantum Equalizer actualizado (incluyendo TP).");
+  } catch (error) {
+    console.error("Error actualizando Quantum Equalizer:", error);
+  }
+};
+
+// ==========================================
+// ⏳ CHRONOS HARVESTER: FILTRO Y CONTROL
+// ==========================================
 const updateChronos = async () => {
   try {
     await axios.post(`${API_URL}/settings/chronos`, { 
@@ -911,9 +917,10 @@ const updateChronos = async () => {
       betAmount: status.value.chronosBetAmount,
       minPrice: status.value.chronosMinPrice,
       maxPrice: status.value.chronosMaxPrice,
-      hoursLeft: status.value.chronosHoursLeft
+      hoursLeft: status.value.chronosHoursLeft,
+      tpThreshold: status.value.chronosTpThreshold   // ← NUEVO
     });
-    console.log("Configuración de Chronos Harvester actualizada.");
+    console.log("✅ Chronos Harvester actualizado (incluyendo TP).");
   } catch (error) {
     console.error("Error actualizando Chronos:", error);
   }
@@ -922,11 +929,6 @@ const updateChronos = async () => {
 // ==========================================
 // 🌊 KINETIC PRESSURE: FILTRO Y CONTROL
 // ==========================================
-const kineticPositions = computed(() => {
-  if (!status.value || !status.value.activePositions) return [];
-  return status.value.activePositions.filter(pos => pos.engine === 'KINETIC');
-});
-
 const updateKinetic = async () => {
   try {
     await axios.post(`${API_URL}/settings/kinetic`, { 
@@ -934,13 +936,19 @@ const updateKinetic = async () => {
       betAmount: status.value.kineticBetAmount,
       imbalanceRatio: status.value.kineticImbalanceRatio,
       depthPercent: status.value.kineticDepthPercent,
-      maxPositions: status.value.kineticMaxPositions // 🔥 Vital para que el backend lo reciba
+      maxPositions: status.value.kineticMaxPositions,
+      tpThreshold: status.value.kineticTpThreshold   // ← NUEVO
     });
-    console.log("🌊 [FRONTEND] Configuración de Kinetic enviada.");
+    console.log("✅ Kinetic Pressure actualizado (incluyendo TP).");
   } catch (error) {
     console.error("Error actualizando Kinetic:", error);
   }
 };
+
+const kineticPositions = computed(() => {
+  if (!status.value || !status.value.activePositions) return [];
+  return status.value.activePositions.filter(pos => pos.engine === 'KINETIC');
+});
 
 // --- COMPUTED PROPERTIES ---
 
@@ -2548,7 +2556,7 @@ onUnmounted(() => {
           </div>
         </div>
 
-        <!-- ====================== FILTRO QUAUNTUM EQUALIZER SECTION ====================== -->
+        <!-- ====================== FILTRO QUANTUM EQUALIZER SECTION ====================== -->
         <div class="bg-[#111114] border border-zinc-800/80 rounded-[2rem] p-6 lg:p-8 transition-all duration-500 relative overflow-hidden group shadow-[0_0_50px_rgba(6,182,212,0.02)] hover:border-cyan-500/30 mb-8">
           <div class="absolute -top-32 -right-32 w-64 h-64 bg-cyan-500 rounded-full blur-[100px] opacity-10 pointer-events-none transition-colors duration-700"></div>
           <div class="absolute -right-6 -top-6 opacity-5 group-hover:opacity-10 transition-all duration-700 pointer-events-none">
@@ -2574,6 +2582,7 @@ onUnmounted(() => {
 
           <div class="grid grid-cols-1 md:grid-cols-2 gap-6 relative z-10 pt-4 border-t border-zinc-800/50">
             
+            <!-- Umbral de Shock -->
             <div>
               <div class="flex justify-between items-center mb-3">
                 <span class="text-xs font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-2">
@@ -2595,6 +2604,7 @@ onUnmounted(() => {
               </p>
             </div>
 
+            <!-- Tamaño de Disparo -->
             <div>
               <div class="flex justify-between items-center mb-3">
                 <span class="text-xs font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-2">
@@ -2613,6 +2623,28 @@ onUnmounted(() => {
               />
               <p class="text-[10px] text-zinc-500 mt-2 leading-relaxed">
                 Capital a invertir cuando se cace un vacío de liquidez.
+              </p>
+            </div>
+
+            <!-- 🔥 NUEVO: Take Profit -->
+            <div>
+              <div class="flex justify-between items-center mb-3">
+                <span class="text-xs font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-2">
+                  <TrendingUp :size="14" class="text-cyan-500" /> Take Profit
+                </span>
+                <span class="text-sm font-mono font-black text-cyan-400">{{ status.equalizerTpThreshold }}%</span>
+              </div>
+              <input 
+                type="range" 
+                v-model="status.equalizerTpThreshold" 
+                min="8" 
+                max="45" 
+                step="1"
+                @change="updateEqualizer"
+                class="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-cyan-500"
+              />
+              <p class="text-[10px] text-zinc-500 mt-2 leading-relaxed">
+                Porcentaje de ganancia para cerrar automáticamente la posición.
               </p>
             </div>
             
@@ -2643,8 +2675,9 @@ onUnmounted(() => {
             </label>
           </div>
 
-          <div class="grid grid-cols-1 md:grid-cols-4 gap-6 relative z-10 pt-4 border-t border-zinc-800/50">
+          <div class="grid grid-cols-1 md:grid-cols-5 gap-6 relative z-10 pt-4 border-t border-zinc-800/50">
             
+            <!-- Ventana (Horas) -->
             <div>
               <div class="flex justify-between items-center mb-3">
                 <span class="text-xs font-bold text-zinc-400 uppercase tracking-wider">Ventana (Horas)</span>
@@ -2653,6 +2686,7 @@ onUnmounted(() => {
               <input type="range" v-model.number="status.chronosHoursLeft" min="24" max="336" step="24" @change="updateChronos" class="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-violet-500" />
             </div>
 
+            <!-- P. Mínimo (NO) -->
             <div>
               <div class="flex justify-between items-center mb-3">
                 <span class="text-xs font-bold text-zinc-400 uppercase tracking-wider">P. Mínimo (NO)</span>
@@ -2661,6 +2695,7 @@ onUnmounted(() => {
               <input type="range" v-model="status.chronosMinPrice" min="0.50" max="0.90" step="0.01" @change="updateChronos" class="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-violet-500" />
             </div>
 
+            <!-- P. Máximo (NO) -->
             <div>
               <div class="flex justify-between items-center mb-3">
                 <span class="text-xs font-bold text-zinc-400 uppercase tracking-wider">P. Máximo (NO)</span>
@@ -2669,12 +2704,35 @@ onUnmounted(() => {
               <input type="range" v-model="status.chronosMaxPrice" min="0.75" max="0.95" step="0.01" @change="updateChronos" class="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-violet-500" />
             </div>
 
+            <!-- Capital -->
             <div>
               <div class="flex justify-between items-center mb-3">
                 <span class="text-xs font-bold text-zinc-400 uppercase tracking-wider">Capital</span>
                 <span class="text-sm font-mono font-black text-violet-400">${{ status.chronosBetAmount }} USDC</span>
               </div>
               <input type="range" v-model="status.chronosBetAmount" min="1" max="50" step="1" @change="updateChronos" class="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-violet-500" />
+            </div>
+
+            <!-- 🔥 NUEVO: Take Profit -->
+            <div>
+              <div class="flex justify-between items-center mb-3">
+                <span class="text-xs font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-2">
+                  <TrendingUp :size="14" class="text-violet-500" /> Take Profit
+                </span>
+                <span class="text-sm font-mono font-black text-violet-400">{{ status.chronosTpThreshold }}%</span>
+              </div>
+              <input 
+                type="range" 
+                v-model="status.chronosTpThreshold" 
+                min="10" 
+                max="50" 
+                step="1"
+                @change="updateChronos"
+                class="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-violet-500"
+              />
+              <p class="text-[10px] text-zinc-500 mt-2 leading-relaxed">
+                % objetivo para cerrar antes de que expire el mercado.
+              </p>
             </div>
             
           </div>
@@ -2704,8 +2762,9 @@ onUnmounted(() => {
             </label>
           </div>
 
-          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 relative z-10 pt-4 border-t border-zinc-800/50">
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 relative z-10 pt-4 border-t border-zinc-800/50">
             
+            <!-- Ratio (Bids:Asks) -->
             <div>
               <div class="flex justify-between items-center mb-3">
                 <span class="text-xs font-bold text-zinc-400 uppercase tracking-wider">Ratio (Bids:Asks)</span>
@@ -2714,6 +2773,7 @@ onUnmounted(() => {
               <input type="range" v-model="status.kineticImbalanceRatio" min="3" max="15" step="1" @change="updateKinetic" class="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-orange-500" />
             </div>
 
+            <!-- Profundidad -->
             <div>
               <div class="flex justify-between items-center mb-3">
                 <span class="text-xs font-bold text-zinc-400 uppercase tracking-wider">Profundidad</span>
@@ -2722,6 +2782,7 @@ onUnmounted(() => {
               <input type="range" v-model="status.kineticDepthPercent" min="0.5" max="5" step="0.5" @change="updateKinetic" class="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-orange-500" />
             </div>
 
+            <!-- Inversión Scalp -->
             <div>
               <div class="flex justify-between items-center mb-3">
                 <span class="text-xs font-bold text-zinc-400 uppercase tracking-wider">Inversión Scalp</span>
@@ -2730,12 +2791,35 @@ onUnmounted(() => {
               <input type="range" v-model="status.kineticBetAmount" min="5" max="100" step="5" @change="updateKinetic" class="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-orange-500" />
             </div>
 
+            <!-- Límite Ráfaga -->
             <div>
               <div class="flex justify-between items-center mb-3">
                 <span class="text-xs font-bold text-zinc-400 uppercase tracking-wider">Límite Ráfaga</span>
                 <span class="text-sm font-mono font-black text-orange-500">{{ status.kineticMaxPositions }} POS</span>
               </div>
               <input type="range" v-model="status.kineticMaxPositions" min="1" max="10" step="1" @change="updateKinetic" class="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-orange-500" />
+            </div>
+
+            <!-- 🔥 NUEVO: Take Profit -->
+            <div>
+              <div class="flex justify-between items-center mb-3">
+                <span class="text-xs font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-2">
+                  <TrendingUp :size="14" class="text-orange-500" /> Take Profit
+                </span>
+                <span class="text-sm font-mono font-black text-orange-400">{{ status.kineticTpThreshold }}%</span>
+              </div>
+              <input 
+                type="range" 
+                v-model="status.kineticTpThreshold" 
+                min="5" 
+                max="35" 
+                step="1"
+                @change="updateKinetic"
+                class="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-orange-500"
+              />
+              <p class="text-[10px] text-zinc-500 mt-2 leading-relaxed">
+                % rápido para cerrar en scalping por imbalance.
+              </p>
             </div>
             
           </div>
@@ -2779,6 +2863,7 @@ onUnmounted(() => {
             <div class="bg-[#161619] border border-purple-500/20 p-6 rounded-2xl space-y-6">
               <h4 class="text-[11px] font-black uppercase tracking-widest text-purple-400 mb-4">Filtros de Copy Trading</h4>
               
+              <!-- Tamaño mínimo de trade -->
               <div>
                 <div class="flex justify-between items-center mb-2">
                   <label class="text-xs text-zinc-400 font-medium">Tamaño mínimo de trade de ballena</label>
@@ -2803,6 +2888,7 @@ onUnmounted(() => {
                 </div>
               </div>
 
+              <!-- Ventana de tiempo -->
               <div>
                 <div class="flex justify-between items-center mb-2">
                   <label class="text-xs text-zinc-400 font-medium">Ventana de tiempo (minutos)</label>
@@ -2826,6 +2912,36 @@ onUnmounted(() => {
                   />
                 </div>
                 <p class="text-[10px] text-zinc-500 mt-1">Tiempo máximo desde que la ballena hizo el trade</p>
+              </div>
+
+              <!-- 🔥 NUEVO: Whale Post-Partial Take Profit -->
+              <div>
+                <div class="flex justify-between items-center mb-2">
+                  <label class="text-xs text-amber-400 font-medium flex items-center gap-2">
+                    <TrendingUp :size="14" /> Post-Partial TP (Ballenas)
+                  </label>
+                  <span class="font-mono font-black text-amber-400">{{ status.whalePostPartialTp }}%</span>
+                </div>
+                <div class="flex items-center gap-4">
+                  <input 
+                    type="range" 
+                    min="60" 
+                    max="95" 
+                    step="5" 
+                    v-model.number="status.whalePostPartialTp" 
+                    @change="updateCopyFilters" 
+                    class="flex-1 accent-amber-500" 
+                  />
+                  <input 
+                    type="number"
+                    v-model.number="status.whalePostPartialTp"
+                    @change="updateCopyFilters"
+                    class="w-20 bg-[#09090b] border border-amber-500/30 text-amber-400 font-mono text-center rounded-xl px-3 py-1 outline-none focus:border-amber-500" 
+                  />
+                </div>
+                <p class="text-[10px] text-zinc-500 mt-1">
+                  Después de vender el 50% (+45%), cierra el resto cuando llegue a este porcentaje.
+                </p>
               </div>
             </div>
 

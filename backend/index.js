@@ -219,12 +219,18 @@ let botStatus = {
     maxCopyMarketsPerWhale: 1,     // 1 = por defecto (1 mercado por ballena)
     copyMinWhaleSize: 150,           // ← Tamaño de Trade Minimo
     copyTimeWindowMinutes: 45,       // ← Ventana de tiempo para volver a checar los trades
+    autoWhaleCount: 15,            // El límite fijo que mencionabas (Top ballenas a buscar)
     lastTrades: {}, // Objeto para controlar el Cooldown: { tokenId: timestamp }
     aiStats: { wins: 0, losses: 0, totalTrades: 0, winRate: 0.0 },
     whaleStats: { wins: 0, losses: 0, totalTrades: 0, winRate: 0.0 },
     aiReserveAmount: 50,
     positionEngines: {}, // <-- NUEVO: Guardará los tatuajes de las posiciones
-    kineticMaxPositions: 3
+    kineticMaxPositions: 3,
+    // TP configurables por engine
+    equalizerTpThreshold: 15,
+    chronosTpThreshold: 20,
+    kineticTpThreshold: 10,
+    whalePostPartialTp: 80,
 };
 
 // ==========================================
@@ -279,9 +285,12 @@ function saveConfigToDisk(origen = "Sistema") {
             copiedTrades: botStatus.copiedTrades || [],
             riskSettings: botStatus.riskSettings,
             customMarketRules: botStatus.customMarketRules || [],
+
+            // 🔥 FIX QUANT: Guardamos los 4 Límites de Precisión
             maxCopyMarketsPerWhale: botStatus.maxCopyMarketsPerWhale,
             copyMinWhaleSize: botStatus.copyMinWhaleSize,
             copyTimeWindowMinutes: botStatus.copyTimeWindowMinutes,
+            autoWhaleCount: botStatus.autoWhaleCount, // <-- NUEVO
             // 🔥 FIX QUANT: Guardamos los Winrates en el disco duro
             aiStats: botStatus.aiStats,
             whaleStats: botStatus.whaleStats,
@@ -301,6 +310,11 @@ function saveConfigToDisk(origen = "Sistema") {
             kineticBetAmount: botStatus.kineticBetAmount,
             kineticImbalanceRatio: botStatus.kineticImbalanceRatio,
             kineticDepthPercent: botStatus.kineticDepthPercent,
+            // TP configurables por engine
+            equalizerTpThreshold: botStatus.equalizerTpThreshold,
+            chronosTpThreshold: botStatus.chronosTpThreshold,
+            kineticTpThreshold: botStatus.kineticTpThreshold,
+            whalePostPartialTp: botStatus.whalePostPartialTp,
         };
         fs.writeFileSync(CONFIG_FILE, JSON.stringify(configToSave, null, 2), 'utf8');
         console.log(`💾 Configuración guardada en el disco. (Origen: ${origen})`);
@@ -328,6 +342,9 @@ function loadConfigFromDisk() {
             if (savedConfig.dailyLossLimit !== undefined) botStatus.dailyLossLimit = savedConfig.dailyLossLimit;
             if (savedConfig.copiedPositions) botStatus.copiedPositions = savedConfig.copiedPositions;
             if (savedConfig.copiedTrades) botStatus.copiedTrades = savedConfig.copiedTrades;
+
+            if (savedConfig.preferGaslessRedeem !== undefined) botStatus.preferGaslessRedeem = savedConfig.preferGaslessRedeem;
+            if (savedConfig.partialSells) botStatus.partialSells = savedConfig.partialSells;
             
             // 🔥 NUEVO: Recuperar configuración de Riesgo
             if (savedConfig.riskSettings) {
@@ -354,6 +371,7 @@ function loadConfigFromDisk() {
 
             if (savedConfig.copyMinWhaleSize !== undefined) botStatus.copyMinWhaleSize = savedConfig.copyMinWhaleSize;
             if (savedConfig.copyTimeWindowMinutes !== undefined) botStatus.copyTimeWindowMinutes = savedConfig.copyTimeWindowMinutes;
+            if (savedConfig.autoWhaleCount !== undefined) botStatus.autoWhaleCount = savedConfig.autoWhaleCount; // <-- NUEVO
 
             // 🔥 FIX QUANT: Cargar los Winrates desde el disco al iniciar
             if (savedConfig.aiStats) botStatus.aiStats = savedConfig.aiStats;
@@ -370,14 +388,20 @@ function loadConfigFromDisk() {
             if (savedConfig.chronosMinPrice !== undefined) botStatus.chronosMinPrice = savedConfig.chronosMinPrice;
             if (savedConfig.chronosMaxPrice !== undefined) botStatus.chronosMaxPrice = savedConfig.chronosMaxPrice;
 
-            // 🏷️ MEMORIA DE ETIQUETAS
-            if (savedConfig.positionEngines) botStatus.positionEngines = savedConfig.positionEngines;
-
             // 🌊 KINETIC PRESSURE
             if (savedConfig.kineticEnabled !== undefined) botStatus.kineticEnabled = savedConfig.kineticEnabled;
             if (savedConfig.kineticBetAmount !== undefined) botStatus.kineticBetAmount = savedConfig.kineticBetAmount;
             if (savedConfig.kineticImbalanceRatio !== undefined) botStatus.kineticImbalanceRatio = savedConfig.kineticImbalanceRatio;
             if (savedConfig.kineticDepthPercent !== undefined) botStatus.kineticDepthPercent = savedConfig.kineticDepthPercent;
+
+            // 🔥 TP Configurables por Engine
+            if (savedConfig.equalizerTpThreshold !== undefined) botStatus.equalizerTpThreshold = savedConfig.equalizerTpThreshold;
+            if (savedConfig.chronosTpThreshold !== undefined) botStatus.chronosTpThreshold = savedConfig.chronosTpThreshold;
+            if (savedConfig.kineticTpThreshold !== undefined) botStatus.kineticTpThreshold = savedConfig.kineticTpThreshold;
+            if (savedConfig.whalePostPartialTp !== undefined) botStatus.whalePostPartialTp = savedConfig.whalePostPartialTp;
+
+            // 🏷️ MEMORIA DE ETIQUETAS
+            if (savedConfig.positionEngines) botStatus.positionEngines = savedConfig.positionEngines;
 
             console.log("📂 Configuración y Memoria cargada con éxito.");
         } else {
@@ -1347,6 +1371,7 @@ async function autoSelectTopWhales() {
     if (!botStatus.copyTradingAutoEnabled) return;   // ← Solo se ejecuta si el Auto está ON
 
     console.log(`🔍 [AUTO-WHALE] Seleccionando las mejores ballenas automáticamente...`);
+    
 
     try {
         const response = await axios.get(
@@ -2241,10 +2266,19 @@ async function autoSellManager() {
 
         // ====================== 🌕 TAKE PROFIT TOTAL ======================
         let effectiveTpThreshold = riskConfig.takeProfitThreshold;
-        if (originTag === "EQUALIZER") effectiveTpThreshold = 15; 
-        else if (originTag === "CHRONOS") effectiveTpThreshold = 20; 
-        else if (originTag === "KINETIC") effectiveTpThreshold = 10; 
-        else if (isWhaleTrade && hasDonePartial) effectiveTpThreshold = 80;
+
+        if (originTag === "EQUALIZER") {
+            effectiveTpThreshold = botStatus.equalizerTpThreshold ?? 15;
+        } 
+        else if (originTag === "CHRONOS") {
+            effectiveTpThreshold = botStatus.chronosTpThreshold ?? 20;
+        } 
+        else if (originTag === "KINETIC") {
+            effectiveTpThreshold = botStatus.kineticTpThreshold ?? 10;
+        } 
+        else if (isWhaleTrade && hasDonePartial) {
+            effectiveTpThreshold = botStatus.whalePostPartialTp ?? 80;
+        }
 
         if (profit >= effectiveTpThreshold || isMaxPriceReached) {
             try {
@@ -3227,19 +3261,46 @@ app.post('/api/settings/copytrading', (req, res) => {
 // NUEVO: Configuración de filtros de Copy Trading
 // ==========================================
 app.post('/api/settings/copy-filters', (req, res) => {
-    const { copyMinWhaleSize, copyTimeWindowMinutes } = req.body;
+    const { 
+        copyMinWhaleSize, 
+        copyTimeWindowMinutes, 
+        maxCopyMarketsPerWhale,
+        autoWhaleCount,
+        whalePostPartialTp        // ← NUEVO
+    } = req.body;
 
-    if (copyMinWhaleSize !== undefined) botStatus.copyMinWhaleSize = parseInt(copyMinWhaleSize);
-    if (copyTimeWindowMinutes !== undefined) botStatus.copyTimeWindowMinutes = parseInt(copyTimeWindowMinutes);
+    if (copyMinWhaleSize !== undefined) 
+        botStatus.copyMinWhaleSize = parseInt(copyMinWhaleSize);
+
+    if (copyTimeWindowMinutes !== undefined) 
+        botStatus.copyTimeWindowMinutes = parseInt(copyTimeWindowMinutes);
+
+    if (maxCopyMarketsPerWhale !== undefined) 
+        botStatus.maxCopyMarketsPerWhale = parseInt(maxCopyMarketsPerWhale);
+
+    if (autoWhaleCount !== undefined) 
+        botStatus.autoWhaleCount = parseInt(autoWhaleCount);
+
+    // 🔥 Nuevo: whalePostPartialTp
+    if (whalePostPartialTp !== undefined) 
+        botStatus.whalePostPartialTp = parseFloat(whalePostPartialTp);
 
     saveConfigToDisk("Copy Filters Actualizados");
 
-    console.log(`📋 Filtros Copy Trading actualizados → Tamaño mín: ${botStatus.copyMinWhaleSize} | Ventana: ${botStatus.copyTimeWindowMinutes} min`);
+    console.log(`📋 Filtros Copy Trading actualizados → ` +
+        `Tamaño mín: $${botStatus.copyMinWhaleSize} | ` +
+        `Ventana: ${botStatus.copyTimeWindowMinutes}m | ` +
+        `Mercados/Ballena: ${botStatus.maxCopyMarketsPerWhale} | ` +
+        `Post-Partial TP: ${botStatus.whalePostPartialTp}% | ` +
+        `Top Ballenas Auto: ${botStatus.autoWhaleCount}`);
 
     res.json({ 
         success: true, 
         copyMinWhaleSize: botStatus.copyMinWhaleSize,
-        copyTimeWindowMinutes: botStatus.copyTimeWindowMinutes 
+        copyTimeWindowMinutes: botStatus.copyTimeWindowMinutes,
+        maxCopyMarketsPerWhale: botStatus.maxCopyMarketsPerWhale,
+        autoWhaleCount: botStatus.autoWhaleCount,
+        whalePostPartialTp: botStatus.whalePostPartialTp   // ← NUEVO
     });
 });
 
@@ -3587,15 +3648,16 @@ app.post('/api/settings/copy-limit-per-whale', (req, res) => {
 // ==========================================
 app.post('/api/settings/equalizer', (req, res) => {
     try {
-        const { enabled, shockThreshold, betAmount } = req.body;
+        const { enabled, shockThreshold, betAmount, tpThreshold } = req.body;
         
         if (enabled !== undefined) botStatus.equalizerEnabled = Boolean(enabled);
         if (shockThreshold !== undefined) botStatus.equalizerShockThreshold = parseFloat(shockThreshold);
         if (betAmount !== undefined) botStatus.equalizerBetAmount = parseFloat(betAmount);
-        
+        if (tpThreshold !== undefined) botStatus.equalizerTpThreshold = parseFloat(tpThreshold);   // ← NUEVO
+
         saveConfigToDisk("Ajuste Quantum Equalizer");
         
-        console.log(`🌊 [EQUALIZER] Ajustes actualizados: ON=${botStatus.equalizerEnabled} | Salto=${botStatus.equalizerShockThreshold}% | Disparo=$${botStatus.equalizerBetAmount}`);
+        console.log(`🌊 [EQUALIZER] Ajustes: ON=${botStatus.equalizerEnabled} | Shock=${botStatus.equalizerShockThreshold}% | Bet=$${botStatus.equalizerBetAmount} | TP=${botStatus.equalizerTpThreshold}%`);
         
         res.json({ 
             success: true, 
@@ -3603,7 +3665,8 @@ app.post('/api/settings/equalizer', (req, res) => {
             state: {
                 enabled: botStatus.equalizerEnabled,
                 shockThreshold: botStatus.equalizerShockThreshold,
-                betAmount: botStatus.equalizerBetAmount
+                betAmount: botStatus.equalizerBetAmount,
+                tpThreshold: botStatus.equalizerTpThreshold   // ← NUEVO
             }
         });
     } catch (error) {
@@ -3616,17 +3679,18 @@ app.post('/api/settings/equalizer', (req, res) => {
 // ==========================================
 app.post('/api/settings/chronos', (req, res) => {
     try {
-        const { enabled, betAmount, minPrice, maxPrice, hoursLeft } = req.body;
+        const { enabled, betAmount, minPrice, maxPrice, hoursLeft, tpThreshold } = req.body;
         
         if (enabled !== undefined) botStatus.chronosEnabled = Boolean(enabled);
         if (betAmount !== undefined) botStatus.chronosBetAmount = parseFloat(betAmount);
         if (minPrice !== undefined) botStatus.chronosMinPrice = parseFloat(minPrice);
         if (maxPrice !== undefined) botStatus.chronosMaxPrice = parseFloat(maxPrice);
-        if (hoursLeft !== undefined) botStatus.chronosHoursLeft = parseInt(hoursLeft); // <-- NUEVO
+        if (hoursLeft !== undefined) botStatus.chronosHoursLeft = parseInt(hoursLeft);
+        if (tpThreshold !== undefined) botStatus.chronosTpThreshold = parseFloat(tpThreshold);   // ← NUEVO
         
         saveConfigToDisk("Ajuste Chronos Harvester");
         
-        console.log(`⏳ [CHRONOS] Ajustes actualizados: ON=${botStatus.chronosEnabled} | Rango=$${botStatus.chronosMinPrice}-$${botStatus.chronosMaxPrice} | Disparo=$${botStatus.chronosBetAmount} | Horas=${botStatus.chronosHoursLeft}`);
+        console.log(`⏳ [CHRONOS] Ajustes: ON=${botStatus.chronosEnabled} | TP=${botStatus.chronosTpThreshold}% | ...`);
         
         res.json({ success: true, message: "Chronos actualizado" });
     } catch (error) {
@@ -3635,23 +3699,22 @@ app.post('/api/settings/chronos', (req, res) => {
 });
 
 // ==========================================
-// 🎛️ ENDPOINTS: KINETIC PRESSURE (ACTUALIZADO)
+// 🎛️ ENDPOINTS: KINETIC PRESSURE
 // ==========================================
 app.post('/api/settings/kinetic', (req, res) => {
     try {
-        const { enabled, betAmount, imbalanceRatio, depthPercent, maxPositions } = req.body;
+        const { enabled, betAmount, imbalanceRatio, depthPercent, maxPositions, tpThreshold } = req.body;
         
         if (enabled !== undefined) botStatus.kineticEnabled = Boolean(enabled);
         if (betAmount !== undefined) botStatus.kineticBetAmount = parseFloat(betAmount);
         if (imbalanceRatio !== undefined) botStatus.kineticImbalanceRatio = parseFloat(imbalanceRatio);
         if (depthPercent !== undefined) botStatus.kineticDepthPercent = parseFloat(depthPercent);
-        
-        // 🔥 Guardamos el nuevo límite dinámico
         if (maxPositions !== undefined) botStatus.kineticMaxPositions = parseInt(maxPositions);
+        if (tpThreshold !== undefined) botStatus.kineticTpThreshold = parseFloat(tpThreshold);   // ← NUEVO
         
         saveConfigToDisk("Ajuste Kinetic Pressure");
         
-        console.log(`🌊 [KINETIC] Ajustes: ON=${botStatus.kineticEnabled} | Ratio=${botStatus.kineticImbalanceRatio}:1 | Límite=${botStatus.kineticMaxPositions} POS`);
+        console.log(`🌊 [KINETIC] Ajustes: ON=${botStatus.kineticEnabled} | TP=${botStatus.kineticTpThreshold}% | ...`);
         
         res.json({ success: true, message: "Kinetic actualizado" });
     } catch (error) {
@@ -3851,7 +3914,10 @@ function manageWhaleRoster(radarWhales) {
     const now = Date.now();
     let removedZombies = 0;
     let addedTopWhales = 0;
-    const MAX_WHALE_ROSTER = 15; // 🔥 LÍMITE INSTITUCIONAL DE PLANTILLA
+    
+    // 🔥 FIX QUANT: Reemplazamos el 15 fijo por tu variable dinámica del Dashboard
+    // Si por alguna razón no llega, usa 15 como red de seguridad.
+    const MAX_WHALE_ROSTER = botStatus.autoWhaleCount || 15;
 
     // 1. DESPEDIR ZOMBIES ABSOLUTOS (Más de 15 días inactivos)
     botStatus.customWhales = botStatus.customWhales.filter(whale => {
