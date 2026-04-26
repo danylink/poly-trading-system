@@ -1570,9 +1570,12 @@ async function checkAndCopyWhaleTrades() {
                         ? response.data 
                         : (response.data.data || response.data.trades || []);
 
+                    // Registrar actividad de manera 100% segura
                     if (recentTrades.length > 0) {
-                        const customWhaleIndex = botStatus.customWhales.findIndex(w => w.address.toLowerCase() === whale.address.toLowerCase());
-                        if (customWhaleIndex !== -1) botStatus.customWhales[customWhaleIndex].lastActive = Date.now();
+                        const customWhaleIndex = (botStatus.customWhales || []).findIndex(w => w.address.toLowerCase() === whale.address.toLowerCase());
+                        if (customWhaleIndex !== -1) {
+                            botStatus.customWhales[customWhaleIndex].lastActive = Date.now();
+                        }
                     }
 
                     const uniqueMarketsCopiedNow = new Set(); 
