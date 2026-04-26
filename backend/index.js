@@ -1795,6 +1795,161 @@ async function autoSellManager() {
                 // 🔥 Aumentado el timeout a 10s para evitar fallos de red
                 const bookResp = await axios.get(`https://clob.polymarket.com/book?token_id=${pos.tokenId}`, { httpsAgent: agent, timeout: 10000 });
                 const bids = bookResp.data?.bids || [];
+                
+                if (bids.length > 0) {
+                    const bestPrice = parseFloat(bids[0].price);
+                    const spreadDropPct = currentSharePrice > 0 ? ((currentSharePrice - bestPrice) / currentSharePrice) * 100 : 0;
+                    
+                    if (spreadDropPct <= 35 && bestPrice > 0.005) {
+                        const halfShares = parseFloat(pos.exactSize || pos.size || 0) / 2;
+                        const result = await executeSellOnChain(pos.conditionId || null, pos.tokenId, halfShares, bestPrice, "0.01");
+                        
+                        if (result?.success) {
+                            botStatus.partialSells.push(pos.tokenId);
+                            saveConfigToDisk("Take Profit Parcial Ejecutado");
+                            await updateRealBalances();
+                            await sendAlert(`🌓 *TAKE PROFIT PARCIAL (50%)*\nOrigen: ${originTag} ${profileType}\n\n📈 Mercado: *${marketNameShort}*\n🎯 PnL: *+${profit.toFixed(1)}%*\n🛡️ Asegurado 50%, el resto corre gratis.`);
+                        }
+                    } else {
+                        console.log(`⚠️ [ALERTA LIQUIDEZ TP PARCIAL] Abortando. Valor teórico: $${currentSharePrice.toFixed(2)}, ofrecen $${bestPrice.toFixed(2)}.`);
+                    }
+                }
+            } catch (e) {
+                console.error(`❌ Error TP Parcial:`, e.message);
+            }
+            continue; 
+        }
+
+        // ====================== 🌕 TAKE PROFIT TOTAL ======================
+        let effectiveTpThreshold = riskConfig.takeProfitThreshold;
+        if (originTag === "EQUALIZER") effectiveTpThreshold = botStatus.equalizerTpThreshold ?? 15;
+        else if (originTag === "CHRONOS") effectiveTpThreshold = botStatus.chronosTpThreshold ?? 20;
+        else if (originTag === "KINETIC") effectiveTpThreshold = botStatus.kineticTpThreshold ?? 10;
+        else if (isWhaleTrade && hasDonePartial) effectiveTpThreshold = botStatus.whalePostPartialTp ?? 80;
+
+        if (profit >= effectiveTpThreshold || isMaxPriceReached) {
+            try {
+                // 🔥 Aumentado el timeout a 10s
+                const bookResp = await axios.get(`https://clob.polymarket.com/book?token_id=${pos.tokenId}`, { httpsAgent: agent, timeout: 10000 });
+                const bids = bookResp.data?.bids || [];
+                
+                if (bids.length === 0) continue;
+
+                const sharesToSell = parseFloat(pos.exactSize || pos.size || 0);
+                const bestPrice = parseFloat(bids[0].price);
+                const spreadDropPct = currentSharePrice > 0 ? ((currentSharePrice - bestPrice) / currentSharePrice) * 100 : 0;
+                
+                if (spreadDropPct > 35) {
+                    console.log(`⚠️ [ALERTA LIQUIDEZ TP] Abortando TP en ${marketNameShort}. Teórico: $${currentSharePrice.toFixed(2)}, Ofrecen: $${bestPrice.toFixed(2)}`);
+                    continue; 
+                }
+                if (bestPrice <= 0.005) continue;
+
+                const result = await executeSellOnChain(pos.conditionId || null, pos.tokenId, sharesToSell, bestPrice, "0.01");
+
+                if (result?.success) {
+                    console.log(`📈 TP EJECUTADO [${originTag}]: ${marketNameShort} (+${profit.toFixed(1)}%)`);
+                    closedPositionsCache.add(pos.tokenId);
+                    delete botStatus.positionEngines[pos.tokenId]; 
+                    
+                    if (originTag !== "EQUALIZER" && originTag !== "CHRONOS" && originTag !== "KINETIC") { 
+                        if (!botStatus.whaleStats) botStatus.whaleStats = { wins: 0, losses: 0, totalTrades: 0, winRate: 0 };
+                        if (!botStatus.aiStats) botStatus.aiStats = { wins: 0, losses: 0, totalTrades: 0, winRate: 0 };
+                        const targetStats = isWhaleTrade ? botStatus.whaleStats : botStatus.aiStats;
+                        targetStats.wins += 1;
+                        targetStats.totalTrades += 1;
+                        targetStats.winRate = (targetStats.wins / targetStats.totalTrades) * 100;
+                    }
+                    
+                    saveConfigToDisk(`TP ${originTag} Ejecutado`);
+                    await updateRealBalances();
+
+                    let mensajeTelegram = `📈 *TAKE PROFIT (${originTag})*\n🎯 ${marketNameShort}\n📊 🟢 GANANCIA: +${profit.toFixed(2)}%`;
+                    if (originTag === "KINETIC") mensajeTelegram += `\n🏄‍♂️ Muro de liquidez surfeado con éxito.`;
+                    await sendAlert(mensajeTelegram);
+
+                    if (isWhaleTrade) botStatus.copiedPositions = botStatus.copiedPositions.filter(p => p.tokenId !== pos.tokenId);
+                    // 🔥 FIX QUANT: Eliminación inmutable segura
+                    botStatus.activePositions = botStatus.activePositions.filter(p => p.tokenId !== pos.tokenId);
+                }
+            } catch (e) {
+                console.error(`❌ Take Profit error:`, e.message);
+            }
+            continue;
+        }
+
+        // ====================== 🛑 STOP LOSS ======================
+        if (profit <= riskConfig.stopLossThreshold) {
+            const isLotteryTicket = currentSharePrice <= 0.03; 
+            const isWorthRescuing = parseFloat(pos.currentValue || 0) >= 0.50;    
+
+            if (isLotteryTicket || !isWorthRescuing) {
+                if (profit <= (riskConfig.stopLossThreshold - 10)) { 
+                    console.log(`🎫 [MOONSHOT] ${marketNameShort} tocó SL pero vale migajas ($${currentSharePrice.toFixed(2)}). Se deja a expiración.`);
+                }
+                continue; 
+            }
+
+            console.log(`🛑 STOP LOSS DETECTADO [${originTag}]: ${marketNameShort} (${profit.toFixed(1)}%)`);
+
+            try {
+                // 🔥 Aumentado el timeout a 10s
+                const bookResp = await axios.get(`https://clob.polymarket.com/book?token_id=${pos.tokenId}`, { httpsAgent: agent, timeout: 10000 });
+                const bids = bookResp.data?.bids || [];
+                
+                if (bids.length === 0) continue;
+
+                const sharesToSell = parseFloat(pos.exactSize || pos.size || 0);
+                let bestBidPrice = parseFloat(bids[0].price);
+
+                const spreadDropPct = currentSharePrice > 0 ? ((currentSharePrice - bestBidPrice) / currentSharePrice) * 100 : 0;
+                if (spreadDropPct > 35) {
+                    console.log(`⚠️ [ALERTA LIQUIDEZ] Abortando SL en ${marketNameShort}. Valor teórico: $${currentSharePrice.toFixed(2)}, Ofrecen: $${bestBidPrice.toFixed(2)}.`);
+                    continue; 
+                }
+
+                if (bestBidPrice <= 0.001) bestBidPrice = 0.001;
+
+                let worstPrice = bestBidPrice;
+                let accumulated = 0;
+                for (const bid of bids) {
+                    accumulated += parseFloat(bid.size || 0);
+                    worstPrice = parseFloat(bid.price);
+                    if (accumulated >= sharesToSell) break;
+                }
+
+                const maxPanicSlippage = botStatus.riskSettings?.panicSlippage || 40;
+                if ((((bestBidPrice - worstPrice) / bestBidPrice) * 100) > maxPanicSlippage) worstPrice = bestBidPrice * (1 - (maxPanicSlippage / 100));
+
+                const result = await executeSellOnChain(pos.conditionId || null, pos.tokenId, sharesToSell, worstPrice, "0.01");
+
+                if (result?.success) {
+                    closedPositionsCache.add(pos.tokenId);
+                    delete botStatus.positionEngines[pos.tokenId]; 
+
+                    if (originTag !== "EQUALIZER" && originTag !== "CHRONOS" && originTag !== "KINETIC") {
+                        if (!botStatus.whaleStats) botStatus.whaleStats = { wins: 0, losses: 0, totalTrades: 0, winRate: 0 };
+                        if (!botStatus.aiStats) botStatus.aiStats = { wins: 0, losses: 0, totalTrades: 0, winRate: 0 };
+                        const targetStats = isWhaleTrade ? botStatus.whaleStats : botStatus.aiStats;
+                        targetStats.losses += 1;
+                        targetStats.totalTrades += 1;
+                        targetStats.winRate = (targetStats.wins / targetStats.totalTrades) * 100;
+                    }
+                    saveConfigToDisk(`SL ${originTag} Ejecutado`);
+                    await updateRealBalances();
+
+                    await sendAlert(`🛑 *STOP LOSS (${originTag})*\n🎯 ${marketNameShort}\n📊 🔴 PÉRDIDA: ${profit.toFixed(2)}%\n💸 Rescatado: $${(sharesToSell*worstPrice).toFixed(2)}`);
+
+                    if (isWhaleTrade) botStatus.copiedPositions = botStatus.copiedPositions.filter(p => p.tokenId !== pos.tokenId);
+                    // 🔥 FIX QUANT: Eliminación inmutable segura
+                    botStatus.activePositions = botStatus.activePositions.filter(p => p.tokenId !== pos.tokenId);
+                }
+            } catch (e) {
+                console.error(`❌ Stop Loss error:`, e.message);
+            }
+        }
+    }
+}
 
 // ==========================================
 // 10. CICLO PRINCIPAL (EL CEREBRO DEL BOT)
