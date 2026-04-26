@@ -91,6 +91,7 @@ const status = ref({
   chronosBetAmount: 5,
   chronosMinPrice: 0.75,
   chronosMaxPrice: 0.88,
+  chronosHoursLeft: 96,
   // 🌊 Kinetic Pressure (Orderbook Imbalance)
   kineticEnabled: false,
   kineticBetAmount: 10,
@@ -909,7 +910,8 @@ const updateChronos = async () => {
       enabled: status.value.chronosEnabled,
       betAmount: status.value.chronosBetAmount,
       minPrice: status.value.chronosMinPrice,
-      maxPrice: status.value.chronosMaxPrice
+      maxPrice: status.value.chronosMaxPrice,
+      hoursLeft: status.value.chronosHoursLeft
     });
     console.log("Configuración de Chronos Harvester actualizada.");
   } catch (error) {
@@ -2576,8 +2578,16 @@ onUnmounted(() => {
             </label>
           </div>
 
-          <div class="grid grid-cols-1 md:grid-cols-3 gap-6 relative z-10 pt-4 border-t border-zinc-800/50">
+          <div class="grid grid-cols-1 md:grid-cols-4 gap-6 relative z-10 pt-4 border-t border-zinc-800/50">
             
+            <div>
+              <div class="flex justify-between items-center mb-3">
+                <span class="text-xs font-bold text-zinc-400 uppercase tracking-wider">Ventana (Horas)</span>
+                <span class="text-sm font-mono font-black text-violet-400">{{ status.chronosHoursLeft }}h</span>
+              </div>
+              <input type="range" v-model.number="status.chronosHoursLeft" min="24" max="336" step="24" @change="updateChronos" class="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-violet-500" />
+            </div>
+
             <div>
               <div class="flex justify-between items-center mb-3">
                 <span class="text-xs font-bold text-zinc-400 uppercase tracking-wider">P. Mínimo (NO)</span>

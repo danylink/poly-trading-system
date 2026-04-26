@@ -245,6 +245,7 @@ if (botStatus.chronosEnabled === undefined) botStatus.chronosEnabled = false;
 if (botStatus.chronosBetAmount === undefined) botStatus.chronosBetAmount = 5;
 if (botStatus.chronosMinPrice === undefined) botStatus.chronosMinPrice = 0.75;
 if (botStatus.chronosMaxPrice === undefined) botStatus.chronosMaxPrice = 0.88;
+if (botStatus.chronosHoursLeft === undefined) botStatus.chronosHoursLeft = 168;
 
 // ==========================================
 // 🌊 KINETIC PRESSURE (Estado y Configuración)
@@ -1023,7 +1024,7 @@ async function refreshWatchlist() {
             
             // 🔥 MEJORA QUANT: Visión a 60 días (1440 hrs) para Macro, 4 días (96 hrs) para Crypto/Ruido
             if (["POLITICS", "BUSINESS", "GEOPOLITICS", "TRUMP", "FED", "CPI", "IRAN", "UKRAINE", "ISRAEL"].includes(cat)) {
-                return endTime > now && hoursLeft <= 1440; 
+                return endTime > now && hoursLeft <= 720; 
             }
             return endTime > now && hoursLeft <= 96;   
         });
@@ -1577,6 +1578,18 @@ async function checkAndCopyWhaleTrades() {
                     if (!tokenId || whaleSize < botStatus.copyMinWhaleSize) continue;
                     if (Date.now() - timestamp > botStatus.copyTimeWindowMinutes * 60 * 1000) continue;
 
+                    // =========================================================
+                    // 🔥 FIX QUANT: ESCUDO ANTI-ESTANCAMIENTO (Caza de Flujo)
+                    // =========================================================
+                    // Obligamos al Copy-Trading a respetar los filtros de la Watchlist.
+                    // Si el mercado no está en la Watchlist, significa que expira en más de 30 días, 
+                    // o tiene menos de $2000 de liquidez. Lo descartamos automáticamente.
+                    const isMarketInRadar = botStatus.watchlist.some(m => m.conditionId === conditionId);
+                    if (!isMarketInRadar) {
+                        // Opcional: console.log(`⏩ [COPY SKIP] Ballena operando basura ilíquida o a largo plazo: ${title.substring(0,30)}`);
+                        continue; 
+                    }
+                    
                     // ==================== COPIA DE COMPRA ====================
                     if (side === "BUY") {
 
@@ -2127,7 +2140,7 @@ async function runBot() {
 }
 
 // ==========================================
-// AUTO SELL MANAGER - VERSIÓN FINAL QUANT (TP Parcial + TP Total + SL + Stats + Equalizer + Chronos + Kinetic)
+// AUTO SELL MANAGER - VERSIÓN FINAL QUANT (Matemática Pura y Blindada)
 // ==========================================
 async function autoSellManager() {
     if (!botStatus.autoTradeEnabled) return;
@@ -2138,12 +2151,20 @@ async function autoSellManager() {
         
         if (pos.status && pos.status.includes('CANJEAR')) continue;
 
-        const profit = pos.percentPnl || 0;
         const marketNameShort = (pos.marketName || "Mercado desconocido").substring(0, 45);
+        
+        // 🔥 FIX QUANT CRÍTICO 1: Matemática Pura Inmune a APIs y Ventas Parciales
         const currentSharePrice = pos.exactSize > 0 ? (parseFloat(pos.currentValue) / parseFloat(pos.exactSize)) : 0;
+        const entryPrice = parseFloat(pos.priceEntry || 0);
+        
+        // Calculamos el % de PnL nosotros mismos (Ej: de $0.50 a $0.75 = +50.0%)
+        const profit = (entryPrice > 0 && currentSharePrice > 0) 
+            ? ((currentSharePrice - entryPrice) / entryPrice) * 100 
+            : 0;
+
         const isMaxPriceReached = currentSharePrice >= 0.95;
 
-        // 🌊⏳ FIX QUANT: Detección de 5 Orígenes (Whale, IA, Equalizer, Chronos, Kinetic)
+        // 🌊⏳ Detección de 5 Orígenes (Pentagrama Quant)
         let originTag = 'IA';
         let isWhaleTrade = false;
 
@@ -2152,17 +2173,17 @@ async function autoSellManager() {
         } else if (pos.engine === "CHRONOS") {
             originTag = 'CHRONOS';
         } else if (pos.engine === "KINETIC") {
-            originTag = 'KINETIC'; // <-- NUEVO: Reconocimiento de Kinetic Pressure
+            originTag = 'KINETIC';
         } else {
-            isWhaleTrade = botStatus.copiedPositions.some(cp => cp.tokenId === pos.tokenId) || 
-                           botStatus.copiedTrades.some(ct => ct.tokenId === pos.tokenId);
+            isWhaleTrade = botStatus.copiedPositions?.some(cp => cp.tokenId === pos.tokenId) || 
+                           botStatus.copiedTrades?.some(ct => ct.tokenId === pos.tokenId);
             if (isWhaleTrade) originTag = 'WHALE';
         }
 
         const { config: riskConfig, profileType } = getRiskProfile(pos.marketName, isWhaleTrade);
 
         if (profit >= (riskConfig.takeProfitThreshold - 5) || profit <= (riskConfig.stopLossThreshold + 5) || currentSharePrice >= 0.90) {
-            console.log(`📊 [AUTO-SELL] ${originTag}-${profileType} | ${marketNameShort} | PnL: ${profit.toFixed(1)}% | Precio Acc: $${currentSharePrice.toFixed(2)}`);
+            console.log(`📊 [AUTO-SELL] ${originTag}-${profileType} | ${marketNameShort} | PnL Real: ${profit.toFixed(1)}% | Precio Acc: $${currentSharePrice.toFixed(2)}`);
         }
 
         if (!botStatus.partialSells) botStatus.partialSells = [];
@@ -2173,8 +2194,7 @@ async function autoSellManager() {
             console.log(`🌓 [TP PARCIAL] ${originTag}-${profileType} | ${marketNameShort} superó +45%. Asegurando 50% del capital...`);
 
             try {
-                const bookResp = await axios.get(`https://clob.polymarket.com/book?token_id=${pos.tokenId}`, 
-                    { httpsAgent: agent, timeout: 6500 });
+                const bookResp = await axios.get(`https://clob.polymarket.com/book?token_id=${pos.tokenId}`, { httpsAgent: agent, timeout: 6500 });
                 const bids = bookResp.data?.bids || [];
                 
                 if (bids.length > 0) {
@@ -2189,11 +2209,10 @@ async function autoSellManager() {
                             botStatus.partialSells.push(pos.tokenId);
                             saveConfigToDisk("Take Profit Parcial Ejecutado");
                             await updateRealBalances();
-
                             await sendAlert(`🌓 *TAKE PROFIT PARCIAL (50%)*\nOrigen: ${originTag} ${profileType}\n\n📈 Mercado: *${marketNameShort}*\n🎯 PnL: *+${profit.toFixed(1)}%*\n🛡️ Asegurado 50%, el resto corre gratis.`);
                         }
                     } else {
-                        console.log(`⚠️ [ALERTA LIQUIDEZ TP PARCIAL] Abortando en ${marketNameShort}. Valor teórico: $${currentSharePrice.toFixed(2)}, ofrecen $${bestPrice.toFixed(2)}.`);
+                        console.log(`⚠️ [ALERTA LIQUIDEZ TP PARCIAL] Abortando. Valor teórico: $${currentSharePrice.toFixed(2)}, ofrecen $${bestPrice.toFixed(2)}.`);
                     }
                 }
             } catch (e) {
@@ -2206,15 +2225,14 @@ async function autoSellManager() {
         let effectiveTpThreshold = riskConfig.takeProfitThreshold;
         if (originTag === "EQUALIZER") effectiveTpThreshold = 15; 
         else if (originTag === "CHRONOS") effectiveTpThreshold = 20; 
-        else if (originTag === "KINETIC") effectiveTpThreshold = 10; // <-- NUEVO: Salida rápida para Kinetic (Scalping)
+        else if (originTag === "KINETIC") effectiveTpThreshold = 10; 
         else if (isWhaleTrade && hasDonePartial) effectiveTpThreshold = 80;
 
         if (profit >= effectiveTpThreshold || isMaxPriceReached) {
             try {
-                const bookResp = await axios.get(`https://clob.polymarket.com/book?token_id=${pos.tokenId}`, 
-                    { httpsAgent: agent, timeout: 6500 });
-
+                const bookResp = await axios.get(`https://clob.polymarket.com/book?token_id=${pos.tokenId}`, { httpsAgent: agent, timeout: 6500 });
                 const bids = bookResp.data?.bids || [];
+                
                 if (bids.length === 0) continue;
 
                 const sharesToSell = parseFloat(pos.exactSize || pos.size || 0);
@@ -2233,35 +2251,24 @@ async function autoSellManager() {
                 if (result?.success) {
                     console.log(`📈 TP EJECUTADO [${originTag}]: ${marketNameShort} (+${profit.toFixed(1)}%)`);
                     closedPositionsCache.add(pos.tokenId);
-                    delete botStatus.positionEngines[pos.tokenId]; // <-- LIMPIAR MEMORIA
+                    delete botStatus.positionEngines[pos.tokenId]; 
                     
-                    // Stats
-                    if (originTag !== "EQUALIZER" && originTag !== "CHRONOS" && originTag !== "KINETIC") { // <-- NUEVO: Protegemos stats
+                    // Stats Protection
+                    if (originTag !== "EQUALIZER" && originTag !== "CHRONOS" && originTag !== "KINETIC") { 
+                        if (!botStatus.whaleStats) botStatus.whaleStats = { wins: 0, losses: 0, totalTrades: 0, winRate: 0 };
+                        if (!botStatus.aiStats) botStatus.aiStats = { wins: 0, losses: 0, totalTrades: 0, winRate: 0 };
                         const targetStats = isWhaleTrade ? botStatus.whaleStats : botStatus.aiStats;
                         targetStats.wins += 1;
                         targetStats.totalTrades += 1;
                         targetStats.winRate = (targetStats.wins / targetStats.totalTrades) * 100;
                     }
                     saveConfigToDisk(`TP ${originTag} Ejecutado`);
-                    
                     await updateRealBalances();
 
-                    // 📱 ALERTAS ENRUTADAS
                     const pnlText = `+${profit.toFixed(2)}%`;
-                    let mensajeTelegram = "";
-
-                    if (originTag === "EQUALIZER") {
-                        mensajeTelegram = `🌊 *EQUALIZER CERRADO (TAKE PROFIT)*\n🎯 ${marketNameShort}\n📊 🟢 GANANCIA: ${pnlText}\n⚡ Shock de liquidez absorbido.`;
-                    } else if (originTag === "CHRONOS") {
-                        mensajeTelegram = `⏳ *CHRONOS CERRADO (TAKE PROFIT)*\n🎯 ${marketNameShort}\n📊 🟢 GANANCIA: ${pnlText}\n🕰️ Decaimiento cobrado con éxito.`;
-                    } else if (originTag === "KINETIC") {
-                        mensajeTelegram = `🌊 *KINETIC PRESSURE CERRADO (TAKE PROFIT)*\n🎯 ${marketNameShort}\n📊 🟢 GANANCIA: ${pnlText}\n🏄‍♂️ Muro de liquidez surfeado con éxito.`;
-                    } else if (originTag === "IA") {
-                        mensajeTelegram = `🤖 *IA SNIPER (TAKE PROFIT)*\n🎯 ${marketNameShort}\n📊 🟢 GANANCIA: ${pnlText}\n🧠 Motor: Trinidad`;
-                    } else {
-                        mensajeTelegram = `🐋 *COPY TRADE (TAKE PROFIT)*\n🎯 ${marketNameShort}\n📊 🟢 GANANCIA: ${pnlText}`;
-                    }
-
+                    let mensajeTelegram = `📈 *TAKE PROFIT (${originTag})*\n🎯 ${marketNameShort}\n📊 🟢 GANANCIA: ${pnlText}`;
+                    if (originTag === "KINETIC") mensajeTelegram += `\n🏄‍♂️ Muro de liquidez surfeado con éxito.`;
+                    
                     await sendAlert(mensajeTelegram);
 
                     if (isWhaleTrade) {
@@ -2291,10 +2298,9 @@ async function autoSellManager() {
             console.log(`🛑 STOP LOSS DETECTADO [${originTag}]: ${marketNameShort} (${profit.toFixed(1)}%)`);
 
             try {
-                const bookResp = await axios.get(`https://clob.polymarket.com/book?token_id=${pos.tokenId}`, 
-                    { httpsAgent: agent, timeout: 6500 });
-
+                const bookResp = await axios.get(`https://clob.polymarket.com/book?token_id=${pos.tokenId}`, { httpsAgent: agent, timeout: 6500 });
                 const bids = bookResp.data?.bids || [];
+                
                 if (bids.length === 0) continue;
 
                 const sharesToSell = parseFloat(pos.exactSize || pos.size || 0);
@@ -2316,7 +2322,7 @@ async function autoSellManager() {
                     if (accumulated >= sharesToSell) break;
                 }
 
-                const maxPanicSlippage = botStatus.riskSettings.panicSlippage || 40;
+                const maxPanicSlippage = botStatus.riskSettings?.panicSlippage || 40;
                 if ((((bestBidPrice - worstPrice) / bestBidPrice) * 100) > maxPanicSlippage) {
                     worstPrice = bestBidPrice * (1 - (maxPanicSlippage / 100));
                 }
@@ -2325,34 +2331,21 @@ async function autoSellManager() {
 
                 if (result?.success) {
                     closedPositionsCache.add(pos.tokenId);
-                    delete botStatus.positionEngines[pos.tokenId]; // <-- LIMPIAR MEMORIA
+                    delete botStatus.positionEngines[pos.tokenId]; 
 
-                    if (originTag !== "EQUALIZER" && originTag !== "CHRONOS" && originTag !== "KINETIC") { // <-- NUEVO: Protegemos stats
+                    if (originTag !== "EQUALIZER" && originTag !== "CHRONOS" && originTag !== "KINETIC") {
+                        if (!botStatus.whaleStats) botStatus.whaleStats = { wins: 0, losses: 0, totalTrades: 0, winRate: 0 };
+                        if (!botStatus.aiStats) botStatus.aiStats = { wins: 0, losses: 0, totalTrades: 0, winRate: 0 };
                         const targetStats = isWhaleTrade ? botStatus.whaleStats : botStatus.aiStats;
                         targetStats.losses += 1;
                         targetStats.totalTrades += 1;
                         targetStats.winRate = (targetStats.wins / targetStats.totalTrades) * 100;
                     }
                     saveConfigToDisk(`SL ${originTag} Ejecutado`);
-                    
                     await updateRealBalances();
 
-                    // 📱 ALERTAS ENRUTADAS
                     const pnlText = `${profit.toFixed(2)}%`;
-                    let mensajeTelegram = "";
-
-                    if (originTag === "EQUALIZER") {
-                        mensajeTelegram = `🌊 *EQUALIZER CERRADO (STOP LOSS)*\n🎯 ${marketNameShort}\n📊 🔴 PÉRDIDA: ${pnlText}\n⚡ Error de corrección de liquidez.`;
-                    } else if (originTag === "CHRONOS") {
-                        mensajeTelegram = `⏳ *CHRONOS CERRADO (STOP LOSS)*\n🎯 ${marketNameShort}\n📊 🔴 PÉRDIDA: ${pnlText}\n🕰️ El evento finalmente ocurrió.`;
-                    } else if (originTag === "KINETIC") {
-                        mensajeTelegram = `🌊 *KINETIC PRESSURE CERRADO (STOP LOSS)*\n🎯 ${marketNameShort}\n📊 🔴 PÉRDIDA: ${pnlText}\n🧱 El muro de liquidez colapsó.`;
-                    } else if (originTag === "IA") {
-                        mensajeTelegram = `🤖 *IA SNIPER (STOP LOSS)*\n🎯 ${marketNameShort}\n📊 🔴 PÉRDIDA: ${pnlText}\n💸 Rescatado: $${(sharesToSell*worstPrice).toFixed(2)}`;
-                    } else {
-                        mensajeTelegram = `🐋 *COPY TRADE (STOP LOSS)*\n🎯 ${marketNameShort}\n📊 🔴 PÉRDIDA: ${pnlText}\n💸 Rescatado: $${(sharesToSell*worstPrice).toFixed(2)}`;
-                    }
-
+                    let mensajeTelegram = `🛑 *STOP LOSS (${originTag})*\n🎯 ${marketNameShort}\n📊 🔴 PÉRDIDA: ${pnlText}\n💸 Rescatado: $${(sharesToSell*worstPrice).toFixed(2)}`;
                     await sendAlert(mensajeTelegram);
 
                     if (isWhaleTrade) {
@@ -2846,7 +2839,8 @@ async function verifyShockWithIA(marketData, eventProbabilityChange, triggerPric
             console.log(`📉 [EQUALIZER] IA Confirma Pánico Humano (Confianza: ${result.confidence.toFixed(0)}%). Razón: ${result.reason}`);
             
             const currentLivePrice = await getMarketPrice(shockTokenId) || (outcomeToBuy === "YES" ? marketData.priceYes : marketData.priceNo);
-            const expectedDiscountPrice = outcomeToBuy === "YES" ? (1 - triggerPrice) : (1 - triggerPrice);
+            // 🔥 FIX QUANT: La fórmula de descuento ahora es correcta para ambos lados
+            const expectedDiscountPrice = outcomeToBuy === "YES" ? triggerPrice : (1 - triggerPrice);
             
             if (parseFloat(currentLivePrice) > expectedDiscountPrice + 0.03) {
                 console.log(`⚠️ [EQUALIZER ABORTADO] El mercado ya se corrigió. Esperado: $${expectedDiscountPrice.toFixed(2)}, Actual: $${currentLivePrice}.`);
@@ -2994,7 +2988,7 @@ async function runChronosHarvester() {
         const endTime = new Date(market.endDate).getTime();
         const hoursLeft = (endTime - now) / (1000 * 60 * 60);
 
-        if (hoursLeft > 0 && hoursLeft <= 96 && market.priceNo >= botStatus.chronosMinPrice && market.priceNo <= botStatus.chronosMaxPrice) {
+        if (hoursLeft > 0 && hoursLeft <= botStatus.chronosHoursLeft && market.priceNo >= botStatus.chronosMinPrice && market.priceNo <= botStatus.chronosMaxPrice) {
             
             const alreadyInvested = botStatus.activePositions.some(p => p.tokenId === market.tokenNo);
             const alreadyPending = pendingOrdersCache.has(market.tokenNo);
@@ -3604,16 +3598,17 @@ app.post('/api/settings/equalizer', (req, res) => {
 // ==========================================
 app.post('/api/settings/chronos', (req, res) => {
     try {
-        const { enabled, betAmount, minPrice, maxPrice } = req.body;
+        const { enabled, betAmount, minPrice, maxPrice, hoursLeft } = req.body;
         
         if (enabled !== undefined) botStatus.chronosEnabled = Boolean(enabled);
         if (betAmount !== undefined) botStatus.chronosBetAmount = parseFloat(betAmount);
         if (minPrice !== undefined) botStatus.chronosMinPrice = parseFloat(minPrice);
         if (maxPrice !== undefined) botStatus.chronosMaxPrice = parseFloat(maxPrice);
+        if (hoursLeft !== undefined) botStatus.chronosHoursLeft = parseInt(hoursLeft); // <-- NUEVO
         
         saveConfigToDisk("Ajuste Chronos Harvester");
         
-        console.log(`⏳ [CHRONOS] Ajustes actualizados: ON=${botStatus.chronosEnabled} | Rango=$${botStatus.chronosMinPrice}-$${botStatus.chronosMaxPrice} | Disparo=$${botStatus.chronosBetAmount}`);
+        console.log(`⏳ [CHRONOS] Ajustes actualizados: ON=${botStatus.chronosEnabled} | Rango=$${botStatus.chronosMinPrice}-$${botStatus.chronosMaxPrice} | Disparo=$${botStatus.chronosBetAmount} | Horas=${botStatus.chronosHoursLeft}`);
         
         res.json({ success: true, message: "Chronos actualizado" });
     } catch (error) {
