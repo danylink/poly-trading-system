@@ -2,7 +2,7 @@
 import { ref, onMounted, computed, onUnmounted } from 'vue'
 import axios from 'axios'
 import { 
-  Activity, ShieldCheck, Target, Cpu, Bot, Clock3, Power, ArrowUpRight, Lock, LifeBuoy, Server, Download, TrendingUp
+  Activity, ShieldCheck, Target, Cpu, Bot, Clock3, Power, ArrowUpRight, Lock, LifeBuoy, Server, Download, TrendingUp, Zap, Coins
 } from 'lucide-vue-next'
 import Swal from 'sweetalert2';
 
@@ -1513,7 +1513,7 @@ onUnmounted(() => {
             </div>
             <div class="px-3 py-1 rounded-full bg-violet-500/10 border border-violet-500/20 text-violet-400 text-xs font-bold flex items-center gap-2">
               <Clock3 :size="12" />
-              {{ chronosPositions.length }} ACTIVAS
+              {{ chronosPositions?.length || 0 }} ACTIVAS
             </div>
           </div>
 
