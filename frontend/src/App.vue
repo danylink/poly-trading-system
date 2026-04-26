@@ -883,14 +883,6 @@ const getPnLColor = (pnl) => {
 };
 
 // ==========================================
-// FILTRO: POSICIONES DEL QUANTUM EQUALIZER
-// ==========================================
-const equalizerPositions = computed(() => {
-  if (!status.value || !status.value.activePositions) return [];
-  return status.value.activePositions.filter(pos => pos.engine === 'EQUALIZER');
-});
-
-// ==========================================
 // 📡 Quantum Equalizer Functions
 // ==========================================
 const updateEqualizer = async () => {
@@ -945,8 +937,21 @@ const updateKinetic = async () => {
   }
 };
 
+// ==========================================
+// FILTROS DE POSICIONES POR ENGINE
+// ==========================================
+const equalizerPositions = computed(() => {
+  if (!status.value?.activePositions) return [];
+  return status.value.activePositions.filter(pos => pos.engine === 'EQUALIZER');
+});
+
+const chronosPositions = computed(() => {           // ← ESTE FALTABA
+  if (!status.value?.activePositions) return [];
+  return status.value.activePositions.filter(pos => pos.engine === 'CHRONOS');
+});
+
 const kineticPositions = computed(() => {
-  if (!status.value || !status.value.activePositions) return [];
+  if (!status.value?.activePositions) return [];
   return status.value.activePositions.filter(pos => pos.engine === 'KINETIC');
 });
 
