@@ -3117,12 +3117,14 @@ async function updateHighFrequencyRadar() {
 // ⏳ CHRONOS HARVESTER (THETA DECAY ENGINE)
 // ==========================================
 async function runChronosHarvester() {
+    console.log(`\n⏳ [CHRONOS DEBUG] === INICIANDO ESCANEO === Enabled: ${botStatus.chronosEnabled}`);
+
     if (!botStatus.chronosEnabled || botStatus.isPanicStopped) {
-        console.log(`⏳ [CHRONOS] Desactivado o en pánico`);
+        console.log(`⏳ [CHRONOS] Desactivado o en modo pánico`);
         return;
     }
 
-    console.log(`⏳ [CHRONOS DEBUG] Escaneando ${botStatus.watchlist.length} mercados | Rango precio: ${botStatus.chronosMinPrice}-${botStatus.chronosMaxPrice}`);
+    console.log(`⏳ [CHRONOS] Revisando ${botStatus.watchlist.length} mercados | Rango NO: ${botStatus.chronosMinPrice} - ${botStatus.chronosMaxPrice}`);
 
     const now = Date.now();
 
@@ -3229,7 +3231,7 @@ async function runChronosHarvester() {
 }
 
 // ==========================================
-// 📈 ANALIZADOR DE SHOCKS DE LIQUIDEZ (BLINDADO QUANT)
+// 📈 ANALIZADOR DE SHOCKS DE LIQUIDEZ (VERSIÓN CORREGIDA)
 // ==========================================
 async function checkForLiquidityShocks() {
     if (!botStatus.equalizerEnabled) return;
@@ -3241,28 +3243,35 @@ async function checkForLiquidityShocks() {
         const history = priceHistoryCache[tokenId];
         if (history.length < 2) continue; 
 
-        const current = history[history.length - 1].price;
-        const oldest = history[0].price;
-        const changePct = ((current - oldest) / oldest) * 100;
+        const currentEntry = history[history.length - 1];
+        const oldestEntry = history[0];
 
-        console.log(`   → Token ${tokenId.slice(0,8)}... | ${oldest.toFixed(4)} → ${current.toFixed(4)} | Cambio: ${changePct.toFixed(1)}%`);
+        const currentPrice = currentEntry.price;
+        const oldestPrice = oldestEntry.price;
+        
+        const changePct = ((currentPrice - oldestPrice) / oldestPrice) * 100;
+
+        console.log(`   → Token ${tokenId.slice(0,8)}... | ${oldestPrice.toFixed(4)} → ${currentPrice.toFixed(4)} | Cambio: ${changePct.toFixed(1)}%`);
 
         if (Math.abs(changePct) >= botStatus.equalizerShockThreshold) {
             console.log(`🚨 [EQUALIZER SHOCK DETECTADO!] ${changePct.toFixed(1)}% en ${tokenId.slice(0,8)}`);
             
             const fullMarket = botStatus.watchlist.find(m => m.tokenYes === tokenId || m.tokenNo === tokenId);
-            if (!fullMarket) continue; 
+            if (!fullMarket) {
+                console.log(`   ⚠️ Mercado no encontrado en watchlist para token ${tokenId.slice(0,8)}`);
+                continue; 
+            }
 
             const isYesToken = (fullMarket.tokenYes === tokenId);
             
-            // 🔥 FIX VECTORIAL: Calculamos el cambio de probabilidad real del evento
-            const eventProbabilityChange = isYesToken ? priceChangePct : -priceChangePct;
+            // 🔥 Cálculo correcto de cambio de probabilidad
+            const eventProbabilityChange = isYesToken ? changePct : -changePct;
 
             let outcomeToBuy;
-            if (priceChangePct > 0) {
-                outcomeToBuy = isYesToken ? "NO" : "YES"; // Si sube mucho, compramos la contraparte barata
+            if (changePct > 0) {
+                outcomeToBuy = isYesToken ? "NO" : "YES";   // Subió mucho → compramos el lado contrario
             } else {
-                outcomeToBuy = isYesToken ? "YES" : "NO"; // Si cae mucho, compramos el descuento
+                outcomeToBuy = isYesToken ? "YES" : "NO";   // Bajó mucho → compramos el descuento
             }
 
             const targetTokenId = outcomeToBuy === "YES" ? fullMarket.tokenYes : fullMarket.tokenNo;
@@ -3270,13 +3279,22 @@ async function checkForLiquidityShocks() {
             const alreadyInvested = botStatus.activePositions.some(p => p.tokenId === targetTokenId);
             const alreadyPending = pendingOrdersCache.has(targetTokenId);
 
-            if (alreadyInvested || alreadyPending) continue;
+            if (alreadyInvested || alreadyPending) {
+                console.log(`   ⏩ Ya tenemos posición/pendiente en este token`);
+                continue;
+            }
 
-            console.log(`🚨 [SHOCK DETECTADO] ${fullMarket.title}`);
-            console.log(`📊 Movimiento de ${priceChangePct > 0 ? '+' : ''}${priceChangePct.toFixed(2)}% en el token ${isYesToken ? 'YES' : 'NO'}. Verificando con IA...`);
+            console.log(`🚨 [SHOCK DETECTADO] ${fullMarket.title || 'Mercado desconocido'}`);
+            console.log(`📊 Movimiento de ${changePct > 0 ? '+' : ''}${changePct.toFixed(2)}% | Comprando: ${outcomeToBuy}`);
 
-            // Enviamos el "eventProbabilityChange" normalizado a la IA
-            await verifyShockWithIA(fullMarket, eventProbabilityChange, currentEntry.price, targetTokenId, outcomeToBuy);
+            // Llamada a verificación con IA
+            await verifyShockWithIA(
+                fullMarket, 
+                eventProbabilityChange, 
+                currentPrice, 
+                targetTokenId, 
+                outcomeToBuy
+            );
         }
     }
 }
@@ -4164,7 +4182,11 @@ app.listen(PORT, async () => {
     setInterval(checkForLiquidityShocks, 2 * 60 * 1000); // 2 minutos
 
     // ⏳ 9. Chronos Harvester: Cosechador de Theta Decay
-    setInterval(runChronosHarvester, 15 * 60 * 1000); // 15 minutos
+    console.log("⏳ [CHRONOS] Programando ejecución cada 15 minutos...");
+    // Primera ejecución inmediata al arrancar el bot
+    runChronosHarvester();
+    // Luego cada 15 minutos
+    setInterval(runChronosHarvester, 15 * 60 * 1000);
 
     // 🌊 10. Kinetic Pressure: Radar de Desequilibrio
     setInterval(runKineticPressureScanner, 20 * 1000); // 20 segundos
