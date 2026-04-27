@@ -1739,7 +1739,7 @@ function getCustomMarketRules(marketTitle = "") {
 }
 
 // ==========================================
-// AUTO SELL MANAGER - VERSIÓN FINAL INTELIGENTE (TP + SL Adaptativo)
+// AUTO SELL MANAGER - VERSIÓN ULTRA AGRESIVA (TP + SL Adaptativo)
 // ==========================================
 async function autoSellManager() {
     if (!botStatus.autoTradeEnabled) return;
@@ -1781,7 +1781,7 @@ async function autoSellManager() {
             console.log(`📊 [AUTO-SELL] ${originTag} | ${marketNameShort} | PnL: ${profit.toFixed(1)}% | Precio: $${currentSharePrice.toFixed(3)}`);
         }
 
-        // ====================== TAKE PROFIT PARCIAL (Ballenas) ======================
+        // ====================== TAKE PROFIT PARCIAL (Ballenas) - AHORA ADAPTATIVO ======================
         if (isWhaleTrade && profit >= 45 && !hasDonePartial) {
             try {
                 const bookResp = await axios.get(`https://clob.polymarket.com/book?token_id=${pos.tokenId}`, { 
@@ -1792,9 +1792,13 @@ async function autoSellManager() {
                 if (bids.length > 0) {
                     const bestPrice = parseFloat(bids[0].price);
                     const spreadDropPct = currentSharePrice > 0 ? ((currentSharePrice - bestPrice) / currentSharePrice) * 100 : 0;
-                    const maxAllowedSlippage = botStatus.riskSettings.tpLiquiditySlippage || 55;
+                    
+                    // Lógica adaptativa también para parcial
+                    let maxAllowedSlippage = botStatus.riskSettings.tpLiquiditySlippage || 55;
+                    if (currentSharePrice > 0.90) maxAllowedSlippage = 98;
+                    else if (profit > 80) maxAllowedSlippage = 95;
 
-                    if (spreadDropPct <= maxAllowedSlippage && bestPrice > 0.005) {
+                    if (spreadDropPct <= maxAllowedSlippage && bestPrice > 0.001) {
                         const halfShares = parseFloat(pos.exactSize || pos.size || 0) / 2;
                         const result = await executeSellOnChain(pos.conditionId || null, pos.tokenId, halfShares, bestPrice, "0.01");
                         
@@ -1803,6 +1807,7 @@ async function autoSellManager() {
                             saveConfigToDisk("Take Profit Parcial Ejecutado");
                             await updateRealBalances();
                             await sendAlert(`🌓 *TAKE PROFIT PARCIAL (50%)*\nOrigen: ${originTag}\n📈 ${marketNameShort}\n🎯 PnL: +${profit.toFixed(1)}%`);
+                            console.log(`✅ TP PARCIAL EJECUTADO en ${marketNameShort}`);
                         }
                     } else {
                         console.log(`⚠️ [LIQUIDEZ PARCIAL] Abortando en ${marketNameShort} (spread ${spreadDropPct.toFixed(1)}%)`);
@@ -1811,10 +1816,10 @@ async function autoSellManager() {
             } catch (e) {
                 console.error(`❌ TP Parcial:`, e.message);
             }
-            continue;
+            // NO hacemos continue aquí para que siga al TP Total si es necesario
         }
 
-        // ====================== TAKE PROFIT TOTAL - ADAPTATIVO ======================
+        // ====================== TAKE PROFIT TOTAL - ULTRA AGRESIVO ======================
         let effectiveTpThreshold = riskConfig.takeProfitThreshold || 15;
         if (originTag === "EQUALIZER") effectiveTpThreshold = botStatus.equalizerTpThreshold ?? 15;
         else if (originTag === "CHRONOS") effectiveTpThreshold = botStatus.chronosTpThreshold ?? 20;
@@ -1834,20 +1839,21 @@ async function autoSellManager() {
                 const spreadDropPct = currentSharePrice > 0 ? ((currentSharePrice - bestPrice) / currentSharePrice) * 100 : 0;
 
                 let maxAllowedSlippage = botStatus.riskSettings.tpLiquiditySlippage || 55;
-                if (currentSharePrice > 0.90) maxAllowedSlippage = 98;
-                else if (currentSharePrice > 0.80) maxAllowedSlippage = 85;
-                else if (profit > 80) maxAllowedSlippage = 92;
+                if (currentSharePrice > 0.90 || isMaxPriceReached) maxAllowedSlippage = 98;
+                else if (currentSharePrice > 0.80) maxAllowedSlippage = 90;
+                else if (profit > 80) maxAllowedSlippage = 95;
 
                 if (spreadDropPct > maxAllowedSlippage) {
                     console.log(`⚠️ [ALERTA LIQUIDEZ TP] Abortando en ${marketNameShort} (spread ${spreadDropPct.toFixed(1)}%)`);
                     continue;
                 }
-                if (bestPrice <= 0.005) continue;
+                if (bestPrice <= 0.001) continue;
 
                 const result = await executeSellOnChain(pos.conditionId || null, pos.tokenId, sharesToSell, bestPrice, "0.01");
 
                 if (result?.success) {
-                    console.log(`✅ TP EJECUTADO [${originTag}] → ${marketNameShort} (+${profit.toFixed(1)}%)`);
+                    console.log(`✅ TP TOTAL EJECUTADO [${originTag}] → ${marketNameShort} (+${profit.toFixed(1)}%)`);
+
                     closedPositionsCache.add(pos.tokenId);
                     delete botStatus.positionEngines[pos.tokenId];
 
@@ -1860,7 +1866,7 @@ async function autoSellManager() {
 
                     saveConfigToDisk(`TP ${originTag} Ejecutado`);
                     await updateRealBalances();
-                    await sendAlert(`📈 *TAKE PROFIT (${originTag})*\n🎯 ${marketNameShort}\n📊 +${profit.toFixed(1)}%`);
+                    await sendAlert(`📈 *TAKE PROFIT TOTAL (${originTag})*\n🎯 ${marketNameShort}\n📊 +${profit.toFixed(1)}%`);
 
                     if (isWhaleTrade) botStatus.copiedPositions = botStatus.copiedPositions.filter(p => p.tokenId !== pos.tokenId);
                     botStatus.activePositions = botStatus.activePositions.filter(p => p.tokenId !== pos.tokenId);
@@ -1897,8 +1903,7 @@ async function autoSellManager() {
                 const spreadDropPct = currentSharePrice > 0 ? ((currentSharePrice - bestBidPrice) / currentSharePrice) * 100 : 0;
 
                 let maxAllowedSlippage = botStatus.riskSettings.tpLiquiditySlippage || 55;
-                if (currentSharePrice < 0.10) maxAllowedSlippage = 95;     // SL en posiciones muy baratas
-                else if (profit < -70) maxAllowedSlippage = 90;           // Pérdidas grandes → vender casi a cualquier precio
+                if (currentSharePrice < 0.20 || profit < -70) maxAllowedSlippage = 95;
 
                 if (spreadDropPct > maxAllowedSlippage) {
                     console.log(`⚠️ [ALERTA LIQUIDEZ SL] Abortando en ${marketNameShort} (spread ${spreadDropPct.toFixed(1)}%)`);
@@ -1923,6 +1928,7 @@ async function autoSellManager() {
                 const result = await executeSellOnChain(pos.conditionId || null, pos.tokenId, sharesToSell, worstPrice, "0.01");
 
                 if (result?.success) {
+                    // ... (stats y cleanup igual que antes)
                     closedPositionsCache.add(pos.tokenId);
                     delete botStatus.positionEngines[pos.tokenId];
 
@@ -1937,7 +1943,7 @@ async function autoSellManager() {
 
                     saveConfigToDisk(`SL ${originTag} Ejecutado`);
                     await updateRealBalances();
-                    await sendAlert(`🛑 *STOP LOSS (${originTag})*\n🎯 ${marketNameShort}\n📊 🔴 ${profit.toFixed(1)}%\n💸 Rescatado: $${(sharesToSell * worstPrice).toFixed(2)}`);
+                    await sendAlert(`🛑 *STOP LOSS (${originTag})*\n🎯 ${marketNameShort}\n📊 🔴 ${profit.toFixed(1)}%`);
 
                     if (isWhaleTrade) botStatus.copiedPositions = botStatus.copiedPositions.filter(p => p.tokenId !== pos.tokenId);
                     botStatus.activePositions = botStatus.activePositions.filter(p => p.tokenId !== pos.tokenId);
