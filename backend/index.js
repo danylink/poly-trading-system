@@ -1703,11 +1703,12 @@ async function checkAndCopyWhaleTrades() {
 }
 
 // ==========================================
-// GET RISK PROFILE - VERSIÓN FINAL CORREGIDA
+// GET RISK PROFILE - VERSIÓN MEJORADA
 // ==========================================
 function getRiskProfile(marketName = "", isWhale = false) {
     const text = (marketName || "").toLowerCase();
     const isVolatile = /nba|nfl|mlb|nhl|soccer|tennis|f1|ufc|league|champions|madrid|lakers|sports|pop|movie|oscar|grammy|temperature|temperatura/i.test(text);
+    
     const profileType = isVolatile ? 'volatile' : 'standard';
     
     let config = isWhale 
@@ -1717,24 +1718,24 @@ function getRiskProfile(marketName = "", isWhale = false) {
     const customRule = getCustomMarketRules(marketName);
     
     if (customRule) {
-        config.takeProfitThreshold = customRule.takeProfitThreshold;
-        config.stopLossThreshold   = customRule.stopLossThreshold;
-        config.microBetAmount      = customRule.microBetAmount || config.microBetAmount;
-        
-        // 🔥 NUEVO: Asignar Edge y Prob solo si existen en la regla (Si no, mantiene el de config base)
-        if (customRule.edgeThreshold !== undefined) config.edgeThreshold = customRule.edgeThreshold;
-        if (customRule.predictionThreshold !== undefined) config.predictionThreshold = customRule.predictionThreshold;
+        config.takeProfitThreshold = customRule.takeProfitThreshold ?? config.takeProfitThreshold;
+        config.stopLossThreshold   = customRule.stopLossThreshold   ?? config.stopLossThreshold;
+        config.microBetAmount      = customRule.microBetAmount      ?? config.microBetAmount;
+        config.edgeThreshold       = customRule.edgeThreshold       ?? config.edgeThreshold;
+        config.predictionThreshold = customRule.predictionThreshold ?? config.predictionThreshold;
+
+        console.log(`📋 [CUSTOM RULE] Aplicada en ${marketName} → TP:${config.takeProfitThreshold}% | SL:${config.stopLossThreshold}%`);
     }
 
     return {
-        config: config,
-        profileType: profileType,
-        usedCustomRule: !!customRule   
+        config,
+        profileType,
+        usedCustomRule: !!customRule
     };
 }
 
 // ==========================================
-// NUEVA FUNCIÓN: Reglas personalizadas por mercado (Parche #8 FINAL)
+// NUEVA FUNCIÓN: Reglas personalizadas INTELIGENTES (Parche #9)
 // ==========================================
 function getCustomMarketRules(marketTitle = "") {
     if (!botStatus.customMarketRules || botStatus.customMarketRules.length === 0) return null;
@@ -1742,14 +1743,39 @@ function getCustomMarketRules(marketTitle = "") {
     const titleLower = marketTitle.toLowerCase();
 
     for (const rule of botStatus.customMarketRules) {
-        if (titleLower.includes(rule.keyword.toLowerCase())) {
-            console.log(`📋 [CUSTOM RULE] Aplicada → ${marketTitle}`);
+        const keywordLower = rule.keyword.toLowerCase().trim();
+        
+        // === MATCHING MEJORADO ===
+        let match = false;
+
+        if (keywordLower.length < 3) continue;
+
+        // Match exacto o parcial
+        if (titleLower.includes(keywordLower)) {
+            match = true;
+        } 
+        // Match por palabras sueltas (mejor para Trump)
+        else if (keywordLower.includes("trump")) {
+            if (titleLower.includes("trump")) {
+                match = true;
+            }
+        } 
+        // Match múltiple de palabras (ej: "Ursula Leyen")
+        else {
+            const ruleWords = keywordLower.split(/\s+/).filter(w => w.length > 2);
+            if (ruleWords.length > 1) {
+                match = ruleWords.every(word => titleLower.includes(word));
+            }
+        }
+
+        if (match) {
+            console.log(`📋 [CUSTOM RULE] Aplicada → ${marketTitle} | Keyword: "${rule.keyword}"`);
             return {
                 takeProfitThreshold: rule.takeProfitThreshold,
                 stopLossThreshold: rule.stopLossThreshold,
                 microBetAmount: rule.microBetAmount,
-                edgeThreshold: rule.edgeThreshold,             // 🔥 NUEVO
-                predictionThreshold: rule.predictionThreshold  // 🔥 NUEVO
+                edgeThreshold: rule.edgeThreshold,
+                predictionThreshold: rule.predictionThreshold
             };
         }
     }
