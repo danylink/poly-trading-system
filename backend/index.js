@@ -1739,7 +1739,7 @@ function getCustomMarketRules(marketTitle = "") {
 }
 
 // ==========================================
-// AUTO SELL MANAGER - VERSIÓN ULTRA AGRESIVA + JERÁRQUICA (FIX FINAL)
+// AUTO SELL MANAGER - VERSIÓN DEBUG + ULTRA AGRESIVA (Trace Completo)
 // ==========================================
 async function autoSellManager() {
     if (!botStatus.autoTradeEnabled) return;
@@ -1777,12 +1777,11 @@ async function autoSellManager() {
         if (!botStatus.partialSells) botStatus.partialSells = [];
         const hasDonePartial = botStatus.partialSells.includes(pos.tokenId);
 
-        if (profit >= (riskConfig.takeProfitThreshold - 8) || profit <= (riskConfig.stopLossThreshold + 8)) {
-            console.log(`📊 [AUTO-SELL] ${originTag} | ${marketNameShort} | PnL: ${profit.toFixed(1)}% | Precio: $${currentSharePrice.toFixed(3)}`);
-        }
+        console.log(`[DEBUG AUTO-SELL] ${originTag} | ${marketNameShort} | Profit: ${profit.toFixed(1)}% | Precio: $${currentSharePrice.toFixed(3)} | PartialDone: ${hasDonePartial}`);
 
-        // ====================== 1. TAKE PROFIT PARCIAL (SOLO 45-80% para ballenas) ======================
+        // ====================== 1. TP PARCIAL (SOLO entre 45% y 80%) ======================
         if (isWhaleTrade && profit >= 45 && profit < 80 && !hasDonePartial) {
+            console.log(`[DEBUG PARCIAL] Entrando en TP Parcial para ${marketNameShort}`);
             try {
                 const bookResp = await axios.get(`https://clob.polymarket.com/book?token_id=${pos.tokenId}`, { 
                     httpsAgent: agent, timeout: 10000 
@@ -1795,7 +1794,8 @@ async function autoSellManager() {
                     
                     let maxAllowedSlippage = botStatus.riskSettings.tpLiquiditySlippage || 55;
                     if (currentSharePrice > 0.90) maxAllowedSlippage = 98;
-                    else if (profit > 70) maxAllowedSlippage = 95;
+
+                    console.log(`[DEBUG PARCIAL] Spread: ${spreadDropPct.toFixed(1)}% | Max permitido: ${maxAllowedSlippage}% | BestPrice: $${bestPrice.toFixed(3)}`);
 
                     if (spreadDropPct <= maxAllowedSlippage && bestPrice > 0.001) {
                         const halfShares = parseFloat(pos.exactSize || pos.size || 0) / 2;
@@ -1803,10 +1803,10 @@ async function autoSellManager() {
                         
                         if (result?.success) {
                             botStatus.partialSells.push(pos.tokenId);
+                            console.log(`✅ TP PARCIAL EJECUTADO en ${marketNameShort}`);
                             saveConfigToDisk("Take Profit Parcial Ejecutado");
                             await updateRealBalances();
-                            await sendAlert(`🌓 *TAKE PROFIT PARCIAL (50%)*\nOrigen: ${originTag}\n📈 ${marketNameShort}\n🎯 PnL: +${profit.toFixed(1)}%`);
-                            console.log(`✅ TP PARCIAL EJECUTADO en ${marketNameShort}`);
+                            await sendAlert(`🌓 *TAKE PROFIT PARCIAL (50%)*\nOrigen: ${originTag}\n📈 ${marketNameShort}`);
                         }
                     } else {
                         console.log(`⚠️ [LIQUIDEZ PARCIAL] Abortando en ${marketNameShort} (spread ${spreadDropPct.toFixed(1)}%)`);
@@ -1815,10 +1815,9 @@ async function autoSellManager() {
             } catch (e) {
                 console.error(`❌ TP Parcial:`, e.message);
             }
-            // NO continue aquí → permitimos que siga al TOTAL si ya está muy alto
         }
 
-        // ====================== 2. TAKE PROFIT TOTAL (Prioridad alta cuando está cerca de 1.00) ======================
+        // ====================== 2. TP TOTAL (Prioridad alta cuando ya está muy ganado) ======================
         let effectiveTpThreshold = riskConfig.takeProfitThreshold || 15;
         if (originTag === "EQUALIZER") effectiveTpThreshold = botStatus.equalizerTpThreshold ?? 15;
         else if (originTag === "CHRONOS") effectiveTpThreshold = botStatus.chronosTpThreshold ?? 20;
@@ -1826,6 +1825,8 @@ async function autoSellManager() {
         else if (isWhaleTrade && hasDonePartial) effectiveTpThreshold = botStatus.whalePostPartialTp ?? 80;
 
         if (profit >= effectiveTpThreshold || isMaxPriceReached || currentSharePrice >= 0.95) {
+            console.log(`[DEBUG TOTAL] Entrando en TP TOTAL para ${marketNameShort} (profit=${profit.toFixed(1)}%)`);
+
             try {
                 const bookResp = await axios.get(`https://clob.polymarket.com/book?token_id=${pos.tokenId}`, { 
                     httpsAgent: agent, timeout: 10000 
@@ -1842,6 +1843,8 @@ async function autoSellManager() {
                 else if (currentSharePrice > 0.80) maxAllowedSlippage = 90;
                 else if (profit > 80) maxAllowedSlippage = 95;
 
+                console.log(`[DEBUG TOTAL] Spread: ${spreadDropPct.toFixed(1)}% | Max permitido: ${maxAllowedSlippage}% | BestPrice: $${bestPrice.toFixed(3)}`);
+
                 if (spreadDropPct > maxAllowedSlippage) {
                     console.log(`⚠️ [ALERTA LIQUIDEZ TP] Abortando en ${marketNameShort} (spread ${spreadDropPct.toFixed(1)}%)`);
                     continue;
@@ -1852,7 +1855,6 @@ async function autoSellManager() {
 
                 if (result?.success) {
                     console.log(`✅ TP TOTAL EJECUTADO [${originTag}] → ${marketNameShort} (+${profit.toFixed(1)}%)`);
-
                     closedPositionsCache.add(pos.tokenId);
                     delete botStatus.positionEngines[pos.tokenId];
 
@@ -1878,7 +1880,7 @@ async function autoSellManager() {
 
         // ====================== 3. STOP LOSS (sin cambios) ======================
         if (profit <= riskConfig.stopLossThreshold) {
-            // ... (tu bloque completo de SL que ya tienes, se mantiene igual)
+            // ... tu bloque original de SL se mantiene igual ...
             const isLotteryTicket = currentSharePrice <= 0.03;
             const isWorthRescuing = parseFloat(pos.currentValue || 0) >= 0.50;
 
