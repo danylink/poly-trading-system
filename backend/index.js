@@ -1783,7 +1783,7 @@ function getCustomMarketRules(marketTitle = "") {
 }
 
 // ==========================================
-// AUTO SELL MANAGER - VERSIÓN ULTRA AGRESIVA 99.9% (FIX FINAL)
+// AUTO SELL MANAGER - VERSIÓN ULTRA AGRESIVA 99.9% (FIX FINAL - 27 Abril 2026)
 // ==========================================
 async function autoSellManager() {
     if (!botStatus.autoTradeEnabled) return;
@@ -1793,8 +1793,17 @@ async function autoSellManager() {
     for (const pos of positionsToReview) {
         if (pos.status && pos.status.includes('CANJEAR')) continue;
 
-        const marketNameShort = (pos.marketName || "Mercado desconocido").substring(0, 45);
-        
+        const marketNameShort = (pos.marketName || "Mercado desconocido").substring(0, 60);
+
+        // Actualizar precio actual si es necesario
+        if (!pos.currentValue || typeof pos.currentValue !== 'number') {
+            try {
+                pos.currentValue = await getCurrentPositionValue?.(pos.tokenId) || pos.currentValue || 0;
+            } catch (e) {
+                console.warn(`[AUTOSELL] No se pudo actualizar precio de ${marketNameShort}`);
+            }
+        }
+
         const currentSharePrice = pos.exactSize > 0 
             ? (parseFloat(pos.currentValue) / parseFloat(pos.exactSize)) 
             : 0;
@@ -1803,8 +1812,6 @@ async function autoSellManager() {
         const profit = (entryPrice > 0 && currentSharePrice > 0) 
             ? ((currentSharePrice - entryPrice) / entryPrice) * 100 
             : 0;
-
-        const isMaxPriceReached = currentSharePrice >= 0.95;
 
         let originTag = 'IA';
         let isWhaleTrade = false;
@@ -1821,14 +1828,16 @@ async function autoSellManager() {
         if (!botStatus.partialSells) botStatus.partialSells = [];
         const hasDonePartial = botStatus.partialSells.includes(pos.tokenId);
 
-        if (profit >= (riskConfig.takeProfitThreshold - 8) || profit <= (riskConfig.stopLossThreshold + 8)) {
-            console.log(`[DEBUG] ${originTag} | ${marketNameShort} | Profit: ${profit.toFixed(1)}% | Precio: $${currentSharePrice.toFixed(3)}`);
+        // Debug
+        if (Math.abs(profit) >= 8) {
+            console.log(`[DEBUG AUTOSELL] ${originTag} | ${marketNameShort} | Profit: ${profit.toFixed(1)}% | Precio: $${currentSharePrice.toFixed(3)} | TP Config: ${riskConfig.takeProfitThreshold}%`);
         }
 
-        // ====================== TP PARCIAL (Solo 45-80%) ======================
+        const totalBalance = (botStatus.clobOnlyUSDC || 0).toFixed(2);
+
+        // ====================== TP PARCIAL ======================
         if (isWhaleTrade && profit >= 45 && profit < 80 && !hasDonePartial) {
-            console.log(`[DEBUG PARCIAL] Entrando parcial en ${marketNameShort}`);
-            // ... (mantengo tu lógica actual de parcial, pero con max 98%)
+            console.log(`[DEBUG PARCIAL] Intentando TP Parcial en ${marketNameShort}`);
             try {
                 const bookResp = await axios.get(`https://clob.polymarket.com/book?token_id=${pos.tokenId}`, { 
                     httpsAgent: agent, timeout: 10000 
@@ -1837,41 +1846,48 @@ async function autoSellManager() {
                 if (bids.length > 0) {
                     const bestPrice = parseFloat(bids[0].price);
                     const spread = currentSharePrice > 0 ? ((currentSharePrice - bestPrice) / currentSharePrice) * 100 : 0;
-                    let maxSlip = botStatus.riskSettings.tpLiquiditySlippage || 55;
-                    if (currentSharePrice > 0.90) maxSlip = 98;
+                    let maxSlip = currentSharePrice > 0.90 ? 98 : (botStatus.riskSettings.tpLiquiditySlippage || 55);
 
                     if (spread <= maxSlip && bestPrice > 0.001) {
                         const half = parseFloat(pos.exactSize || pos.size || 0) / 2;
+
                         const result = await executeSellOnChain(pos.conditionId || null, pos.tokenId, half, bestPrice, "0.01");
+                        
                         if (result?.success) {
                             botStatus.partialSells.push(pos.tokenId);
                             console.log(`✅ TP PARCIAL EJECUTADO en ${marketNameShort}`);
+
                             saveConfigToDisk("TP Parcial");
                             await updateRealBalances();
+
+                            const halfValue = (half * bestPrice).toFixed(2);
+
                             await sendAlert(
                                 `🤖 PolySniper:\n` +
                                 `🌓 TAKE PROFIT PARCIAL (50%)\n` +
                                 `📈 Mercado: ${marketNameShort}\n` +
-                                `💰 Mitad asegurada: +$${(halfShares * bestPrice).toFixed(2)}\n` +
-                                `💰 Cartera Total: $${carteraTotal} USDC`
+                                `💰 Mitad asegurada: +$${halfValue}\n` +
+                                `💰 Cartera Total: $${totalBalance} USDC`
                             );
                         }
                     } else {
                         console.log(`⚠️ [PARCIAL] Abortando ${marketNameShort} (spread ${spread.toFixed(1)}%)`);
                     }
                 }
-            } catch (e) { console.error(`❌ TP Parcial:`, e.message); }
+            } catch (e) {
+                console.error(`❌ TP Parcial:`, e.message);
+            }
         }
 
-        // ====================== TP TOTAL - ULTRA AGRESIVO (FIX FINAL) ======================
+        // ====================== TP TOTAL ======================
         let effectiveTpThreshold = riskConfig.takeProfitThreshold || 15;
         if (originTag === "EQUALIZER") effectiveTpThreshold = botStatus.equalizerTpThreshold ?? 15;
         else if (originTag === "CHRONOS") effectiveTpThreshold = botStatus.chronosTpThreshold ?? 20;
         else if (originTag === "KINETIC") effectiveTpThreshold = botStatus.kineticTpThreshold ?? 10;
         else if (isWhaleTrade && hasDonePartial) effectiveTpThreshold = botStatus.whalePostPartialTp ?? 80;
 
-        if (profit >= effectiveTpThreshold || isMaxPriceReached || currentSharePrice >= 0.95) {
-            console.log(`[DEBUG TOTAL] Entrando TP TOTAL → ${marketNameShort} (Precio: $${currentSharePrice.toFixed(3)}, Profit: ${profit.toFixed(1)}%)`);
+        if (profit >= effectiveTpThreshold || currentSharePrice >= 0.90) {
+            console.log(`[TP TOTAL TRIGGER] ${marketNameShort} → Profit ${profit.toFixed(1)}% (Threshold: ${effectiveTpThreshold}%)`);
 
             try {
                 const bookResp = await axios.get(`https://clob.polymarket.com/book?token_id=${pos.tokenId}`, { 
@@ -1881,33 +1897,23 @@ async function autoSellManager() {
                 if (bids.length === 0) continue;
 
                 const sharesToSell = parseFloat(pos.exactSize || pos.size || 0);
-                const bestPrice = parseFloat(bids[0].price);
+                const bestPrice = parseFloat(bids[0].price || 0);
                 const spreadDropPct = currentSharePrice > 0 ? ((currentSharePrice - bestPrice) / currentSharePrice) * 100 : 0;
 
-                // ====================== LÓGICA ULTRA AGRESIVA ======================
-                let maxAllowedSlippage = botStatus.riskSettings.tpLiquiditySlippage || 55;
+                let maxAllowedSlippage = botStatus.riskSettings.tpLiquiditySlippage || 65;
 
-                if (currentSharePrice >= 0.95) {
-                    maxAllowedSlippage = 99.9;     // ← Casi cualquier bid es aceptable
-                } else if (currentSharePrice >= 0.90) {
-                    maxAllowedSlippage = 98.5;
-                } else if (profit > 80) {
-                    maxAllowedSlippage = 95;
-                }
+                if (currentSharePrice >= 0.85 || profit >= 20) maxAllowedSlippage = 99.0;
+                else if (currentSharePrice >= 0.75 || profit >= 15) maxAllowedSlippage = 95.0;
+                else if (profit > 80) maxAllowedSlippage = 98.0;
 
-                console.log(`[DEBUG TOTAL] Spread calculado: ${spreadDropPct.toFixed(1)}% | Máximo permitido: ${maxAllowedSlippage}% | Best Bid: $${bestPrice.toFixed(3)}`);
+                console.log(`[DEBUG TOTAL] Spread: ${spreadDropPct.toFixed(1)}% | Máx permitido: ${maxAllowedSlippage}% | Best Bid: $${bestPrice.toFixed(3)}`);
 
-                // BYPASS FINAL: Si el precio teórico es > $0.97, vendemos aunque el bid sea ridículo
                 if (spreadDropPct > maxAllowedSlippage && currentSharePrice < 0.97) {
-                    console.log(`⚠️ [ALERTA LIQUIDEZ TP] Abortando en ${marketNameShort} (spread ${spreadDropPct.toFixed(1)}%)`);
+                    console.log(`⚠️ [ALERTA LIQUIDEZ TP] Abortando ${marketNameShort} (spread ${spreadDropPct.toFixed(1)}%)`);
                     continue;
                 }
 
-                if (bestPrice <= 0.0005) {
-                    console.log(`⚠️ Best bid demasiado bajo (${bestPrice}), pero vendemos igual por estar cerca de resolución.`);
-                }
-
-                const result = await executeSellOnChain(pos.conditionId || null, pos.tokenId, sharesToSell, bestPrice, "0.01");
+                const result = await executeSellOnChain(pos.conditionId || null, pos.tokenId, sharesToSell, bestPrice || 0.01, "0.01");
 
                 if (result?.success) {
                     console.log(`✅ TP TOTAL EJECUTADO [${originTag}] → ${marketNameShort} (+${profit.toFixed(1)}%)`);
@@ -1924,17 +1930,14 @@ async function autoSellManager() {
 
                     saveConfigToDisk(`TP ${originTag} Ejecutado`);
                     await updateRealBalances();
+
                     await sendAlert(
                         `🤖 PolySniper:\n` +
                         `✅ TAKE PROFIT TOTAL (${originTag})\n` +
                         `📈 Mercado: ${marketNameShort}\n` +
-                        `💰 Ganancia en este mercado: +$${ (sharesToSell * bestPrice).toFixed(2) } (+${profit.toFixed(1)}%)\n` +
-                        `💰 Cartera Total: $${carteraTotal} USDC\n` +
-                        `🟢 Disponible (Poly): $${botStatus.clobOnlyUSDC} USDC`
+                        `💰 Ganancia: +${profit.toFixed(1)}%\n` +
+                        `💰 Cartera Total: $${totalBalance} USDC`
                     );
-
-                    if (isWhaleTrade) botStatus.copiedPositions = botStatus.copiedPositions.filter(p => p.tokenId !== pos.tokenId);
-                    botStatus.activePositions = botStatus.activePositions.filter(p => p.tokenId !== pos.tokenId);
                 }
             } catch (e) {
                 console.error(`❌ Take Profit error:`, e.message);
@@ -1942,7 +1945,7 @@ async function autoSellManager() {
             continue;
         }
 
-        // ====================== STOP LOSS - ADAPTATIVO AGRESIVO ======================
+        // ====================== STOP LOSS ======================
         if (profit <= riskConfig.stopLossThreshold) {
             const isLotteryTicket = currentSharePrice <= 0.03;
             const isWorthRescuing = parseFloat(pos.currentValue || 0) >= 0.50;
@@ -1967,19 +1970,13 @@ async function autoSellManager() {
                 let bestBidPrice = parseFloat(bids[0].price);
                 const spreadDropPct = currentSharePrice > 0 ? ((currentSharePrice - bestBidPrice) / currentSharePrice) * 100 : 0;
 
-                // ====================== LÓGICA ADAPTATIVA PARA SL ======================
                 let maxAllowedSlippage = botStatus.riskSettings.tpLiquiditySlippage || 55;
 
-                if (currentSharePrice <= 0.10 || profit <= -70) {
-                    maxAllowedSlippage = 99.0;     // Pérdidas grandes o precio muy bajo → vender casi a cualquier precio
-                } else if (currentSharePrice <= 0.20 || profit <= -50) {
-                    maxAllowedSlippage = 95;
-                }
-
-                console.log(`[DEBUG SL] Spread: ${spreadDropPct.toFixed(1)}% | Max permitido: ${maxAllowedSlippage}% | Best Bid: $${bestBidPrice.toFixed(3)}`);
+                if (currentSharePrice <= 0.10 || profit <= -70) maxAllowedSlippage = 99.0;
+                else if (currentSharePrice <= 0.20 || profit <= -50) maxAllowedSlippage = 95;
 
                 if (spreadDropPct > maxAllowedSlippage) {
-                    console.log(`⚠️ [ALERTA LIQUIDEZ SL] Abortando en ${marketNameShort} (spread ${spreadDropPct.toFixed(1)}%)`);
+                    console.log(`⚠️ [ALERTA LIQUIDEZ SL] Abortando ${marketNameShort} (spread ${spreadDropPct.toFixed(1)}%)`);
                     continue;
                 }
 
@@ -1993,11 +1990,6 @@ async function autoSellManager() {
                     if (accumulated >= sharesToSell) break;
                 }
 
-                const maxPanicSlippage = botStatus.riskSettings?.panicSlippage || 40;
-                if ((((bestBidPrice - worstPrice) / bestBidPrice) * 100) > maxPanicSlippage) {
-                    worstPrice = bestBidPrice * (1 - (maxPanicSlippage / 100));
-                }
-
                 const result = await executeSellOnChain(pos.conditionId || null, pos.tokenId, sharesToSell, worstPrice, "0.01");
 
                 if (result?.success) {
@@ -2007,28 +1999,22 @@ async function autoSellManager() {
                     delete botStatus.positionEngines[pos.tokenId];
 
                     if (originTag !== "EQUALIZER" && originTag !== "CHRONOS" && originTag !== "KINETIC") {
-                        if (!botStatus.whaleStats) botStatus.whaleStats = { wins: 0, losses: 0, totalTrades: 0, winRate: 0 };
-                        if (!botStatus.aiStats) botStatus.aiStats = { wins: 0, losses: 0, totalTrades: 0, winRate: 0 };
                         const targetStats = isWhaleTrade ? botStatus.whaleStats : botStatus.aiStats;
-                        targetStats.losses += 1;
-                        targetStats.totalTrades += 1;
-                        targetStats.winRate = (targetStats.wins / targetStats.totalTrades) * 100;
+                        targetStats.losses = (targetStats.losses || 0) + 1;
+                        targetStats.totalTrades = (targetStats.totalTrades || 0) + 1;
+                        targetStats.winRate = (targetStats.wins || 0) / targetStats.totalTrades * 100;
                     }
 
                     saveConfigToDisk(`SL ${originTag} Ejecutado`);
                     await updateRealBalances();
+
                     await sendAlert(
                         `🤖 PolySniper:\n` +
                         `🛑 STOP LOSS EJECUTADO (${originTag})\n` +
                         `📉 Mercado: ${marketNameShort}\n` +
-                        `💰 Pérdida en este mercado: $${(sharesToSell * worstPrice - sharesToSell * entryPrice).toFixed(2)} (${profit.toFixed(1)}%)\n` +
-                        `💸 Rescatado ≈ $${(sharesToSell * worstPrice).toFixed(2)} USDC\n` +
-                        `💰 Cartera Total: $${carteraTotal} USDC\n` +
-                        `🟢 Disponible (Poly): $${botStatus.clobOnlyUSDC} USDC`
+                        `💰 Pérdida: ${profit.toFixed(1)}%\n` +
+                        `💰 Cartera Total: $${totalBalance} USDC`
                     );
-
-                    if (isWhaleTrade) botStatus.copiedPositions = botStatus.copiedPositions.filter(p => p.tokenId !== pos.tokenId);
-                    botStatus.activePositions = botStatus.activePositions.filter(p => p.tokenId !== pos.tokenId);
                 }
             } catch (e) {
                 console.error(`❌ Stop Loss error:`, e.message);
