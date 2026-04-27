@@ -1739,7 +1739,7 @@ function getCustomMarketRules(marketTitle = "") {
 }
 
 // ==========================================
-// AUTO SELL MANAGER - VERSIÓN ULTRA AGRESIVA (TP + SL Adaptativo)
+// AUTO SELL MANAGER - VERSIÓN ULTRA AGRESIVA + JERÁRQUICA (FIX FINAL)
 // ==========================================
 async function autoSellManager() {
     if (!botStatus.autoTradeEnabled) return;
@@ -1781,8 +1781,8 @@ async function autoSellManager() {
             console.log(`📊 [AUTO-SELL] ${originTag} | ${marketNameShort} | PnL: ${profit.toFixed(1)}% | Precio: $${currentSharePrice.toFixed(3)}`);
         }
 
-        // ====================== TAKE PROFIT PARCIAL (Ballenas) - AHORA ADAPTATIVO ======================
-        if (isWhaleTrade && profit >= 45 && !hasDonePartial) {
+        // ====================== 1. TAKE PROFIT PARCIAL (SOLO 45-80% para ballenas) ======================
+        if (isWhaleTrade && profit >= 45 && profit < 80 && !hasDonePartial) {
             try {
                 const bookResp = await axios.get(`https://clob.polymarket.com/book?token_id=${pos.tokenId}`, { 
                     httpsAgent: agent, timeout: 10000 
@@ -1793,10 +1793,9 @@ async function autoSellManager() {
                     const bestPrice = parseFloat(bids[0].price);
                     const spreadDropPct = currentSharePrice > 0 ? ((currentSharePrice - bestPrice) / currentSharePrice) * 100 : 0;
                     
-                    // Lógica adaptativa también para parcial
                     let maxAllowedSlippage = botStatus.riskSettings.tpLiquiditySlippage || 55;
                     if (currentSharePrice > 0.90) maxAllowedSlippage = 98;
-                    else if (profit > 80) maxAllowedSlippage = 95;
+                    else if (profit > 70) maxAllowedSlippage = 95;
 
                     if (spreadDropPct <= maxAllowedSlippage && bestPrice > 0.001) {
                         const halfShares = parseFloat(pos.exactSize || pos.size || 0) / 2;
@@ -1816,17 +1815,17 @@ async function autoSellManager() {
             } catch (e) {
                 console.error(`❌ TP Parcial:`, e.message);
             }
-            // NO hacemos continue aquí para que siga al TP Total si es necesario
+            // NO continue aquí → permitimos que siga al TOTAL si ya está muy alto
         }
 
-        // ====================== TAKE PROFIT TOTAL - ULTRA AGRESIVO ======================
+        // ====================== 2. TAKE PROFIT TOTAL (Prioridad alta cuando está cerca de 1.00) ======================
         let effectiveTpThreshold = riskConfig.takeProfitThreshold || 15;
         if (originTag === "EQUALIZER") effectiveTpThreshold = botStatus.equalizerTpThreshold ?? 15;
         else if (originTag === "CHRONOS") effectiveTpThreshold = botStatus.chronosTpThreshold ?? 20;
         else if (originTag === "KINETIC") effectiveTpThreshold = botStatus.kineticTpThreshold ?? 10;
         else if (isWhaleTrade && hasDonePartial) effectiveTpThreshold = botStatus.whalePostPartialTp ?? 80;
 
-        if (profit >= effectiveTpThreshold || isMaxPriceReached) {
+        if (profit >= effectiveTpThreshold || isMaxPriceReached || currentSharePrice >= 0.95) {
             try {
                 const bookResp = await axios.get(`https://clob.polymarket.com/book?token_id=${pos.tokenId}`, { 
                     httpsAgent: agent, timeout: 10000 
@@ -1877,8 +1876,9 @@ async function autoSellManager() {
             continue;
         }
 
-        // ====================== STOP LOSS - ADAPTATIVO ======================
+        // ====================== 3. STOP LOSS (sin cambios) ======================
         if (profit <= riskConfig.stopLossThreshold) {
+            // ... (tu bloque completo de SL que ya tienes, se mantiene igual)
             const isLotteryTicket = currentSharePrice <= 0.03;
             const isWorthRescuing = parseFloat(pos.currentValue || 0) >= 0.50;
 
@@ -1928,7 +1928,6 @@ async function autoSellManager() {
                 const result = await executeSellOnChain(pos.conditionId || null, pos.tokenId, sharesToSell, worstPrice, "0.01");
 
                 if (result?.success) {
-                    // ... (stats y cleanup igual que antes)
                     closedPositionsCache.add(pos.tokenId);
                     delete botStatus.positionEngines[pos.tokenId];
 
@@ -1940,7 +1939,6 @@ async function autoSellManager() {
                         targetStats.totalTrades += 1;
                         targetStats.winRate = (targetStats.wins / targetStats.totalTrades) * 100;
                     }
-
                     saveConfigToDisk(`SL ${originTag} Ejecutado`);
                     await updateRealBalances();
                     await sendAlert(`🛑 *STOP LOSS (${originTag})*\n🎯 ${marketNameShort}\n📊 🔴 ${profit.toFixed(1)}%`);
