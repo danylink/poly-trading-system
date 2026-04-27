@@ -1783,6 +1783,30 @@ function getCustomMarketRules(marketTitle = "") {
 }
 
 // ==========================================
+// OBTENER VALOR ACTUAL DE POSICIÓN (FIX CRÍTICO)
+// ==========================================
+async function getCurrentPositionValue(tokenId) {
+    if (!tokenId) return 0;
+    try {
+        const response = await axios.get(
+            `https://data-api.polymarket.com/positions?user=${process.env.POLY_PROXY_ADDRESS || "0x876E00CBF5c4fe22F4FA263F4cb713650cB758d2"}&limit=100`,
+            { httpsAgent: agent, timeout: 8000 }
+        );
+
+        const positions = response.data || [];
+        const pos = positions.find(p => p.asset === tokenId || p.token_id === tokenId);
+        
+        if (pos) {
+            return parseFloat(pos.currentValue || pos.value || 0);
+        }
+        return 0;
+    } catch (e) {
+        // console.warn(`[PRICE UPDATE] Falló para ${tokenId.slice(0,8)}...`);
+        return 0;
+    }
+}
+
+// ==========================================
 // AUTO SELL MANAGER - VERSIÓN ULTRA AGRESIVA 99.9% (FIX FINAL - 27 Abril 2026)
 // ==========================================
 async function autoSellManager() {
