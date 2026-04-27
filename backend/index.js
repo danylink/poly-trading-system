@@ -1477,7 +1477,11 @@ async function checkAndCopyWhaleTrades() {
 
                     const limitPerWhale = botStatus.maxCopyMarketsPerWhale || 1;
 
-                    if (limitPerWhale > 0 && copiedFromThisWhale >= limitPerWhale) return;
+                    // 🔥 FIX PRINCIPAL: Cheque más estricto
+                    if (limitPerWhale > 0 && copiedFromThisWhale >= limitPerWhale) {
+                        console.log(`⛔ [COPY LIMIT] ${getWhaleDisplayName(whale)} ya alcanzó el máximo (${limitPerWhale} mercados). Saltando.`);
+                        return;
+                    }
 
                     const response = await axios.get(
                         `https://data-api.polymarket.com/trades?user=${whale.address}&limit=12`,
@@ -1554,9 +1558,10 @@ async function checkAndCopyWhaleTrades() {
                                 if (isAutoWhale && !botStatus.copyTradingAutoEnabled) continue;
                                 if (isCustomWhale && !botStatus.copyTradingCustomEnabled) continue;
 
+                                // 🔥 NUEVO CHEQUE MÁS ESTRICTO ANTES DE COPIAR
                                 if (limitPerWhale > 0 && copiedFromThisWhale >= limitPerWhale) {
-                                    console.log(`⛔ [COPY LIMIT] Freno Dinámico. ${getWhaleDisplayName(whale)} intentó abrir más de ${limitPerWhale} mercados de golpe.`);
-                                    break; 
+                                    console.log(`⛔ [COPY LIMIT] Freno Dinámico. ${getWhaleDisplayName(whale)} ya tiene ${copiedFromThisWhale}/${limitPerWhale} mercados.`);
+                                    break;
                                 }
 
                                 if (uniqueMarketsCopiedNow.has(tokenId)) continue;
