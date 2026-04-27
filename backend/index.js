@@ -1739,7 +1739,7 @@ function getCustomMarketRules(marketTitle = "") {
 }
 
 // ==========================================
-// AUTO SELL MANAGER - VERSIÓN FINAL CORREGIDA (Patch Dios)
+// AUTO SELL MANAGER - VERSIÓN FINAL QUANT (Patch Dios - Corregida)
 // ==========================================
 async function autoSellManager() {
     if (!botStatus.autoTradeEnabled) return;
@@ -1755,6 +1755,7 @@ async function autoSellManager() {
         const currentSharePrice = pos.exactSize > 0 
             ? (parseFloat(pos.currentValue) / parseFloat(pos.exactSize)) 
             : 0;
+        
         const entryPrice = parseFloat(pos.priceEntry || 0);
         
         const profit = (entryPrice > 0 && currentSharePrice > 0) 
@@ -1763,11 +1764,10 @@ async function autoSellManager() {
 
         const isMaxPriceReached = currentSharePrice >= 0.95;
 
-        // ====================== DETECCIÓN MEJORADA DE BALLENAS ======================
+        // ====================== DETECCIÓN MEJORADA DE ORIGEN ======================
         let originTag = 'IA';
         let isWhaleTrade = false;
 
-        // 🔥 FIX PRINCIPAL: Detección robusta (mejor que la anterior)
         if (pos.nickname || (pos.sizeCopied !== undefined && pos.sizeCopied > 0)) {
             isWhaleTrade = true;
             originTag = 'WHALE';
@@ -1779,17 +1779,17 @@ async function autoSellManager() {
             originTag = 'KINETIC';
         }
 
-        const { config: riskConfig } = getRiskProfile(pos.marketName, isWhaleTrade);
+        const { config: riskConfig } = getRiskProfile(pos.marketName || "", isWhaleTrade);
 
         if (!botStatus.partialSells) botStatus.partialSells = [];
         const hasDonePartial = botStatus.partialSells.includes(pos.tokenId);
 
-        // Log solo cuando está cerca del umbral
+        // Log cerca de umbrales
         if (profit >= (riskConfig.takeProfitThreshold - 8) || profit <= (riskConfig.stopLossThreshold + 8)) {
-            console.log(`📊 [AUTO-SELL] ${originTag} | ${marketNameShort} | PnL: ${profit.toFixed(1)}% | Precio: $${currentSharePrice.toFixed(3)}`);
+            console.log(`📊 [AUTO-SELL] ${originTag} | ${marketNameShort} | PnL Real: ${profit.toFixed(1)}% | Precio Acc: $${currentSharePrice.toFixed(3)}`);
         }
 
-        // ====================== 🌓 TAKE PROFIT PARCIAL (Whales) ======================
+        // ====================== 🌓 TAKE PROFIT PARCIAL (Solo Ballenas) ======================
         if (isWhaleTrade && profit >= 45 && !hasDonePartial) {
             try {
                 const bookResp = await axios.get(`https://clob.polymarket.com/book?token_id=${pos.tokenId}`, { 
@@ -1826,7 +1826,7 @@ async function autoSellManager() {
         }
 
         // ====================== 🌕 TAKE PROFIT TOTAL ======================
-        let effectiveTpThreshold = riskConfig.takeProfitThreshold;
+        let effectiveTpThreshold = riskConfig.takeProfitThreshold || 15;
         if (originTag === "EQUALIZER") effectiveTpThreshold = botStatus.equalizerTpThreshold ?? 15;
         else if (originTag === "CHRONOS") effectiveTpThreshold = botStatus.chronosTpThreshold ?? 20;
         else if (originTag === "KINETIC") effectiveTpThreshold = botStatus.kineticTpThreshold ?? 10;
@@ -1851,7 +1851,7 @@ async function autoSellManager() {
                 const maxAllowedSlippage = botStatus.riskSettings.tpLiquiditySlippage || 55;
 
                 if (spreadDropPct > maxAllowedSlippage) {
-                    console.log(`⚠️ [ALERTA LIQUIDEZ TP] Abortando en ${marketNameShort}. Teórico: $${currentSharePrice.toFixed(3)}, Ofrecen: $${bestPrice.toFixed(3)} (spread ${spreadDropPct.toFixed(1)}%)`);
+                    console.log(`⚠️ [ALERTA LIQUIDEZ TP] Abortando TP en ${marketNameShort}. Teórico: $${currentSharePrice.toFixed(3)}, Ofrecen: $${bestPrice.toFixed(3)} (spread ${spreadDropPct.toFixed(1)}%)`);
                     continue; 
                 }
                 if (bestPrice <= 0.005) continue;
@@ -1921,13 +1921,12 @@ async function autoSellManager() {
                 const maxAllowedSlippage = botStatus.riskSettings.tpLiquiditySlippage || 55;
 
                 if (spreadDropPct > maxAllowedSlippage) {
-                    console.log(`⚠️ [ALERTA LIQUIDEZ SL] Abortando en ${marketNameShort} (spread ${spreadDropPct.toFixed(1)}%)`);
+                    console.log(`⚠️ [ALERTA LIQUIDEZ SL] Abortando en ${marketNameShort}. Teórico: $${currentSharePrice.toFixed(3)}, Ofrecen: $${bestBidPrice.toFixed(3)} (spread ${spreadDropPct.toFixed(1)}%)`);
                     continue; 
                 }
 
                 if (bestBidPrice <= 0.001) bestBidPrice = 0.001;
 
-                // ... (el resto del código de worstPrice y executeSellOnChain se mantiene igual)
                 let worstPrice = bestBidPrice;
                 let accumulated = 0;
                 for (const bid of bids) {
@@ -1944,20 +1943,21 @@ async function autoSellManager() {
                 const result = await executeSellOnChain(pos.conditionId || null, pos.tokenId, sharesToSell, worstPrice, "0.01");
 
                 if (result?.success) {
-                    // ... (tu código original de éxito para SL)
                     closedPositionsCache.add(pos.tokenId);
                     delete botStatus.positionEngines[pos.tokenId]; 
 
                     if (originTag !== "EQUALIZER" && originTag !== "CHRONOS" && originTag !== "KINETIC") {
+                        if (!botStatus.whaleStats) botStatus.whaleStats = { wins: 0, losses: 0, totalTrades: 0, winRate: 0 };
+                        if (!botStatus.aiStats) botStatus.aiStats = { wins: 0, losses: 0, totalTrades: 0, winRate: 0 };
                         const targetStats = isWhaleTrade ? botStatus.whaleStats : botStatus.aiStats;
-                        targetStats.losses = (targetStats.losses || 0) + 1;
-                        targetStats.totalTrades = (targetStats.totalTrades || 0) + 1;
+                        targetStats.losses += 1;
+                        targetStats.totalTrades += 1;
                         targetStats.winRate = (targetStats.wins / targetStats.totalTrades) * 100;
                     }
                     saveConfigToDisk(`SL ${originTag} Ejecutado`);
                     await updateRealBalances();
 
-                    await sendAlert(`🛑 *STOP LOSS (${originTag})*\n🎯 ${marketNameShort}\n📊 🔴 ${profit.toFixed(1)}%\n💸 Rescatado: $${(sharesToSell*worstPrice).toFixed(2)}`);
+                    await sendAlert(`🛑 *STOP LOSS (${originTag})*\n🎯 ${marketNameShort}\n📊 🔴 PÉRDIDA: ${profit.toFixed(2)}%\n💸 Rescatado: $${(sharesToSell*worstPrice).toFixed(2)}`);
 
                     if (isWhaleTrade) botStatus.copiedPositions = botStatus.copiedPositions.filter(p => p.tokenId !== pos.tokenId);
                     botStatus.activePositions = botStatus.activePositions.filter(p => p.tokenId !== pos.tokenId);
