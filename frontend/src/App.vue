@@ -566,7 +566,8 @@ const updateCopyFilters = async () => {
       maxCopyMarketsPerWhale: status.value.maxCopyMarketsPerWhale,
       autoWhaleCount: status.value.autoWhaleCount,
       whalePostPartialTp: status.value.whalePostPartialTp,
-      maxCopyMarketsCustom: status.value.maxCopyMarketsCustom   // ← NUEVO
+      maxCopyMarketsCustom: status.value.maxCopyMarketsCustom,   // ← NUEVO
+      maxCopyDaysForWhales: status.value.maxCopyDaysForWhales
     });
     console.log(`📋 Filtros de Copy Trading actualizados (incluyendo límite global Custom)`);
   } catch (error) {
@@ -3243,6 +3244,34 @@ onUnmounted(() => {
                     />
                   </div>
                   <p class="text-[10px] text-zinc-500 mt-1">Límite total de mercados activos para todas tus ballenas custom (pruebas / control).</p>
+                </div>
+
+                <!-- NUEVO SLIDER: Máx. Días para Copiar Ballenas -->
+                <div>
+                  <div class="flex justify-between items-center mb-2">
+                    <label class="text-xs font-bold text-purple-400 uppercase tracking-wider flex items-center gap-2">
+                      <Clock3 :size="14" /> Máx. Días para Copiar Ballenas
+                    </label>
+                    <span class="font-mono text-purple-400 font-bold">{{ status.maxCopyDaysForWhales }} días</span>
+                  </div>
+                  <div class="flex items-center gap-4">
+                    <input 
+                      type="range" 
+                      min="1" 
+                      max="60" 
+                      step="1" 
+                      v-model.number="status.maxCopyDaysForWhales" 
+                      @change="updateCopyFilters" 
+                      class="flex-1 accent-purple-500" 
+                    />
+                    <input 
+                      type="number"
+                      v-model.number="status.maxCopyDaysForWhales"
+                      @change="updateCopyFilters"
+                      class="w-20 bg-[#09090b] border border-purple-500/30 text-purple-400 font-mono text-center rounded-xl px-3 py-1 outline-none focus:border-purple-500" 
+                    />
+                  </div>
+                  <p class="text-[10px] text-zinc-500 mt-1">Horizonte máximo de expiración para copiar ballenas (15 días = óptimo).</p>
                 </div>
 
               </div>
