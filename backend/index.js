@@ -1867,7 +1867,7 @@ async function autoSellManager() {
                                 `🌓 TAKE PROFIT PARCIAL (50%)\n` +
                                 `📈 Mercado: ${marketNameShort}\n` +
                                 `💰 Mitad asegurada: +$${halfValue}\n` +
-                                `💰 Cartera Total: $${totalBalance} USDC`
+                                `💰 Cartera Total: *$${(parseFloat(botStatus.clobOnlyUSDC || 0) + parseFloat(botStatus.walletOnlyUSDC || 0)).toFixed(2)} USDC*`
                             );
                         }
                     } else {
@@ -1936,7 +1936,7 @@ async function autoSellManager() {
                         `✅ TAKE PROFIT TOTAL (${originTag})\n` +
                         `📈 Mercado: ${marketNameShort}\n` +
                         `💰 Ganancia: +${profit.toFixed(1)}%\n` +
-                        `💰 Cartera Total: $${totalBalance} USDC`
+                       `💰 Cartera Total: *$${(parseFloat(botStatus.clobOnlyUSDC || 0) + parseFloat(botStatus.walletOnlyUSDC || 0)).toFixed(2)} USDC*`
                     );
                 }
             } catch (e) {
@@ -2013,7 +2013,7 @@ async function autoSellManager() {
                         `🛑 STOP LOSS EJECUTADO (${originTag})\n` +
                         `📉 Mercado: ${marketNameShort}\n` +
                         `💰 Pérdida: ${profit.toFixed(1)}%\n` +
-                        `💰 Cartera Total: $${totalBalance} USDC`
+                        `💰 Cartera Total: *$${(parseFloat(botStatus.clobOnlyUSDC || 0) + parseFloat(botStatus.walletOnlyUSDC || 0)).toFixed(2)} USDC*`
                     );
                 }
             } catch (e) {
@@ -3276,7 +3276,7 @@ Responde en formato JSON.
                         `🛒 Compra: *NO* a $${currentLivePrice}\n` +
                         `💰 Monto: $${botStatus.chronosBetAmount}\n` +
                         `⏰ Expira en: ${hoursLeft.toFixed(1)}h\n` +
-                        `💰 Cartera Total: $${totalBalance} USDC`
+                        `💰 Cartera Total: *$${(parseFloat(botStatus.clobOnlyUSDC || 0) + parseFloat(botStatus.walletOnlyUSDC || 0)).toFixed(2)} USDC*`
                     );
 
                     console.log(`✅ [CHRONOS] ¡Disparo exitoso!`);
