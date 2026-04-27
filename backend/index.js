@@ -221,6 +221,7 @@ let botStatus = {
     copyMinWhaleSize: 150,           // ← Tamaño de Trade Minimo
     copyTimeWindowMinutes: 45,       // ← Ventana de tiempo para volver a checar los trades
     autoWhaleCount: 15,            // El límite fijo que mencionabas (Top ballenas a buscar)
+    maxCopyMarketsCustom: 10,
     lastTrades: {}, // Objeto para controlar el Cooldown: { tokenId: timestamp }
     aiStats: { wins: 0, losses: 0, totalTrades: 0, winRate: 0.0 },
     whaleStats: { wins: 0, losses: 0, totalTrades: 0, winRate: 0.0 },
@@ -292,6 +293,7 @@ function saveConfigToDisk(origen = "Sistema") {
             copyMinWhaleSize: botStatus.copyMinWhaleSize,
             copyTimeWindowMinutes: botStatus.copyTimeWindowMinutes,
             autoWhaleCount: botStatus.autoWhaleCount, // <-- NUEVO
+            maxCopyMarketsCustom: botStatus.maxCopyMarketsCustom,
             // 🔥 FIX QUANT: Guardamos los Winrates en el disco duro
             aiStats: botStatus.aiStats,
             whaleStats: botStatus.whaleStats,
@@ -373,6 +375,7 @@ function loadConfigFromDisk() {
             if (savedConfig.copyMinWhaleSize !== undefined) botStatus.copyMinWhaleSize = savedConfig.copyMinWhaleSize;
             if (savedConfig.copyTimeWindowMinutes !== undefined) botStatus.copyTimeWindowMinutes = savedConfig.copyTimeWindowMinutes;
             if (savedConfig.autoWhaleCount !== undefined) botStatus.autoWhaleCount = savedConfig.autoWhaleCount; // <-- NUEVO
+            if (savedConfig.maxCopyMarketsCustom !== undefined) botStatus.maxCopyMarketsCustom = parseInt(savedConfig.maxCopyMarketsCustom) || 5;
 
             // 🔥 FIX QUANT: Cargar los Winrates desde el disco al iniciar
             if (savedConfig.aiStats) botStatus.aiStats = savedConfig.aiStats;
@@ -1461,6 +1464,14 @@ async function checkAndCopyWhaleTrades() {
         let allWhales = [];
 
         if (botStatus.copyTradingAutoEnabled) {
+
+            const currentCopiedCount = (botStatus.copiedPositions || []).length;
+            if (currentCopiedCount >= (botStatus.maxCopyMarketsCustom || 5)) {
+                console.log(`⛔ [COPY LIMIT GLOBAL] Ya tienes ${currentCopiedCount}/${botStatus.maxCopyMarketsCustom} mercados activos. Esperando cierre.`);
+                isScanningWhales = false;
+                return;
+            }
+
             if (!botStatus.autoSelectedWhales || botStatus.autoSelectedWhales.length === 0 ||
                 !botStatus.lastWhaleSelection || 
                 (Date.now() - new Date(botStatus.lastWhaleSelection).getTime()) > 10 * 60 * 1000) {
@@ -3489,7 +3500,7 @@ app.post('/api/settings/copytrading', (req, res) => {
 });
 
 // ==========================================
-// NUEVO: Configuración de filtros de Copy Trading
+// Configuración de filtros de Copy Trading (Actualizado con límite global)
 // ==========================================
 app.post('/api/settings/copy-filters', (req, res) => {
     const { 
@@ -3497,7 +3508,8 @@ app.post('/api/settings/copy-filters', (req, res) => {
         copyTimeWindowMinutes, 
         maxCopyMarketsPerWhale,
         autoWhaleCount,
-        whalePostPartialTp        // ← NUEVO
+        whalePostPartialTp,
+        maxCopyMarketsCustom          // ← NUEVO
     } = req.body;
 
     if (copyMinWhaleSize !== undefined) 
@@ -3512,9 +3524,14 @@ app.post('/api/settings/copy-filters', (req, res) => {
     if (autoWhaleCount !== undefined) 
         botStatus.autoWhaleCount = parseInt(autoWhaleCount);
 
-    // 🔥 Nuevo: whalePostPartialTp
     if (whalePostPartialTp !== undefined) 
         botStatus.whalePostPartialTp = parseFloat(whalePostPartialTp);
+
+    // 🔥 NUEVO: Límite global de mercados activos para Copy Custom
+    if (maxCopyMarketsCustom !== undefined) {
+        botStatus.maxCopyMarketsCustom = parseInt(maxCopyMarketsCustom) || 5;
+        console.log(`📋 Límite GLOBAL Copy Custom cambiado a: ${botStatus.maxCopyMarketsCustom} mercados activos`);
+    }
 
     saveConfigToDisk("Copy Filters Actualizados");
 
@@ -3523,7 +3540,8 @@ app.post('/api/settings/copy-filters', (req, res) => {
         `Ventana: ${botStatus.copyTimeWindowMinutes}m | ` +
         `Mercados/Ballena: ${botStatus.maxCopyMarketsPerWhale} | ` +
         `Post-Partial TP: ${botStatus.whalePostPartialTp}% | ` +
-        `Top Ballenas Auto: ${botStatus.autoWhaleCount}`);
+        `Top Ballenas Auto: ${botStatus.autoWhaleCount} | ` +
+        `Máx Mercados Custom: ${botStatus.maxCopyMarketsCustom}`);
 
     res.json({ 
         success: true, 
@@ -3531,7 +3549,8 @@ app.post('/api/settings/copy-filters', (req, res) => {
         copyTimeWindowMinutes: botStatus.copyTimeWindowMinutes,
         maxCopyMarketsPerWhale: botStatus.maxCopyMarketsPerWhale,
         autoWhaleCount: botStatus.autoWhaleCount,
-        whalePostPartialTp: botStatus.whalePostPartialTp   // ← NUEVO
+        whalePostPartialTp: botStatus.whalePostPartialTp,
+        maxCopyMarketsCustom: botStatus.maxCopyMarketsCustom   // ← NUEVO
     });
 });
 

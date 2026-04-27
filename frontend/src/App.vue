@@ -565,9 +565,10 @@ const updateCopyFilters = async () => {
       copyTimeWindowMinutes: status.value.copyTimeWindowMinutes,
       maxCopyMarketsPerWhale: status.value.maxCopyMarketsPerWhale,
       autoWhaleCount: status.value.autoWhaleCount,
-      whalePostPartialTp: status.value.whalePostPartialTp   // ← NUEVO
+      whalePostPartialTp: status.value.whalePostPartialTp,
+      maxCopyMarketsCustom: status.value.maxCopyMarketsCustom   // ← NUEVO
     });
-    console.log(`📋 Filtros de Copy Trading actualizados (incluyendo Post-Partial TP)`);
+    console.log(`📋 Filtros de Copy Trading actualizados (incluyendo límite global Custom)`);
   } catch (error) {
     console.error("❌ Error actualizando filtros de copy trading", error);
     Swal.fire('Error', 'No se pudieron guardar los filtros', 'error');
@@ -3214,6 +3215,34 @@ onUnmounted(() => {
                     />
                   </div>
                   <p class="text-[10px] text-zinc-500 mt-1">Cantidad de ballenas rentables a extraer automáticamente del leaderboard de Polymarket.</p>
+                </div>
+
+                <!-- NUEVO SLIDER: Límite Global de Mercados Activos -->
+                <div>
+                  <div class="flex justify-between items-center mb-2">
+                    <label class="text-xs font-bold text-purple-400 uppercase tracking-wider flex items-center gap-2">
+                      <ShieldCheck :size="14" /> Máx. Mercados Activos (Custom)
+                    </label>
+                    <span class="font-mono text-purple-400 font-bold">{{ status.maxCopyMarketsCustom }}</span>
+                  </div>
+                  <div class="flex items-center gap-4">
+                    <input 
+                      type="range" 
+                      min="1" 
+                      max="60" 
+                      step="1" 
+                      v-model.number="status.maxCopyMarketsCustom" 
+                      @change="updateCopyMaxMarketsCustom" 
+                      class="flex-1 accent-purple-500" 
+                    />
+                    <input 
+                      type="number"
+                      v-model.number="status.maxCopyMarketsCustom"
+                      @change="updateCopyMaxMarketsCustom"
+                      class="w-20 bg-[#09090b] border border-purple-500/30 text-purple-400 font-mono text-center rounded-xl px-3 py-1 outline-none focus:border-purple-500" 
+                    />
+                  </div>
+                  <p class="text-[10px] text-zinc-500 mt-1">Límite total de mercados activos para todas tus ballenas custom (pruebas / control).</p>
                 </div>
 
               </div>
