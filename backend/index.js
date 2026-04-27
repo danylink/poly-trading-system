@@ -1134,68 +1134,70 @@ async function refreshWatchlist() {
 }
 
 // ==========================================
-// 8. EJECUCIÓN DE COMPRA - VERSIÓN DINÁMICA Y SEGURA
+// 8. EJECUCIÓN DE COMPRA - VERSIÓN ANTI "CROSSES THE BOOK"
 // ==========================================
 async function executeTradeOnChain(conditionId, tokenId, amountUsdc, currentPrice, marketTickSize = "0.01") {
     try {
         console.log(`\n--- ⚖️ EJECUCIÓN ON-CHAIN EN POLYMARKET ---`);
+        console.log(`🎯 Token: ${tokenId.substring(0,12)}... | Monto: $${amountUsdc} | Precio base: $${currentPrice}`);
 
         if (!clobClient) throw new Error("clobClient no está inicializado.");
 
-        // 1. Auto-limpieza
-        // console.log("🧹 Liberando USDC de órdenes anteriores...");
-        // try { await clobClient.cancelAll(); } catch (e) {}
-
-        // 2. Datos del mercado
-        let trueTickSize = String(marketTickSize);
-        let minOrderSize = 5; // Fallback por defecto si la API no lo informa
-        let isNegRisk = false;
-
+        // 1. Obtener Orderbook fresco para evitar "crosses the book"
+        let bookData;
         try {
-            const clobMarket = await axios.get(`https://clob.polymarket.com/markets/${conditionId}`);
-            if (clobMarket.data) {
-                if (clobMarket.data.neg_risk === true) isNegRisk = true;
-                
-                // 🔥 FIX: Leemos el mínimo exigido directamente de la blockchain de Polymarket
-                if (clobMarket.data.minimum_order_size) {
-                    minOrderSize = parseFloat(clobMarket.data.minimum_order_size);
-                }
+            const bookResp = await axios.get(`https://clob.polymarket.com/book?token_id=${tokenId}`, {
+                httpsAgent: agent, timeout: 8000
+            });
+            bookData = bookResp.data;
+        } catch (e) {
+            console.log("⚠️ No se pudo obtener orderbook, usando precio base.");
+        }
 
-                if (clobMarket.data.tokens) {
-                    const tokenData = clobMarket.data.tokens.find(t => t.token_id === tokenId);
-                    if (tokenData?.minimum_tick_size) trueTickSize = tokenData.minimum_tick_size;
-                }
+        let trueTickSize = marketTickSize;
+        let isNegRisk = false;
+        let minOrderSize = 5;
+
+        // Datos del mercado
+        try {
+            const marketInfo = await axios.get(`https://clob.polymarket.com/markets/${conditionId}`);
+            if (marketInfo.data) {
+                isNegRisk = marketInfo.data.neg_risk === true;
+                if (marketInfo.data.minimum_order_size) minOrderSize = parseFloat(marketInfo.data.minimum_order_size);
             }
         } catch (e) {}
 
-        const safeTickSize = String(trueTickSize);
-        const decimales = safeTickSize === "0.001" ? 3 : (safeTickSize === "0.0001" ? 4 : 2);
-        const minPriceAllowed = parseFloat(safeTickSize);
-
-        let basePrice = Number(parseFloat(currentPrice).toFixed(decimales));
-
-        if (basePrice < minPriceAllowed) {
-            console.log(`⚠️ Mercado fantasma ($${basePrice}). Ignorando.`);
-            return { success: false, error: "Precio inválido" };
+        // ====================== CÁLCULO INTELIGENTE DE PRECIO ======================
+        let basePrice = parseFloat(currentPrice);
+        
+        // Si tenemos asks, usamos el mejor Ask como referencia
+        if (bookData?.asks && bookData.asks.length > 0) {
+            const bestAsk = parseFloat(bookData.asks[0].price);
+            console.log(`📊 Best Ask actual: $${bestAsk}`);
+            
+            if (bestAsk > 0) {
+                basePrice = Math.max(basePrice, bestAsk); // Nunca compres más barato que el Ask
+            }
         }
 
-        // Slippage
         const entrySlippagePct = botStatus.riskSettings.entrySlippage || 5;
         let limitPrice = basePrice * (1 + entrySlippagePct / 100);
+        
         if (limitPrice > 0.99) limitPrice = 0.99;
-        limitPrice = Number(limitPrice.toFixed(decimales));
+        limitPrice = Number(limitPrice.toFixed(4)); // Más precisión
 
-        // ====================== CÁLCULO DINÁMICO DE SHARES ======================
-        let targetAmount = parseFloat(amountUsdc);           
-        let numShares = Number((targetAmount / limitPrice).toFixed(3));
+        console.log(`📡 Precio final con slippage: $${limitPrice} (slippage ${entrySlippagePct}%)`);
 
-        // 🔥 FIX: Respetamos el mínimo dinámico del mercado, NO el 5 fijo
+        // ====================== CÁLCULO DE SHARES ======================
+        let targetAmount = parseFloat(amountUsdc);
+        let numShares = Number((targetAmount / limitPrice).toFixed(4));
+
         if (numShares < minOrderSize) {
             numShares = minOrderSize;
-            console.log(`⚠️ Ajustando al mínimo del mercado (${minOrderSize} shares) → Monto real: $${(minOrderSize * limitPrice).toFixed(2)}`);
+            console.log(`⚠️ Ajustando al mínimo del mercado: ${minOrderSize} shares`);
         }
 
-        console.log(`📡 Orden BUY: ${numShares} shares | Target: $${basePrice} | Monto real: $${(numShares * limitPrice).toFixed(2)}`);
+        console.log(`📡 Orden BUY: ${numShares} shares | Precio: $${limitPrice} | Monto: $${(numShares * limitPrice).toFixed(2)}`);
 
         const response = await clobClient.createAndPostOrder(
             {
@@ -1205,7 +1207,7 @@ async function executeTradeOnChain(conditionId, tokenId, amountUsdc, currentPric
                 size: numShares,
             },
             { 
-                tickSize: safeTickSize, 
+                tickSize: String(trueTickSize), 
                 negRisk: isNegRisk 
             }, 
             OrderType.GTC
@@ -1215,11 +1217,15 @@ async function executeTradeOnChain(conditionId, tokenId, amountUsdc, currentPric
             console.log(`🎉 ¡ORDEN ACEPTADA! Order ID: ${response.orderID}`);
             return { success: true, hash: response.orderID };
         } else {
+            console.log(`❌ Orden rechazada:`, JSON.stringify(response));
             throw new Error(`Orden rechazada: ${JSON.stringify(response)}`);
         }
 
     } catch (error) {
         console.error("❌ Error en executeTradeOnChain:", error.message);
+        if (error.response?.data) {
+            console.error("   Detalle API:", JSON.stringify(error.response.data));
+        }
         throw error;
     }
 }
