@@ -212,7 +212,7 @@ let botStatus = {
         entrySlippage: 5,       // % máximo para comprar o Take Profit
         panicSlippage: 40,      // % máximo para Stop Loss (Emergencia)
         maxGasPrice: 1.5,       // POL máximo por transacción
-        tradeCooldownMin: 60    // Minutos para no repetir un mercado
+        tradeCooldownMin: 60,    // Minutos para no repetir un mercado
         tpLiquiditySlippage: 55,
     },
     customMarketRules: [],
