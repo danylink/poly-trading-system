@@ -1834,7 +1834,7 @@ async function getCurrentPositionValue(tokenId) {
 }
 
 // ==========================================
-// AUTO SELL MANAGER - VERSIÓN ULTRA AGRESIVA 99.9% (FIX FINAL - 27 Abril 2026)
+// AUTO SELL MANAGER - VERSIÓN ULTRA AGRESIVA 99.9% (FIX DEFINITIVO - 27 Abril 2026)
 // ==========================================
 async function autoSellManager() {
     if (!botStatus.autoTradeEnabled) return;
@@ -1879,12 +1879,10 @@ async function autoSellManager() {
         if (!botStatus.partialSells) botStatus.partialSells = [];
         const hasDonePartial = botStatus.partialSells.includes(pos.tokenId);
 
-        // Debug
+        // Debug (solo posiciones con movimiento relevante)
         if (Math.abs(profit) >= 8) {
             console.log(`[DEBUG AUTOSELL] ${originTag} | ${marketNameShort} | Profit: ${profit.toFixed(1)}% | Precio: $${currentSharePrice.toFixed(3)} | TP Config: ${riskConfig.takeProfitThreshold}%`);
         }
-
-        const totalBalance = (parseFloat(botStatus.clobOnlyUSDC || 0)).toFixed(2);
 
         // ====================== TP PARCIAL ======================
         if (isWhaleTrade && profit >= 45 && profit < 80 && !hasDonePartial) {
@@ -1929,21 +1927,25 @@ async function autoSellManager() {
             }
         }
 
-        // ====================== TP TOTAL ======================
+        // ====================== TP TOTAL - FIX DEFINITIVO ======================
         let effectiveTpThreshold = riskConfig.takeProfitThreshold || 15;
 
-        // Prioridad 1: Si tiene regla personalizada → usar ese TP
+        // Prioridad 1: Regla personalizada (la más importante)
         const customRule = getCustomMarketRules(pos.marketName || "");
         if (customRule && customRule.takeProfitThreshold !== undefined) {
             effectiveTpThreshold = customRule.takeProfitThreshold;
         }
-        // Prioridad 2: Si no tiene regla custom, usar el del engine
+        // Prioridad 2: Engine específico
         else if (originTag === "EQUALIZER") effectiveTpThreshold = botStatus.equalizerTpThreshold ?? 15;
         else if (originTag === "CHRONOS") effectiveTpThreshold = botStatus.chronosTpThreshold ?? 20;
         else if (originTag === "KINETIC") effectiveTpThreshold = botStatus.kineticTpThreshold ?? 10;
         else if (isWhaleTrade && hasDonePartial) effectiveTpThreshold = botStatus.whalePostPartialTp ?? 80;
 
-        if (profit >= effectiveTpThreshold || currentSharePrice >= 0.90) {
+        // 🔥 FIX: Evita TP con ganancia casi cero solo por precio alto
+        const shouldTakeProfit = profit >= effectiveTpThreshold;
+        const highPriceBypass = currentSharePrice >= 0.90 && profit >= 5.0;   // ← Solo si hay ganancia real
+
+        if (shouldTakeProfit || highPriceBypass) {
             console.log(`[TP TOTAL TRIGGER] ${marketNameShort} → Profit ${profit.toFixed(1)}% (Threshold: ${effectiveTpThreshold}%)`);
 
             try {
@@ -1992,7 +1994,7 @@ async function autoSellManager() {
                         `✅ TAKE PROFIT TOTAL (${originTag})\n` +
                         `📈 Mercado: ${marketNameShort}\n` +
                         `💰 Ganancia: +${profit.toFixed(1)}%\n` +
-                       `💰 Cartera Total: *$${botStatus.carteraTotal} USDC*`
+                        `💰 Cartera Total: *$${botStatus.carteraTotal} USDC*`
                     );
                 }
             } catch (e) {
