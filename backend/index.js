@@ -3117,11 +3117,12 @@ async function updateHighFrequencyRadar() {
 // ⏳ CHRONOS HARVESTER (THETA DECAY ENGINE)
 // ==========================================
 async function runChronosHarvester() {
+    if (!botStatus.chronosEnabled || botStatus.isPanicStopped) {
+        console.log(`⏳ [CHRONOS] Desactivado o en pánico`);
+        return;
+    }
 
-    console.log(`[CHRONOS DEBUG] Watchlist size: ${botStatus.watchlist.length} | Enabled: ${botStatus.chronosEnabled}`);
-    if (!botStatus.chronosEnabled || botStatus.isPanicStopped) return;
-
-    console.log(`⏳ [CHRONOS] Escaneando Watchlist en busca de Theta Decay...`);
+    console.log(`⏳ [CHRONOS DEBUG] Escaneando ${botStatus.watchlist.length} mercados | Rango precio: ${botStatus.chronosMinPrice}-${botStatus.chronosMaxPrice}`);
 
     const now = Date.now();
 
@@ -3231,23 +3232,23 @@ async function runChronosHarvester() {
 // 📈 ANALIZADOR DE SHOCKS DE LIQUIDEZ (BLINDADO QUANT)
 // ==========================================
 async function checkForLiquidityShocks() {
-    console.log(`[EQUALIZER DEBUG] Cache size: ${Object.keys(priceHistoryCache).length} tokens`);
     if (!botStatus.equalizerEnabled) return;
     if (botStatus.isPanicStopped) return; 
+
+    console.log(`🔍 [EQUALIZER SCAN] Revisando ${Object.keys(priceHistoryCache).length} tokens...`);
 
     for (const tokenId in priceHistoryCache) {
         const history = priceHistoryCache[tokenId];
         if (history.length < 2) continue; 
 
-        const currentEntry = history[history.length - 1];
-        const oldestEntry = history[0]; 
+        const current = history[history.length - 1].price;
+        const oldest = history[0].price;
+        const changePct = ((current - oldest) / oldest) * 100;
 
-        if (oldestEntry.price < 0.05 || oldestEntry.price > 0.85) continue;
+        console.log(`   → Token ${tokenId.slice(0,8)}... | ${oldest.toFixed(4)} → ${current.toFixed(4)} | Cambio: ${changePct.toFixed(1)}%`);
 
-        const priceChange = currentEntry.price - oldestEntry.price;
-        const priceChangePct = (priceChange / oldestEntry.price) * 100;
-
-        if (Math.abs(priceChangePct) >= botStatus.equalizerShockThreshold) {
+        if (Math.abs(changePct) >= botStatus.equalizerShockThreshold) {
+            console.log(`🚨 [EQUALIZER SHOCK DETECTADO!] ${changePct.toFixed(1)}% en ${tokenId.slice(0,8)}`);
             
             const fullMarket = botStatus.watchlist.find(m => m.tokenYes === tokenId || m.tokenNo === tokenId);
             if (!fullMarket) continue; 
