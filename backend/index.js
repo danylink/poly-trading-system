@@ -926,7 +926,7 @@ async function getLatestNews(query, category) {
 // 5. ALERTAS TELEGRAM
 // ==========================================
 async function sendAlert(message) {
-    try { await telegram.sendMessage(chatId, `🤖 *PolySniper*:\n${message}`, { parse_mode: 'Markdown' }); } catch (e) {}
+    try { await telegram.sendMessage(chatId, `🤖 *PolySniper*:\n\n${message}`, { parse_mode: 'Markdown' }); } catch (e) {}
 }
 
 // 🟢 FUNCIÓN MEJORADA - SNIPER ALERT CON ORIGEN DEL MODELO
@@ -1931,7 +1931,14 @@ async function autoSellManager() {
 
         // ====================== TP TOTAL ======================
         let effectiveTpThreshold = riskConfig.takeProfitThreshold || 15;
-        if (originTag === "EQUALIZER") effectiveTpThreshold = botStatus.equalizerTpThreshold ?? 15;
+
+        // Prioridad 1: Si tiene regla personalizada → usar ese TP
+        const customRule = getCustomMarketRules(pos.marketName || "");
+        if (customRule && customRule.takeProfitThreshold !== undefined) {
+            effectiveTpThreshold = customRule.takeProfitThreshold;
+        }
+        // Prioridad 2: Si no tiene regla custom, usar el del engine
+        else if (originTag === "EQUALIZER") effectiveTpThreshold = botStatus.equalizerTpThreshold ?? 15;
         else if (originTag === "CHRONOS") effectiveTpThreshold = botStatus.chronosTpThreshold ?? 20;
         else if (originTag === "KINETIC") effectiveTpThreshold = botStatus.kineticTpThreshold ?? 10;
         else if (isWhaleTrade && hasDonePartial) effectiveTpThreshold = botStatus.whalePostPartialTp ?? 80;
