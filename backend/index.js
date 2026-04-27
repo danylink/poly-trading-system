@@ -591,6 +591,33 @@ async function updateRealBalances() {
     } catch (e) { 
         console.error("❌ Error general actualizando balances:", e.message); 
     }
+
+    updateCarteraTotal();
+}
+
+// ==========================================
+// CALCULAR CARTERA TOTAL COMPLETA (VERSIÓN OFICIAL)
+// ==========================================
+function updateCarteraTotal() {
+    const poly = parseFloat(botStatus.clobOnlyUSDC || 0);
+    const meta = parseFloat(botStatus.walletOnlyUSDC || 0);
+    const unclaimed = parseFloat(botStatus.unclaimedUSDC || 0);
+
+    // Valor de posiciones activas
+    let activeValue = 0;
+    if (botStatus.activePositions && botStatus.activePositions.length > 0) {
+        activeValue = botStatus.activePositions.reduce((acc, pos) => {
+            if (pos.status && (pos.status.includes('CANJEAR') || pos.status.includes('PERDIDO'))) {
+                return acc;
+            }
+            return acc + parseFloat(pos.currentValue || 0);
+        }, 0);
+    }
+
+    const total = poly + meta + unclaimed + activeValue;
+    botStatus.carteraTotal = total.toFixed(2);
+
+    return botStatus.carteraTotal;
 }
 
 // ==========================================
@@ -1890,7 +1917,7 @@ async function autoSellManager() {
                                 `🌓 TAKE PROFIT PARCIAL (50%)\n` +
                                 `📈 Mercado: ${marketNameShort}\n` +
                                 `💰 Mitad asegurada: +$${halfValue}\n` +
-                                `💰 Cartera Total: *$${(parseFloat(botStatus.clobOnlyUSDC || 0) + parseFloat(botStatus.walletOnlyUSDC || 0)).toFixed(2)} USDC*`
+                                `💰 Cartera Total: *$${botStatus.carteraTotal} USDC*`
                             );
                         }
                     } else {
@@ -1958,7 +1985,7 @@ async function autoSellManager() {
                         `✅ TAKE PROFIT TOTAL (${originTag})\n` +
                         `📈 Mercado: ${marketNameShort}\n` +
                         `💰 Ganancia: +${profit.toFixed(1)}%\n` +
-                       `💰 Cartera Total: *$${(parseFloat(botStatus.clobOnlyUSDC || 0) + parseFloat(botStatus.walletOnlyUSDC || 0)).toFixed(2)} USDC*`
+                       `💰 Cartera Total: *$${botStatus.carteraTotal} USDC*`
                     );
                 }
             } catch (e) {
@@ -2034,7 +2061,7 @@ async function autoSellManager() {
                         `🛑 STOP LOSS EJECUTADO (${originTag})\n` +
                         `📉 Mercado: ${marketNameShort}\n` +
                         `💰 Pérdida: ${profit.toFixed(1)}%\n` +
-                        `💰 Cartera Total: *$${(parseFloat(botStatus.clobOnlyUSDC || 0) + parseFloat(botStatus.walletOnlyUSDC || 0)).toFixed(2)} USDC*`
+                        `💰 Cartera Total: *$${botStatus.carteraTotal} USDC*`
                     );
                 }
             } catch (e) {
@@ -2548,7 +2575,7 @@ async function autoRedeemPositions() {
                     `🔄 *REDEEM EXITOSO*\n\n` +
                     `📋 Mercado: ${pos.marketName?.substring(0, 45)}...\n` +
                     `✅ Canjeado automáticamente\n` +
-                    `💰 Cartera Total: *$${(parseFloat(botStatus.clobOnlyUSDC || 0) + parseFloat(botStatus.walletOnlyUSDC || 0)).toFixed(2)} USDC*`
+                    `💰 Cartera Total: *$${botStatus.carteraTotal} USDC*`
                 );
                 
                 await new Promise(resolve => setTimeout(resolve, 1500)); // Delay seguro
@@ -2650,7 +2677,7 @@ async function autoRedeemPositionsGasless() {
                     `🔄 *REDEEM GASLESS EXITOSO*\n\n` +
                     `📋 Mercado: ${pos.marketName?.substring(0, 45)}...\n` +
                     `✅ Canjeado sin pagar gas\n` +
-                    `💰 Cartera Total: *$${(parseFloat(botStatus.clobOnlyUSDC || 0) + parseFloat(botStatus.walletOnlyUSDC || 0)).toFixed(2)} USDC*`
+                    `💰 Cartera Total: *$${botStatus.carteraTotal} USDC*`
                 );
 
                 // Delay Anti-Ban para el Relayer de Polymarket
@@ -2782,7 +2809,7 @@ async function checkDailyLossLimit() {
                 `🚨 *STOP-LOSS DIARIO ACTIVADO*\n\n` +
                 `📉 Pérdida del día: *${lossPercent.toFixed(1)}%*\n` +
                 `Bot bloqueó nuevas compras automáticamente.\n` +
-                `💰 Cartera Total actual: *$${(parseFloat(botStatus.clobOnlyUSDC || 0) + parseFloat(botStatus.walletOnlyUSDC || 0)).toFixed(2)} USDC*`
+                `💰 Cartera Total: *$${botStatus.carteraTotal} USDC*`
             );
         }
     } catch (e) {
@@ -3296,7 +3323,7 @@ Responde en formato JSON.
                         `🛒 Compra: *NO* a $${currentLivePrice}\n` +
                         `💰 Monto: $${botStatus.chronosBetAmount}\n` +
                         `⏰ Expira en: ${hoursLeft.toFixed(1)}h\n` +
-                        `💰 Cartera Total: *$${(parseFloat(botStatus.clobOnlyUSDC || 0) + parseFloat(botStatus.walletOnlyUSDC || 0)).toFixed(2)} USDC*`
+                        `💰 Cartera Total: *$${botStatus.carteraTotal} USDC*`
                     );
 
                     console.log(`✅ [CHRONOS] ¡Disparo exitoso!`);
