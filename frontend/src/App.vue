@@ -76,7 +76,8 @@ const status = ref({
     entrySlippage: 5,
     panicSlippage: 40,
     maxGasPrice: 1.5,
-    tradeCooldownMin: 90
+    tradeCooldownMin: 90,
+    tpLiquiditySlippage: 55,
   },
   customMarketRules: [],
 
@@ -2410,6 +2411,36 @@ onUnmounted(() => {
                   <span class="text-zinc-500 font-bold text-sm">%</span>
                 </div>
               </div>
+            </div>
+
+            <div class="flex flex-col gap-2 p-4 md:p-5 rounded-xl border border-amber-500/30 bg-[#161619] relative overflow-hidden shadow-inner">
+              <div class="flex justify-between items-center mb-2">
+                <label class="text-[10px] sm:text-xs text-amber-400 font-black uppercase tracking-[0.2em]">Slippage Máx. Liquidez (TP)</label>
+                <span class="text-[8px] sm:text-[10px] font-black px-2 py-1 rounded border text-amber-400 bg-amber-500/10 border-amber-500/40">PROTECCIÓN ORDEN BOOK</span>
+              </div>
+              <div class="flex items-center gap-4">
+                <input 
+                  type="range" 
+                  min="20" 
+                  max="80" 
+                  step="5" 
+                  v-model.number="status.riskSettings.tpLiquiditySlippage" 
+                  @change="updateQuantumRiskSettings" 
+                  class="flex-1 accent-amber-500 h-2 bg-zinc-800 rounded-lg appearance-none cursor-pointer" 
+                />
+                <div class="flex items-center gap-1 w-28 shrink-0 bg-[#09090b] border border-amber-500/30 rounded-xl px-3 py-2">
+                  <input 
+                    type="number" 
+                    min="20" 
+                    max="80" 
+                    v-model.number="status.riskSettings.tpLiquiditySlippage" 
+                    @change="updateQuantumRiskSettings"
+                    class="w-full bg-transparent text-amber-400 font-mono text-base text-right outline-none"
+                  >
+                  <span class="text-amber-500 font-bold text-sm">%</span>
+                </div>
+              </div>
+              <p class="text-[9px] text-zinc-500 mt-1">Tolerancia máxima de slippage en el Order Book al vender (recomendado 55%).</p>
             </div>
 
             <div class="flex flex-col gap-2 p-4 md:p-5 rounded-xl border border-zinc-800/60 bg-[#161619] relative overflow-hidden">
