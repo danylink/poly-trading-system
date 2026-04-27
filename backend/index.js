@@ -4181,11 +4181,18 @@ app.listen(PORT, async () => {
     // 🌊 8. Quantum Equalizer: Escáner de Shocks de Liquidez
     setInterval(checkForLiquidityShocks, 2 * 60 * 1000); // 2 minutos
 
-    // ⏳ 9. Chronos Harvester: Cosechador de Theta Decay
+    // ==========================================
+    // ⏳ 9. CHRONOS HARVESTER - INICIALIZACIÓN CORRECTA - Cosechador de Theta Decay
+    // ==========================================
     console.log("⏳ [CHRONOS] Programando ejecución cada 15 minutos...");
-    // Primera ejecución inmediata al arrancar el bot
-    runChronosHarvester();
-    // Luego cada 15 minutos
+
+    // Primera ejecución inmediata (pero después de cargar la watchlist)
+    setTimeout(async () => {
+        console.log("⏳ [CHRONOS] Primera ejecución manual después de cargar watchlist...");
+        await runChronosHarvester();
+    }, 8000); // Espera 8 segundos para que refreshWatchlist termine
+
+    // Luego el intervalo normal
     setInterval(runChronosHarvester, 15 * 60 * 1000);
 
     // 🌊 10. Kinetic Pressure: Radar de Desequilibrio
