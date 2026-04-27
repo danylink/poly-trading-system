@@ -2262,7 +2262,7 @@ async function runBot() {
         // ====================== EJECUCIÓN DEL SNIPER ======================
         if (botStatus.autoTradeEnabled && isStrongSignal) {
 
-            const saldoLibre = parseFloat(botStatus.clobOnlyUSDC || 0);
+            const saldoLibre = (parseFloat(botStatus.clobOnlyUSDC) || 0).toFixed(2);
             let dynamicBetAmount = profile.microBetAmount || 2.0;
 
             // Kelly Asimétrico
@@ -3038,7 +3038,7 @@ async function executeEqualizerTrade(marketData, outcomeToBuy) {
         const targetPrice = outcomeToBuy === "YES" ? fullMarket.priceYes : fullMarket.priceNo;
         
         const betAmount = botStatus.equalizerBetAmount || 5;
-        const saldoLibre = parseFloat(botStatus.clobOnlyUSDC || 0);
+        const saldoLibre = (parseFloat(botStatus.clobOnlyUSDC) || 0).toFixed(2);
 
         // 🛡️ CANDADO 3: Liquidez Básica
         if (saldoLibre < betAmount) {
@@ -3172,7 +3172,7 @@ async function runChronosHarvester() {
             continue;
         }
 
-        const saldoLibre = parseFloat(botStatus.clobOnlyUSDC || 0);
+        const saldoLibre = (parseFloat(botStatus.clobOnlyUSDC) || 0).toFixed(2);
         if (saldoLibre < botStatus.chronosBetAmount) {
             console.log(`   ⚠️ [CHRONOS] Saldo insuficiente para disparo`);
             continue;
@@ -3267,7 +3267,16 @@ Responde en formato JSON.
 
                     saveConfigToDisk("Disparo Chronos");
 
-                    await sendAlert(`⏳ *CHRONOS HARVESTER*\n🎯 ${market.title}\n🛒 Compra: *NO* a $${currentLivePrice}\n💰 $${botStatus.chronosBetAmount} | Expira en ${hoursLeft.toFixed(1)}h`);
+                    // Reemplaza tu línea actual por esta:
+                    await sendAlert(
+                        `🤖 PolySniper:\n` +
+                        `⏳ CHRONOS HARVESTER\n` +
+                        `🎯 ${market.title}\n` +
+                        `🛒 Compra: *NO* a $${currentLivePrice}\n` +
+                        `💰 Monto: $${botStatus.chronosBetAmount}\n` +
+                        `⏰ Expira en: ${hoursLeft.toFixed(1)}h\n` +
+                        `💰 Cartera Total: $${(botStatus.clobOnlyUSDC || 0).toFixed(2)} USDC`
+                    );
 
                     console.log(`✅ [CHRONOS] ¡Disparo exitoso!`);
                 }
