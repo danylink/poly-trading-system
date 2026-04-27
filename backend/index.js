@@ -1833,7 +1833,7 @@ async function autoSellManager() {
             console.log(`[DEBUG AUTOSELL] ${originTag} | ${marketNameShort} | Profit: ${profit.toFixed(1)}% | Precio: $${currentSharePrice.toFixed(3)} | TP Config: ${riskConfig.takeProfitThreshold}%`);
         }
 
-        const totalBalance = (botStatus.clobOnlyUSDC || 0).toFixed(2);
+        const totalBalance = (parseFloat(botStatus.clobOnlyUSDC || 0)).toFixed(2);
 
         // ====================== TP PARCIAL ======================
         if (isWhaleTrade && profit >= 45 && profit < 80 && !hasDonePartial) {
@@ -3172,7 +3172,7 @@ async function runChronosHarvester() {
             continue;
         }
 
-        const saldoLibre = (parseFloat(botStatus.clobOnlyUSDC) || 0).toFixed(2);
+        const saldoLibre = parseFloat(botStatus.clobOnlyUSDC || 0);
         if (saldoLibre < botStatus.chronosBetAmount) {
             console.log(`   ⚠️ [CHRONOS] Saldo insuficiente para disparo`);
             continue;
@@ -3266,6 +3266,7 @@ Responde en formato JSON.
                     });
 
                     saveConfigToDisk("Disparo Chronos");
+                    const totalBalance = (parseFloat(botStatus.clobOnlyUSDC || 0)).toFixed(2);
 
                     // Reemplaza tu línea actual por esta:
                     await sendAlert(
@@ -3275,7 +3276,7 @@ Responde en formato JSON.
                         `🛒 Compra: *NO* a $${currentLivePrice}\n` +
                         `💰 Monto: $${botStatus.chronosBetAmount}\n` +
                         `⏰ Expira en: ${hoursLeft.toFixed(1)}h\n` +
-                        `💰 Cartera Total: $${(botStatus.clobOnlyUSDC || 0).toFixed(2)} USDC`
+                        `💰 Cartera Total: $${totalBalance} USDC`
                     );
 
                     console.log(`✅ [CHRONOS] ¡Disparo exitoso!`);
