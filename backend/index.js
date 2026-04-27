@@ -3119,7 +3119,7 @@ async function updateHighFrequencyRadar() {
 }
 
 // ==========================================
-// ⏳ CHRONOS HARVESTER (THETA DECAY ENGINE)
+// ⏳ CHRONOS HARVESTER - VERSIÓN MEJORADA (Abril 2026)
 // ==========================================
 async function runChronosHarvester() {
     console.log(`\n⏳ [CHRONOS DEBUG] === INICIANDO ESCANEO === Enabled: ${botStatus.chronosEnabled}`);
@@ -3129,9 +3129,15 @@ async function runChronosHarvester() {
         return;
     }
 
+    if (!botStatus.watchlist || botStatus.watchlist.length === 0) {
+        console.log(`⚠️ [CHRONOS] Watchlist vacía. Esperando próxima ejecución...`);
+        return;
+    }
+
     console.log(`⏳ [CHRONOS] Revisando ${botStatus.watchlist.length} mercados | Rango NO: ${botStatus.chronosMinPrice} - ${botStatus.chronosMaxPrice}`);
 
     const now = Date.now();
+    let candidatesFound = 0;
 
     for (const market of botStatus.watchlist) {
         if (!market.endDate || !market.priceNo || !market.tokenNo) continue;
@@ -3139,109 +3145,130 @@ async function runChronosHarvester() {
         const endTime = new Date(market.endDate).getTime();
         const hoursLeft = (endTime - now) / (1000 * 60 * 60);
 
-        if (hoursLeft > 0 && hoursLeft <= botStatus.chronosHoursLeft && market.priceNo >= botStatus.chronosMinPrice && market.priceNo <= botStatus.chronosMaxPrice) {
-            
-            const alreadyInvested = botStatus.activePositions.some(p => p.tokenId === market.tokenNo);
-            const alreadyPending = pendingOrdersCache.has(market.tokenNo);
-            const alreadyClosed = closedPositionsCache.has(market.tokenNo);
-            if (alreadyInvested || alreadyPending || alreadyClosed) continue;
+        // Filtro principal
+        if (hoursLeft <= 0 || hoursLeft > botStatus.chronosHoursLeft) continue;
+        if (market.priceNo < botStatus.chronosMinPrice || market.priceNo > botStatus.chronosMaxPrice) continue;
 
-            const saldoLibre = parseFloat(botStatus.clobOnlyUSDC || 0);
-            if (saldoLibre < botStatus.chronosBetAmount) continue;
+        candidatesFound++;
 
-            console.log(`⏳ [CHRONOS DETECTADO] ${market.title} | Precio NO: $${market.priceNo} | Expira en: ${hoursLeft.toFixed(1)}h`);
+        const alreadyInvested = botStatus.activePositions.some(p => p.tokenId === market.tokenNo);
+        const alreadyPending = pendingOrdersCache.has(market.tokenNo);
+        const alreadyClosed = closedPositionsCache.has(market.tokenNo);
 
-            const newsString = await getLatestNews(market.title, market.category);
-            
-            // 🛡️ FIX QUANT: Prompt adaptado al parser JSON nativo
-            // Dentro del try de cada mercado detectado:
-            const chronosPrompt = `
-            [THETA DECAY ANALYSIS]
-            Mercado: "${market.title}"
-            Precio del NO: $${market.priceNo}
-            Horas restantes: ${hoursLeft.toFixed(1)}h
+        if (alreadyInvested || alreadyPending || alreadyClosed) {
+            console.log(`   ⏭️ [CHRONOS] Ya tenemos posición en: ${market.title.substring(0,60)}...`);
+            continue;
+        }
 
-            INSTRUCCIONES ESTRICTAS:
-            - Si el evento es muy improbable que ocurra en las últimas horas (noticias muertas o sin catalizadores), responde con recommendation = "WAIT" (significa comprar el NO).
-            - Sé agresivo: si no hay evidencia fuerte de que el evento sucederá pronto, considera "WAIT".
-            `;
+        const saldoLibre = parseFloat(botStatus.clobOnlyUSDC || 0);
+        if (saldoLibre < botStatus.chronosBetAmount) {
+            console.log(`   ⚠️ [CHRONOS] Saldo insuficiente para disparo`);
+            continue;
+        }
 
+        console.log(`⏳ [CHRONOS DETECTADO] ${market.title} | Precio NO: $${market.priceNo} | Expira en: ${hoursLeft.toFixed(1)}h`);
+
+        const newsString = await getLatestNews(market.title, market.category || "");
+
+        // 🔥 PROMPT MEJORADO - Más agresivo en Theta Decay
+        const chronosPrompt = `
+Eres un experto en Theta Decay en Polymarket.
+
+Mercado: "${market.title}"
+Precio actual del NO: $${market.priceNo}
+Horas restantes: ${hoursLeft.toFixed(1)}h
+
+Noticias recientes: "${newsString || 'Sin noticias relevantes'}"
+
+INSTRUCCIÓN CLARA:
+- Si el evento tiene poca probabilidad de ocurrir en las últimas horas (noticias débiles, evento olvidado, o sin catalizadores), responde con recommendation = "WAIT" (significa que es seguro comprar el NO).
+- Solo responde "BUY" si hay evidencia fuerte de que el evento sucederá pronto.
+- Sé más agresivo que conservador en mercados cercanos a expiración.
+Responde en formato JSON.
+`;
+
+        try {
             let result;
             const claudeRes = await analyzeMarketWithClaude(market.title, chronosPrompt, 1);
 
             if (!claudeRes.isError) {
                 result = { 
                     isDead: claudeRes.recommendation === "WAIT" || 
-                            claudeRes.reason.toLowerCase().includes("muerto") || 
-                            claudeRes.reason.toLowerCase().includes("improbable"),
+                            claudeRes.reason.toLowerCase().includes("muerto") ||
+                            claudeRes.reason.toLowerCase().includes("improbable") ||
+                            claudeRes.reason.toLowerCase().includes("olvidado"),
                     reason: claudeRes.reason, 
                     confidence: (claudeRes.prob * 100) || 80 
                 };
             } else {
-                    const grokRes = await analyzeMarketWithGrok(market.title, chronosPrompt, 1);
-                    if (!grokRes.isError) {
-                        result = { isDead: grokRes.recommendation === "WAIT" || grokRes.reason.toLowerCase().includes("muerto"), reason: grokRes.reason, confidence: (grokRes.prob * 100) || 85 };
-                    } else continue; 
-                }
-
-                if (result.isDead && result.confidence >= 75) {
-                    console.log(`📉 [CHRONOS] IA Confirma Evento Muerto. Comprando el NO. Razón: ${result.reason}`);
-
-                    const currentLivePrice = await getMarketPrice(market.tokenNo) || market.priceNo;
-                    if (parseFloat(currentLivePrice) > market.priceNo + 0.03) {
-                        console.log(`⚠️ [CHRONOS] El precio subió mientras la IA pensaba. Abortando.`);
-                        continue;
-                    }
-
-                    const tradeResult = await executeTradeOnChain(market.conditionId, market.tokenNo, botStatus.chronosBetAmount, currentLivePrice, market.tickSize);
-                    
-                    if (tradeResult?.success) {
-                        pendingOrdersCache.add(market.tokenNo);
-                        setTimeout(() => pendingOrdersCache.delete(market.tokenNo), 60000); // Limpieza Cuántica
-                        botStatus.lastTrades[market.tokenNo] = Date.now();
-                        botStatus.positionEngines[market.tokenNo] = "CHRONOS"; // <-- TATUAJE DE MEMORIA
-                        
-                        botStatus.activePositions.push({
-                            tokenId: market.tokenNo,
-                            conditionId: market.conditionId,
-                            marketName: market.title,
-                            sizeCopied: botStatus.chronosBetAmount,        
-                            exactSize: botStatus.chronosBetAmount / currentLivePrice, 
-                            priceEntry: currentLivePrice,
-                            outcome: "NO",
-                            category: market.category || "THETA_DECAY",
-                            status: "ACTIVO 🟢",
-                            engine: "CHRONOS" 
-                        });
-                        saveConfigToDisk("Disparo Chronos");
-
-                        // 📱 NUEVO: Alerta directa a Telegram
-                        try {
-                            const telegramMsg = `⏳ *NUEVA COSECHA CHRONOS*\n🎯 ${market.title}\n🛒 Compra: *NO*\n💰 Capital: $${botStatus.chronosBetAmount}\n📉 Precio: $${currentLivePrice}\n⏰ Expira en: ${hoursLeft.toFixed(1)}h\n🧹 Extrayendo valor del tiempo...`;
-                            if (typeof sendAlert === "function") await sendAlert(telegramMsg);
-                        } catch (e) {
-                            console.error("❌ Error enviando alerta de Telegram (Chronos):", e.message);
-                        }
-
-                        if (typeof sendSniperAlert === "function") {
-                            await sendSniperAlert({
-                                marketName: `⏳ [CHRONOS HARVESTER] ${market.title} (Compra: NO)`, 
-                                probability: result.confidence / 100, 
-                                marketPrice: currentLivePrice,
-                                edge: (0.99 - currentLivePrice), 
-                                suggestedInversion: botStatus.chronosBetAmount, 
-                                reasoning: "Expiración inminente sin catalizadores. Extrayendo valor del tiempo...",
-                                engine: "Chronos"
-                            });
-                        }
-                    }
+                const grokRes = await analyzeMarketWithGrok(market.title, chronosPrompt, 1);
+                if (!grokRes.isError) {
+                    result = { 
+                        isDead: grokRes.recommendation === "WAIT" || 
+                                grokRes.reason.toLowerCase().includes("muerto"),
+                        reason: grokRes.reason, 
+                        confidence: (grokRes.prob * 100) || 80 
+                    };
                 } else {
-                    console.log(`⏩ [CHRONOS] Peligro: El evento podría ocurrir. Ignorando.`);
+                    console.log(`   ⚠️ [CHRONOS] Ambas IAs fallaron`);
+                    continue;
                 }
-            } catch (err) {
-                console.error("❌ Error en Chronos IA:", err.message);
             }
+
+            if (result.isDead && result.confidence >= 70) {
+                console.log(`📉 [CHRONOS] IA Confirma Evento Muerto → Comprando NO. Razón: ${result.reason}`);
+
+                const currentLivePrice = await getMarketPrice(market.tokenNo) || market.priceNo;
+
+                if (parseFloat(currentLivePrice) > market.priceNo + 0.04) {
+                    console.log(`⚠️ [CHRONOS] Precio subió demasiado. Abortando.`);
+                    continue;
+                }
+
+                const tradeResult = await executeTradeOnChain(
+                    market.conditionId, 
+                    market.tokenNo, 
+                    botStatus.chronosBetAmount, 
+                    currentLivePrice, 
+                    market.tickSize || "0.01"
+                );
+
+                if (tradeResult?.success) {
+                    pendingOrdersCache.add(market.tokenNo);
+                    setTimeout(() => pendingOrdersCache.delete(market.tokenNo), 60000);
+
+                    botStatus.lastTrades[market.tokenNo] = Date.now();
+                    botStatus.positionEngines[market.tokenNo] = "CHRONOS";
+
+                    botStatus.activePositions.push({
+                        tokenId: market.tokenNo,
+                        conditionId: market.conditionId,
+                        marketName: market.title,
+                        sizeCopied: botStatus.chronosBetAmount,
+                        exactSize: botStatus.chronosBetAmount / currentLivePrice,
+                        priceEntry: currentLivePrice,
+                        outcome: "NO",
+                        category: market.category || "THETA_DECAY",
+                        status: "ACTIVO 🟢",
+                        engine: "CHRONOS"
+                    });
+
+                    saveConfigToDisk("Disparo Chronos");
+
+                    await sendAlert(`⏳ *CHRONOS HARVESTER*\n🎯 ${market.title}\n🛒 Compra: *NO* a $${currentLivePrice}\n💰 $${botStatus.chronosBetAmount} | Expira en ${hoursLeft.toFixed(1)}h`);
+
+                    console.log(`✅ [CHRONOS] ¡Disparo exitoso!`);
+                }
+            } else {
+                console.log(`⏩ [CHRONOS] Peligro: El evento podría ocurrir. Ignorando.`);
+            }
+        } catch (err) {
+            console.error(`❌ Error en Chronos IA para ${market.title}:`, err.message);
         }
+    }
+
+    if (candidatesFound === 0) {
+        console.log(`⏳ [CHRONOS] No se encontraron mercados que cumplan los criterios esta vez.`);
     }
 }
 
