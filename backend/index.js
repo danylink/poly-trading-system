@@ -2896,30 +2896,36 @@ async function cleanupCopiedTrades() {
 }
 
 // ==========================================
-// 🧠 MOTOR DE MEMORIA: REGISTRO DE PRECIOS
+// 🧠 MOTOR DE MEMORIA: REGISTRO DE PRECIOS (Optimizado)
 // ==========================================
 function recordPriceToMemory(tokenId, currentPrice) {
-    if (!botStatus.equalizerEnabled) return; // Si está apagado, ahorramos RAM
+    if (!tokenId || !currentPrice) return;
 
     const now = Date.now();
-    
-    // 1. Inicializar la matriz del mercado si no existe
+    const price = parseFloat(currentPrice);
+
+    if (isNaN(price) || price <= 0) return;
+
+    // 1. Inicializar si no existe
     if (!priceHistoryCache[tokenId]) {
         priceHistoryCache[tokenId] = [];
     }
 
-    // 2. Inyectar el precio actual en la línea de tiempo
+    // 2. Agregar nuevo precio
     priceHistoryCache[tokenId].push({ 
         timestamp: now, 
-        price: parseFloat(currentPrice) 
+        price: price 
     });
 
-    // 3. Limpieza Quant (Garbage Collection)
-    // Destruimos cualquier registro que tenga más de 10 minutos de antigüedad (600,000 ms).
-    // Solo nos interesa el pasado reciente para cazar el Pánico.
-    priceHistoryCache[tokenId] = priceHistoryCache[tokenId].filter(
-        entry => (now - entry.timestamp) <= 10 * 60 * 1000
-    );
+    // 3. Mantener solo los últimos 8 registros (Ring Buffer) - Suficiente para detectar shocks
+    if (priceHistoryCache[tokenId].length > 8) {
+        priceHistoryCache[tokenId].shift(); // Elimina el más antiguo
+    }
+
+    // 4. Debug opcional (actívalo cuando estés testeando)
+    if (botStatus.equalizerEnabled && Math.random() < 0.1) { // 10% de las veces
+        console.log(`📊 [PRICE MEMORY] ${tokenId.slice(0,8)}... → $${price.toFixed(4)} | Historial: ${priceHistoryCache[tokenId].length} pts`);
+    }
 }
 
 // ==========================================
@@ -3080,19 +3086,27 @@ async function executeEqualizerTrade(marketData, outcomeToBuy) {
 // 🧠 RADAR DE ALTA FRECUENCIA (Alimenta Equalizer y Chronos)
 // ==========================================
 async function updateHighFrequencyRadar() {
-    // Si ambos están apagados, ahorramos recursos
     if (!botStatus.equalizerEnabled && !botStatus.chronosEnabled) return;
     
     try {
-        // 1. Descargamos los precios frescos
         await refreshWatchlist(); 
         
-        // 2. Solo alimentamos la RAM del historial si el Equalizer está encendido
+        // 🔥 REGISTRO DE PRECIOS PARA EQUALIZER + FUTUROS ENGINES
+        botStatus.watchlist.forEach(market => {
+            if (market.priceYes) {
+                recordPriceToMemory(market.tokenYes, market.priceYes);
+            }
+            if (market.priceNo) {
+                recordPriceToMemory(market.tokenNo, market.priceNo);
+            }
+        });
+
+        // Debug global ocasional
         if (botStatus.equalizerEnabled) {
-            botStatus.watchlist.forEach(market => {
-                if (market.priceYes) recordPriceToMemory(market.tokenYes, market.priceYes);
-                if (market.priceNo) recordPriceToMemory(market.tokenNo, market.priceNo);
-            });
+            const cacheSize = Object.keys(priceHistoryCache).length;
+            if (Math.random() < 0.05) {
+                console.log(`🌊 [EQUALIZER CACHE] ${cacheSize} mercados en memoria`);
+            }
         }
     } catch (error) {
         console.error("❌ Error alimentando radar HFT:", error.message);
@@ -3103,6 +3117,8 @@ async function updateHighFrequencyRadar() {
 // ⏳ CHRONOS HARVESTER (THETA DECAY ENGINE)
 // ==========================================
 async function runChronosHarvester() {
+
+    console.log(`[CHRONOS DEBUG] Watchlist size: ${botStatus.watchlist.length} | Enabled: ${botStatus.chronosEnabled}`);
     if (!botStatus.chronosEnabled || botStatus.isPanicStopped) return;
 
     console.log(`⏳ [CHRONOS] Escaneando Watchlist en busca de Theta Decay...`);
@@ -3215,6 +3231,7 @@ async function runChronosHarvester() {
 // 📈 ANALIZADOR DE SHOCKS DE LIQUIDEZ (BLINDADO QUANT)
 // ==========================================
 async function checkForLiquidityShocks() {
+    console.log(`[EQUALIZER DEBUG] Cache size: ${Object.keys(priceHistoryCache).length} tokens`);
     if (!botStatus.equalizerEnabled) return;
     if (botStatus.isPanicStopped) return; 
 
