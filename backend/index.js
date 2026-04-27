@@ -668,9 +668,25 @@ async function runKineticPressureScanner() {
             const currentRatio = buyPressure / (sellPressure || 1);
 
             if (currentRatio >= botStatus.kineticImbalanceRatio) {
-                // 🛡️ CANDADO QUANT ESTRICTO: Previene disparos en ráfaga (Ametralladora)
+                // 🛡️ CANDADO QUANT ESTRICTO: Previene disparos en ráfaga
                 if (botStatus.activePositions.some(p => p.tokenId === market.tokenYes)) continue;
-                if (pendingOrdersCache.has(market.tokenYes)) continue; // <-- FIX VITAL
+                if (typeof pendingOrdersCache !== 'undefined' && pendingOrdersCache.has(market.tokenYes)) continue;
+                
+                // 🔥 FIX 1: Candado de Posiciones Cerradas (Si ya lo vendimos, no lo volvemos a tocar)
+                if (typeof closedPositionsCache !== 'undefined' && closedPositionsCache.has(market.tokenYes)) {
+                    continue;
+                }
+
+                // 🔥 FIX 2: Candado de Cooldown (Respeta los minutos de espera configurados en el Dashboard)
+                const lastTradeTime = botStatus.lastTrades[market.tokenYes];
+                if (lastTradeTime) {
+                    const minutesSince = (Date.now() - lastTradeTime) / 60000;
+                    const cooldownMin = botStatus.riskSettings?.tradeCooldownMin || 60;
+                    if (minutesSince < cooldownMin) {
+                        continue; // Sigue en tiempo de espera, saltamos al siguiente mercado
+                    }
+                }
+
                 if (parseFloat(botStatus.clobOnlyUSDC || 0) < botStatus.kineticBetAmount) continue;
 
                 console.log(`🌊 [KINETIC DETECTADO] Presión de compra extrema en ${market.title}`);
@@ -683,14 +699,16 @@ async function runKineticPressureScanner() {
                 if (tradeResult?.success) {
                     const targetTokenId = market.tokenYes;
                     
-                    // 🔥 FIX VITAL: Bloquear futuros disparos instantáneamente
-                    pendingOrdersCache.add(targetTokenId);
-                    setTimeout(() => pendingOrdersCache.delete(targetTokenId), 60000); // Limpieza Cuántica
+                    // Bloquear futuros disparos instantáneamente
+                    if (typeof pendingOrdersCache !== 'undefined') {
+                        pendingOrdersCache.add(targetTokenId);
+                        setTimeout(() => pendingOrdersCache.delete(targetTokenId), 60000);
+                    }
 
                     botStatus.positionEngines[targetTokenId] = "KINETIC";
-                    botStatus.lastTrades[targetTokenId] = Date.now();
+                    botStatus.lastTrades[targetTokenId] = Date.now(); // ← Esto activa el Cooldown
                     
-                    // 🔥 FIX VITAL: Inyección inmediata al Frontend para verlo en vivo
+                    // Inyección inmediata al Frontend para verlo en vivo
                     botStatus.activePositions.push({
                         tokenId: targetTokenId,
                         conditionId: market.conditionId,
@@ -706,7 +724,7 @@ async function runKineticPressureScanner() {
 
                     saveConfigToDisk("Disparo Kinetic Pressure");
                     
-                    // 1. KINETIC PRESSURE
+                    // Notificación Telegram
                     await sendAlert(
                         `🌊 *KINETIC PRESSURE (BUY)*\n\n` +
                         `🎯 ${market.title}\n` +
