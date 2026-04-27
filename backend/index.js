@@ -1837,7 +1837,7 @@ async function autoSellManager() {
                 // ====================== LÓGICA ULTRA AGRESIVA ======================
                 let maxAllowedSlippage = botStatus.riskSettings.tpLiquiditySlippage || 55;
 
-                if (currentSharePrice >= 0.97) {
+                if (currentSharePrice >= 0.95) {
                     maxAllowedSlippage = 99.9;     // ← Casi cualquier bid es aceptable
                 } else if (currentSharePrice >= 0.90) {
                     maxAllowedSlippage = 98.5;
@@ -1885,9 +1885,8 @@ async function autoSellManager() {
             continue;
         }
 
-        // ====================== STOP LOSS (mantengo tu lógica) ======================
+        // ====================== STOP LOSS - ADAPTATIVO AGRESIVO ======================
         if (profit <= riskConfig.stopLossThreshold) {
-            // ... (tu código original de SL aquí, sin cambios)
             const isLotteryTicket = currentSharePrice <= 0.03;
             const isWorthRescuing = parseFloat(pos.currentValue || 0) >= 0.50;
 
@@ -1911,19 +1910,16 @@ async function autoSellManager() {
                 let bestBidPrice = parseFloat(bids[0].price);
                 const spreadDropPct = currentSharePrice > 0 ? ((currentSharePrice - bestBidPrice) / currentSharePrice) * 100 : 0;
 
-                // ====================== LÓGICA ULTRA AGRESIVA ======================
+                // ====================== LÓGICA ADAPTATIVA PARA SL ======================
                 let maxAllowedSlippage = botStatus.riskSettings.tpLiquiditySlippage || 55;
 
-                if (currentSharePrice >= 0.95) {           // ← Cambiado de 0.97 a 0.95
-                    maxAllowedSlippage = 99.9;
-                } else if (currentSharePrice >= 0.90) {
-                    maxAllowedSlippage = 98.5;
-                } else if (profit > 80) {
+                if (currentSharePrice <= 0.10 || profit <= -70) {
+                    maxAllowedSlippage = 99.0;     // Pérdidas grandes o precio muy bajo → vender casi a cualquier precio
+                } else if (currentSharePrice <= 0.20 || profit <= -50) {
                     maxAllowedSlippage = 95;
                 }
 
-
-                if (currentSharePrice < 0.20 || profit < -70) maxAllowedSlippage = 95;
+                console.log(`[DEBUG SL] Spread: ${spreadDropPct.toFixed(1)}% | Max permitido: ${maxAllowedSlippage}% | Best Bid: $${bestBidPrice.toFixed(3)}`);
 
                 if (spreadDropPct > maxAllowedSlippage) {
                     console.log(`⚠️ [ALERTA LIQUIDEZ SL] Abortando en ${marketNameShort} (spread ${spreadDropPct.toFixed(1)}%)`);
@@ -1948,6 +1944,8 @@ async function autoSellManager() {
                 const result = await executeSellOnChain(pos.conditionId || null, pos.tokenId, sharesToSell, worstPrice, "0.01");
 
                 if (result?.success) {
+                    console.log(`✅ SL EJECUTADO [${originTag}] → ${marketNameShort} (${profit.toFixed(1)}%)`);
+
                     closedPositionsCache.add(pos.tokenId);
                     delete botStatus.positionEngines[pos.tokenId];
 
@@ -1959,6 +1957,7 @@ async function autoSellManager() {
                         targetStats.totalTrades += 1;
                         targetStats.winRate = (targetStats.wins / targetStats.totalTrades) * 100;
                     }
+
                     saveConfigToDisk(`SL ${originTag} Ejecutado`);
                     await updateRealBalances();
                     await sendAlert(`🛑 *STOP LOSS (${originTag})*\n🎯 ${marketNameShort}\n📊 🔴 ${profit.toFixed(1)}%`);
