@@ -1911,7 +1911,18 @@ async function autoSellManager() {
                 let bestBidPrice = parseFloat(bids[0].price);
                 const spreadDropPct = currentSharePrice > 0 ? ((currentSharePrice - bestBidPrice) / currentSharePrice) * 100 : 0;
 
+                // ====================== LÓGICA ULTRA AGRESIVA ======================
                 let maxAllowedSlippage = botStatus.riskSettings.tpLiquiditySlippage || 55;
+
+                if (currentSharePrice >= 0.95) {           // ← Cambiado de 0.97 a 0.95
+                    maxAllowedSlippage = 99.9;
+                } else if (currentSharePrice >= 0.90) {
+                    maxAllowedSlippage = 98.5;
+                } else if (profit > 80) {
+                    maxAllowedSlippage = 95;
+                }
+
+
                 if (currentSharePrice < 0.20 || profit < -70) maxAllowedSlippage = 95;
 
                 if (spreadDropPct > maxAllowedSlippage) {
