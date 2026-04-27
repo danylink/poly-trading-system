@@ -3154,20 +3154,30 @@ async function runChronosHarvester() {
             const newsString = await getLatestNews(market.title, market.category);
             
             // 🛡️ FIX QUANT: Prompt adaptado al parser JSON nativo
+            // Dentro del try de cada mercado detectado:
             const chronosPrompt = `
-                [INFO THETA DECAY]: El mercado "${market.title}" expira en solo ${hoursLeft.toFixed(1)} horas. 
-                Noticias recientes: "${newsString || 'Ninguna'}".
-                INSTRUCCIÓN VITAL: Si NO hay noticias fuertes que indiquen que el evento va a suceder de último minuto, tu "recommendation" debe ser "WAIT" y tu "reason" debe ser "Evento muerto por tiempo". Si hay peligro real de que suceda, pon "BUY".
+            [THETA DECAY ANALYSIS]
+            Mercado: "${market.title}"
+            Precio del NO: $${market.priceNo}
+            Horas restantes: ${hoursLeft.toFixed(1)}h
+
+            INSTRUCCIONES ESTRICTAS:
+            - Si el evento es muy improbable que ocurra en las últimas horas (noticias muertas o sin catalizadores), responde con recommendation = "WAIT" (significa comprar el NO).
+            - Sé agresivo: si no hay evidencia fuerte de que el evento sucederá pronto, considera "WAIT".
             `;
 
-            try {
-                let result;
-                const claudeRes = await analyzeMarketWithClaude(market.title, chronosPrompt, 1);
-                
-                if (!claudeRes.isError) {
-                    // Si Claude dice WAIT, significa que no pasará nada (El evento está muerto, compramos el NO)
-                    result = { isDead: claudeRes.recommendation === "WAIT" || claudeRes.reason.toLowerCase().includes("muerto"), reason: claudeRes.reason, confidence: (claudeRes.prob * 100) || 85 };
-                } else {
+            let result;
+            const claudeRes = await analyzeMarketWithClaude(market.title, chronosPrompt, 1);
+
+            if (!claudeRes.isError) {
+                result = { 
+                    isDead: claudeRes.recommendation === "WAIT" || 
+                            claudeRes.reason.toLowerCase().includes("muerto") || 
+                            claudeRes.reason.toLowerCase().includes("improbable"),
+                    reason: claudeRes.reason, 
+                    confidence: (claudeRes.prob * 100) || 80 
+                };
+            } else {
                     const grokRes = await analyzeMarketWithGrok(market.title, chronosPrompt, 1);
                     if (!grokRes.isError) {
                         result = { isDead: grokRes.recommendation === "WAIT" || grokRes.reason.toLowerCase().includes("muerto"), reason: grokRes.reason, confidence: (grokRes.prob * 100) || 85 };
