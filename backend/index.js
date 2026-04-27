@@ -1739,7 +1739,7 @@ function getCustomMarketRules(marketTitle = "") {
 }
 
 // ==========================================
-// AUTO SELL MANAGER - VERSIÓN DEBUG + ULTRA AGRESIVA (Trace Completo)
+// AUTO SELL MANAGER - VERSIÓN ULTRA AGRESIVA 99.9% (FIX FINAL)
 // ==========================================
 async function autoSellManager() {
     if (!botStatus.autoTradeEnabled) return;
@@ -1777,47 +1777,43 @@ async function autoSellManager() {
         if (!botStatus.partialSells) botStatus.partialSells = [];
         const hasDonePartial = botStatus.partialSells.includes(pos.tokenId);
 
-        console.log(`[DEBUG AUTO-SELL] ${originTag} | ${marketNameShort} | Profit: ${profit.toFixed(1)}% | Precio: $${currentSharePrice.toFixed(3)} | PartialDone: ${hasDonePartial}`);
+        if (profit >= (riskConfig.takeProfitThreshold - 8) || profit <= (riskConfig.stopLossThreshold + 8)) {
+            console.log(`[DEBUG] ${originTag} | ${marketNameShort} | Profit: ${profit.toFixed(1)}% | Precio: $${currentSharePrice.toFixed(3)}`);
+        }
 
-        // ====================== 1. TP PARCIAL (SOLO entre 45% y 80%) ======================
+        // ====================== TP PARCIAL (Solo 45-80%) ======================
         if (isWhaleTrade && profit >= 45 && profit < 80 && !hasDonePartial) {
-            console.log(`[DEBUG PARCIAL] Entrando en TP Parcial para ${marketNameShort}`);
+            console.log(`[DEBUG PARCIAL] Entrando parcial en ${marketNameShort}`);
+            // ... (mantengo tu lógica actual de parcial, pero con max 98%)
             try {
                 const bookResp = await axios.get(`https://clob.polymarket.com/book?token_id=${pos.tokenId}`, { 
                     httpsAgent: agent, timeout: 10000 
                 });
                 const bids = bookResp.data?.bids || [];
-                
                 if (bids.length > 0) {
                     const bestPrice = parseFloat(bids[0].price);
-                    const spreadDropPct = currentSharePrice > 0 ? ((currentSharePrice - bestPrice) / currentSharePrice) * 100 : 0;
-                    
-                    let maxAllowedSlippage = botStatus.riskSettings.tpLiquiditySlippage || 55;
-                    if (currentSharePrice > 0.90) maxAllowedSlippage = 98;
+                    const spread = currentSharePrice > 0 ? ((currentSharePrice - bestPrice) / currentSharePrice) * 100 : 0;
+                    let maxSlip = botStatus.riskSettings.tpLiquiditySlippage || 55;
+                    if (currentSharePrice > 0.90) maxSlip = 98;
 
-                    console.log(`[DEBUG PARCIAL] Spread: ${spreadDropPct.toFixed(1)}% | Max permitido: ${maxAllowedSlippage}% | BestPrice: $${bestPrice.toFixed(3)}`);
-
-                    if (spreadDropPct <= maxAllowedSlippage && bestPrice > 0.001) {
-                        const halfShares = parseFloat(pos.exactSize || pos.size || 0) / 2;
-                        const result = await executeSellOnChain(pos.conditionId || null, pos.tokenId, halfShares, bestPrice, "0.01");
-                        
+                    if (spread <= maxSlip && bestPrice > 0.001) {
+                        const half = parseFloat(pos.exactSize || pos.size || 0) / 2;
+                        const result = await executeSellOnChain(pos.conditionId || null, pos.tokenId, half, bestPrice, "0.01");
                         if (result?.success) {
                             botStatus.partialSells.push(pos.tokenId);
                             console.log(`✅ TP PARCIAL EJECUTADO en ${marketNameShort}`);
-                            saveConfigToDisk("Take Profit Parcial Ejecutado");
+                            saveConfigToDisk("TP Parcial");
                             await updateRealBalances();
-                            await sendAlert(`🌓 *TAKE PROFIT PARCIAL (50%)*\nOrigen: ${originTag}\n📈 ${marketNameShort}`);
+                            await sendAlert(`🌓 *TP PARCIAL* ${marketNameShort} +${profit.toFixed(1)}%`);
                         }
                     } else {
-                        console.log(`⚠️ [LIQUIDEZ PARCIAL] Abortando en ${marketNameShort} (spread ${spreadDropPct.toFixed(1)}%)`);
+                        console.log(`⚠️ [PARCIAL] Abortando ${marketNameShort} (spread ${spread.toFixed(1)}%)`);
                     }
                 }
-            } catch (e) {
-                console.error(`❌ TP Parcial:`, e.message);
-            }
+            } catch (e) { console.error(`❌ TP Parcial:`, e.message); }
         }
 
-        // ====================== 2. TP TOTAL (Prioridad alta cuando ya está muy ganado) ======================
+        // ====================== TP TOTAL - ULTRA AGRESIVO ======================
         let effectiveTpThreshold = riskConfig.takeProfitThreshold || 15;
         if (originTag === "EQUALIZER") effectiveTpThreshold = botStatus.equalizerTpThreshold ?? 15;
         else if (originTag === "CHRONOS") effectiveTpThreshold = botStatus.chronosTpThreshold ?? 20;
@@ -1825,7 +1821,7 @@ async function autoSellManager() {
         else if (isWhaleTrade && hasDonePartial) effectiveTpThreshold = botStatus.whalePostPartialTp ?? 80;
 
         if (profit >= effectiveTpThreshold || isMaxPriceReached || currentSharePrice >= 0.95) {
-            console.log(`[DEBUG TOTAL] Entrando en TP TOTAL para ${marketNameShort} (profit=${profit.toFixed(1)}%)`);
+            console.log(`[DEBUG TOTAL] Entrando TP TOTAL → ${marketNameShort} (Precio: $${currentSharePrice.toFixed(3)}, Profit: ${profit.toFixed(1)}%)`);
 
             try {
                 const bookResp = await axios.get(`https://clob.polymarket.com/book?token_id=${pos.tokenId}`, { 
@@ -1838,12 +1834,18 @@ async function autoSellManager() {
                 const bestPrice = parseFloat(bids[0].price);
                 const spreadDropPct = currentSharePrice > 0 ? ((currentSharePrice - bestPrice) / currentSharePrice) * 100 : 0;
 
+                // ====================== LÓGICA ULTRA AGRESIVA ======================
                 let maxAllowedSlippage = botStatus.riskSettings.tpLiquiditySlippage || 55;
-                if (currentSharePrice > 0.90 || isMaxPriceReached) maxAllowedSlippage = 98;
-                else if (currentSharePrice > 0.80) maxAllowedSlippage = 90;
-                else if (profit > 80) maxAllowedSlippage = 95;
 
-                console.log(`[DEBUG TOTAL] Spread: ${spreadDropPct.toFixed(1)}% | Max permitido: ${maxAllowedSlippage}% | BestPrice: $${bestPrice.toFixed(3)}`);
+                if (currentSharePrice >= 0.97 || isMaxPriceReached) {
+                    maxAllowedSlippage = 99.5;   // Casi cualquier precio es bueno
+                } else if (currentSharePrice > 0.90) {
+                    maxAllowedSlippage = 98;
+                } else if (profit > 80) {
+                    maxAllowedSlippage = 95;
+                }
+
+                console.log(`[DEBUG TOTAL] Spread calculado: ${spreadDropPct.toFixed(1)}% | Máximo permitido: ${maxAllowedSlippage}% | Best Bid: $${bestPrice.toFixed(3)}`);
 
                 if (spreadDropPct > maxAllowedSlippage) {
                     console.log(`⚠️ [ALERTA LIQUIDEZ TP] Abortando en ${marketNameShort} (spread ${spreadDropPct.toFixed(1)}%)`);
@@ -1855,6 +1857,7 @@ async function autoSellManager() {
 
                 if (result?.success) {
                     console.log(`✅ TP TOTAL EJECUTADO [${originTag}] → ${marketNameShort} (+${profit.toFixed(1)}%)`);
+
                     closedPositionsCache.add(pos.tokenId);
                     delete botStatus.positionEngines[pos.tokenId];
 
@@ -1878,9 +1881,9 @@ async function autoSellManager() {
             continue;
         }
 
-        // ====================== 3. STOP LOSS (sin cambios) ======================
+        // ====================== STOP LOSS (mantengo tu lógica) ======================
         if (profit <= riskConfig.stopLossThreshold) {
-            // ... tu bloque original de SL se mantiene igual ...
+            // ... (tu código original de SL aquí, sin cambios)
             const isLotteryTicket = currentSharePrice <= 0.03;
             const isWorthRescuing = parseFloat(pos.currentValue || 0) >= 0.50;
 
@@ -2287,23 +2290,27 @@ async function runBot() {
 }
 
 // ==========================================
-// 8.5 EJECUCIÓN DE VENTA (VERSIÓN PULIDA)
+// 8.5 EJECUCIÓN DE VENTA (VERSIÓN ULTRA DEBUG)
 // ==========================================
 const recentlySoldTokens = new Set();
 
 async function executeSellOnChain(conditionId, tokenId, exactShares, limitPrice, marketTickSize = "0.01") {
     try {
+        console.log(`\n🔴 [EXECUTE SELL DEBUG] Iniciando venta para token: ${tokenId.substring(0,12)}...`);
+        console.log(`   Shares solicitados: ${exactShares} | Precio límite: $${limitPrice}`);
+
         if (recentlySoldTokens.has(tokenId)) {
             console.log(`      ⏳ Token en cooldown. Venta ignorada.`);
             return { success: false, reason: "COOLDOWN_ACTIVE" };
         }
 
-        console.log(`\n--- 🔴 EJECUCIÓN DE VENTA ON-CHAIN ---`);
-
         let sharesToSell = parseFloat(exactShares);
-        if (sharesToSell <= 0) return { success: false, reason: "NO_SHARES" };
+        if (sharesToSell <= 0) {
+            console.log(`❌ [SELL] Shares inválidos: ${sharesToSell}`);
+            return { success: false, reason: "NO_SHARES" };
+        }
 
-        // Obtener saldo real
+        // === VERIFICACIÓN DE SALDO REAL ===
         let realBalance = 0;
         let balanceChecked = false;
         try {
@@ -2315,20 +2322,21 @@ async function executeSellOnChain(conditionId, tokenId, exactShares, limitPrice,
                 const targetPos = positions.find(p => p.asset === tokenId || p.token_id === tokenId);
                 realBalance = targetPos ? parseFloat(targetPos.size || 0) : 0;
                 balanceChecked = true;
+                console.log(`📊 [SELL] Saldo real API: ${realBalance} shares`);
             }
         } catch (e) {
-            console.log("⚠️ No se pudo verificar el saldo real en la API. Se intentará vender la cantidad estimada.");
+            console.log("⚠️ No se pudo verificar saldo real en API.");
         }
 
-        // 🔥 FIX CRÍTICO: Si comprobamos el saldo y es 0, abortamos la venta antes de mandarla a Polymarket
         if (balanceChecked) {
             if (realBalance === 0) {
-                console.log(`👻 Posición fantasma detectada (Saldo Real: 0). Cancelando orden de venta.`);
-                recentlySoldTokens.add(tokenId); // Añadir a cooldown corto para no spamear
+                console.log(`👻 [SELL] POSICIÓN FANTASMA (Saldo Real = 0). Abortando venta.`);
+                recentlySoldTokens.add(tokenId);
                 setTimeout(() => recentlySoldTokens.delete(tokenId), 60000);
                 return { success: false, reason: "ZERO_REAL_BALANCE" };
             }
             if (sharesToSell > realBalance) {
+                console.log(`⚠️ [SELL] Ajustando shares: ${sharesToSell} → ${realBalance} (saldo real)`);
                 sharesToSell = realBalance;
             }
         }
@@ -2336,11 +2344,12 @@ async function executeSellOnChain(conditionId, tokenId, exactShares, limitPrice,
         sharesToSell = Math.max(0, Math.floor((sharesToSell - 0.01) * 100) / 100);
 
         if (sharesToSell <= 0) {
+            console.log(`❌ [SELL] Cantidad final después de ajustes = 0`);
             recentlySoldTokens.add(tokenId);
             return { success: false, reason: "LOW_BALANCE" };
         }
 
-        // Configuración de tick y precio
+        // === CONFIGURACIÓN DE PRECIO Y TICK ===
         let trueTickSize = marketTickSize;
         let isNegRisk = false;
 
@@ -2357,8 +2366,9 @@ async function executeSellOnChain(conditionId, tokenId, exactShares, limitPrice,
         let safeLimitPrice = Number(parseFloat(limitPrice).toFixed(decimales));
         if (safeLimitPrice <= 0) safeLimitPrice = parseFloat(trueTickSize);
 
-        console.log(`📡 Orden SELL: ${sharesToSell} shares | Precio: $${safeLimitPrice}`);
+        console.log(`📡 [SELL] Orden FINAL: ${sharesToSell} shares | Precio: $${safeLimitPrice} | Tick: ${trueTickSize}`);
 
+        // === EJECUCIÓN REAL ===
         const response = await clobClient.createAndPostOrder(
             {
                 tokenID: tokenId,
@@ -2371,16 +2381,20 @@ async function executeSellOnChain(conditionId, tokenId, exactShares, limitPrice,
         );
 
         if (response && response.success) {
-            console.log(`🎉 ¡VENTA ACEPTADA! Order ID: ${response.orderID}`);
+            console.log(`🎉 [SELL ÉXITO] Orden aceptada! Order ID: ${response.orderID}`);
             recentlySoldTokens.add(tokenId);
             setTimeout(() => recentlySoldTokens.delete(tokenId), 3 * 60 * 1000);
             return { success: true, hash: response.orderID };
         } else {
+            console.log(`❌ [SELL RECHAZADA] Respuesta:`, JSON.stringify(response));
             throw new Error(`Orden rechazada: ${JSON.stringify(response)}`);
         }
 
     } catch (error) {
-        console.error("❌ Error en executeSellOnChain:", error.message);
+        console.error(`❌ [EXECUTE SELL ERROR] ${error.message}`);
+        if (error.response) {
+            console.error(`   Status: ${error.response.status} | Data:`, error.response.data);
+        }
         throw error;
     }
 }
