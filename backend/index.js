@@ -673,7 +673,14 @@ async function runKineticPressureScanner() {
 
                     saveConfigToDisk("Disparo Kinetic Pressure");
                     
-                    await sendAlert(`🌊 *KINETIC PRESSURE (BUY)*\n🎯 ${market.title}\n📊 Ratio: *${currentRatio.toFixed(1)}:1*\n💰 Inversión: $${botStatus.kineticBetAmount}\n🚀 Surfeando muro de liquidez...`);
+                    // 1. KINETIC PRESSURE
+                    await sendAlert(
+                        `🌊 *KINETIC PRESSURE (BUY)*\n\n` +
+                        `🎯 ${market.title}\n` +
+                        `📊 Ratio de presión: *${currentRatio.toFixed(1)}:1*\n` +
+                        `💰 Inversión: *$${botStatus.kineticBetAmount} USDC*\n` +
+                        `🚀 Surfeando muro de liquidez...`
+                    );
                 }
             }
         } catch (e) {
@@ -1804,7 +1811,13 @@ async function autoSellManager() {
                             console.log(`✅ TP PARCIAL EJECUTADO en ${marketNameShort}`);
                             saveConfigToDisk("TP Parcial");
                             await updateRealBalances();
-                            await sendAlert(`🌓 *TP PARCIAL* ${marketNameShort} +${profit.toFixed(1)}%`);
+                            await sendAlert(
+                                `🤖 PolySniper:\n` +
+                                `🌓 TAKE PROFIT PARCIAL (50%)\n` +
+                                `📈 Mercado: ${marketNameShort}\n` +
+                                `💰 Mitad asegurada: +$${(halfShares * bestPrice).toFixed(2)}\n` +
+                                `💰 Cartera Total: $${carteraTotal} USDC`
+                            );
                         }
                     } else {
                         console.log(`⚠️ [PARCIAL] Abortando ${marketNameShort} (spread ${spread.toFixed(1)}%)`);
@@ -1874,7 +1887,14 @@ async function autoSellManager() {
 
                     saveConfigToDisk(`TP ${originTag} Ejecutado`);
                     await updateRealBalances();
-                    await sendAlert(`📈 *TAKE PROFIT TOTAL (${originTag})*\n🎯 ${marketNameShort}\n📊 +${profit.toFixed(1)}%`);
+                    await sendAlert(
+                        `🤖 PolySniper:\n` +
+                        `✅ TAKE PROFIT TOTAL (${originTag})\n` +
+                        `📈 Mercado: ${marketNameShort}\n` +
+                        `💰 Ganancia en este mercado: +$${ (sharesToSell * bestPrice).toFixed(2) } (+${profit.toFixed(1)}%)\n` +
+                        `💰 Cartera Total: $${carteraTotal} USDC\n` +
+                        `🟢 Disponible (Poly): $${botStatus.clobOnlyUSDC} USDC`
+                    );
 
                     if (isWhaleTrade) botStatus.copiedPositions = botStatus.copiedPositions.filter(p => p.tokenId !== pos.tokenId);
                     botStatus.activePositions = botStatus.activePositions.filter(p => p.tokenId !== pos.tokenId);
@@ -1960,7 +1980,15 @@ async function autoSellManager() {
 
                     saveConfigToDisk(`SL ${originTag} Ejecutado`);
                     await updateRealBalances();
-                    await sendAlert(`🛑 *STOP LOSS (${originTag})*\n🎯 ${marketNameShort}\n📊 🔴 ${profit.toFixed(1)}%`);
+                    await sendAlert(
+                        `🤖 PolySniper:\n` +
+                        `🛑 STOP LOSS EJECUTADO (${originTag})\n` +
+                        `📉 Mercado: ${marketNameShort}\n` +
+                        `💰 Pérdida en este mercado: $${(sharesToSell * worstPrice - sharesToSell * entryPrice).toFixed(2)} (${profit.toFixed(1)}%)\n` +
+                        `💸 Rescatado ≈ $${(sharesToSell * worstPrice).toFixed(2)} USDC\n` +
+                        `💰 Cartera Total: $${carteraTotal} USDC\n` +
+                        `🟢 Disponible (Poly): $${botStatus.clobOnlyUSDC} USDC`
+                    );
 
                     if (isWhaleTrade) botStatus.copiedPositions = botStatus.copiedPositions.filter(p => p.tokenId !== pos.tokenId);
                     botStatus.activePositions = botStatus.activePositions.filter(p => p.tokenId !== pos.tokenId);
@@ -2471,7 +2499,13 @@ async function autoRedeemPositions() {
                 pos.status = "CANJEADO ✅";
                 redeemedCount++;
 
-                await sendAlert(`🔄 *REDEEM EXITOSO*\nMercado: ${pos.marketName?.substring(0, 45)}...\nCanjeado automáticamente`);
+                // 2. REDEEM NORMAL
+                await sendAlert(
+                    `🔄 *REDEEM EXITOSO*\n\n` +
+                    `📋 Mercado: ${pos.marketName?.substring(0, 45)}...\n` +
+                    `✅ Canjeado automáticamente\n` +
+                    `💰 Cartera Total: *$${(parseFloat(botStatus.clobOnlyUSDC || 0) + parseFloat(botStatus.walletOnlyUSDC || 0)).toFixed(2)} USDC*`
+                );
                 
                 await new Promise(resolve => setTimeout(resolve, 1500)); // Delay seguro
 
@@ -2567,7 +2601,13 @@ async function autoRedeemPositionsGasless() {
                 pos.status = "CANJEADO ✅";
                 redeemedCount++;
 
-                await sendAlert(`🔄 *REDEEM GASLESS EXITOSO*\nMercado: ${pos.marketName?.substring(0, 45)}...\nCanjeado sin pagar gas`);
+                // 3. REDEEM GASLESS
+                await sendAlert(
+                    `🔄 *REDEEM GASLESS EXITOSO*\n\n` +
+                    `📋 Mercado: ${pos.marketName?.substring(0, 45)}...\n` +
+                    `✅ Canjeado sin pagar gas\n` +
+                    `💰 Cartera Total: *$${(parseFloat(botStatus.clobOnlyUSDC || 0) + parseFloat(botStatus.walletOnlyUSDC || 0)).toFixed(2)} USDC*`
+                );
 
                 // Delay Anti-Ban para el Relayer de Polymarket
                 await new Promise(resolve => setTimeout(resolve, 1500));
@@ -2693,7 +2733,13 @@ async function checkDailyLossLimit() {
         if (lossPercent <= -botStatus.dailyLossLimit && !botStatus.isPanicStopped) {
             console.log(`🚨 [DAILY LIMIT] Stop-loss diario activado (${lossPercent.toFixed(1)}%). Deteniendo bot...`);
             botStatus.isPanicStopped = true;
-            await sendAlert(`🚨 *STOP-LOSS DIARIO ACTIVADO*\nPérdida del día real: ${lossPercent.toFixed(1)}%\nBot bloqueó nuevas compras.`);
+            // 4. STOP-LOSS DIARIO
+            await sendAlert(
+                `🚨 *STOP-LOSS DIARIO ACTIVADO*\n\n` +
+                `📉 Pérdida del día: *${lossPercent.toFixed(1)}%*\n` +
+                `Bot bloqueó nuevas compras automáticamente.\n` +
+                `💰 Cartera Total actual: *$${(parseFloat(botStatus.clobOnlyUSDC || 0) + parseFloat(botStatus.walletOnlyUSDC || 0)).toFixed(2)} USDC*`
+            );
         }
     } catch (e) {
         console.error("Error en checkDailyLossLimit:", e.message);
@@ -2794,10 +2840,12 @@ async function monitorSystemHealth() {
                 ? `*Acción:* Ejecutando Auto-Reinicio (Auto-Healing) ahora mismo 🔄` 
                 : `*Acción recomendada:* Monitorear o reiniciar manualmente si persiste.`;
 
+            // 5. ALERTA DE INFRAESTRUCTURA
             await sendAlert(
-                `🚨 *ALERTA DE INFRAESTRUCTURA* 🚨\n\n` + 
-                `${alertMsg}` +
-                `${actionText}`
+                `🚨 *ALERTA DE INFRAESTRUCTURA* 🚨\n\n` +
+                `${alertMsg}\n` +
+                `${actionText}\n\n` +
+                `💻 RAM Bot: *${botRamMB.toFixed(0)} MB*`
             );
 
             lastHealthAlertTime = now;
@@ -3438,7 +3486,13 @@ app.post('/api/execute-trade', async (req, res) => {
             botStatus.pendingSignals = botStatus.pendingSignals.filter(s => s.marketName !== market);
             
             await updateRealBalances();
-            await sendAlert(`💰 *COMPRA MANUAL FINALIZADA*\n${market}\nPrecio: $${finalPrice} USDC`);
+            // 6. COMPRA MANUAL
+            await sendAlert(
+                `💰 *COMPRA MANUAL FINALIZADA*\n\n` +
+                `📋 Mercado: ${market}\n` +
+                `💵 Precio: *$${finalPrice} USDC*\n` +
+                `💰 Inversión: *$${amount} USDC*`
+            );
             
             res.json({ success: true, message: "Operación exitosa", hash: result.hash });
         }
@@ -3485,7 +3539,13 @@ app.post('/api/sell', async (req, res) => {
 
         // 🟢 NUEVO: Alerta de Telegram calculando cuánto dinero rescataste
         const gananciaEstimada = (parseFloat(shares) * bestBidPrice).toFixed(2);
-        await sendAlert(`💰 *POSICIÓN VENDIDA (MANUAL)*\nToken ID: \`${tokenId.substring(0,8)}...\`\nAcciones: ${shares}\nPrecio de Venta: $${bestBidPrice}\nTotal Rescatado: ~$${gananciaEstimada} USDC`);
+        // 7. VENTA MANUAL
+        await sendAlert(
+            `💰 *POSICIÓN VENDIDA (MANUAL)*\n\n` +
+            `📋 Mercado: ${market || "Token " + tokenId.substring(0,8)}...\n` +
+            `📊 Precio de Venta: *$${bestBidPrice}*\n` +
+            `💸 Rescatado: *~$${gananciaEstimada} USDC*`
+        );
 
         await updateRealBalances();
         res.json({ success: true, message: "Posición cerrada", data: sellOrder });
