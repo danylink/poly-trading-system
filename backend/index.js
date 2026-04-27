@@ -1813,7 +1813,7 @@ async function autoSellManager() {
             } catch (e) { console.error(`❌ TP Parcial:`, e.message); }
         }
 
-        // ====================== TP TOTAL - ULTRA AGRESIVO ======================
+        // ====================== TP TOTAL - ULTRA AGRESIVO (FIX FINAL) ======================
         let effectiveTpThreshold = riskConfig.takeProfitThreshold || 15;
         if (originTag === "EQUALIZER") effectiveTpThreshold = botStatus.equalizerTpThreshold ?? 15;
         else if (originTag === "CHRONOS") effectiveTpThreshold = botStatus.chronosTpThreshold ?? 20;
@@ -1837,21 +1837,25 @@ async function autoSellManager() {
                 // ====================== LÓGICA ULTRA AGRESIVA ======================
                 let maxAllowedSlippage = botStatus.riskSettings.tpLiquiditySlippage || 55;
 
-                if (currentSharePrice >= 0.97 || isMaxPriceReached) {
-                    maxAllowedSlippage = 99.5;   // Casi cualquier precio es bueno
-                } else if (currentSharePrice > 0.90) {
-                    maxAllowedSlippage = 98;
+                if (currentSharePrice >= 0.97) {
+                    maxAllowedSlippage = 99.9;     // ← Casi cualquier bid es aceptable
+                } else if (currentSharePrice >= 0.90) {
+                    maxAllowedSlippage = 98.5;
                 } else if (profit > 80) {
                     maxAllowedSlippage = 95;
                 }
 
                 console.log(`[DEBUG TOTAL] Spread calculado: ${spreadDropPct.toFixed(1)}% | Máximo permitido: ${maxAllowedSlippage}% | Best Bid: $${bestPrice.toFixed(3)}`);
 
-                if (spreadDropPct > maxAllowedSlippage) {
+                // BYPASS FINAL: Si el precio teórico es > $0.97, vendemos aunque el bid sea ridículo
+                if (spreadDropPct > maxAllowedSlippage && currentSharePrice < 0.97) {
                     console.log(`⚠️ [ALERTA LIQUIDEZ TP] Abortando en ${marketNameShort} (spread ${spreadDropPct.toFixed(1)}%)`);
                     continue;
                 }
-                if (bestPrice <= 0.001) continue;
+
+                if (bestPrice <= 0.0005) {
+                    console.log(`⚠️ Best bid demasiado bajo (${bestPrice}), pero vendemos igual por estar cerca de resolución.`);
+                }
 
                 const result = await executeSellOnChain(pos.conditionId || null, pos.tokenId, sharesToSell, bestPrice, "0.01");
 
