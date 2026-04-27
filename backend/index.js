@@ -1344,27 +1344,13 @@ async function autoSelectTopWhales() {
 async function cleanupCopiedState() {
     if (!botStatus.copiedTrades || !botStatus.copiedPositions) return;
 
-    const activeTokenIds = new Set(botStatus.copiedPositions.map(p => p.tokenId));
-
-    // Remover de copiedTrades los que ya no están en posiciones activas NI en activePositions reales
-    botStatus.copiedTrades = botStatus.copiedTrades.filter(trade => {
-        const stillActive = activeTokenIds.has(trade.tokenId) ||
-                            botStatus.activePositions.some(pos => pos.tokenId === trade.tokenId);
-        
-        if (!stillActive) {
-            console.log(`🧹 [CLEANUP] Removiendo trade huérfano: ${trade.market.substring(0,40)}...`);
-        }
-        return stillActive;
-    });
-
-    // Opcional: Limpiar duplicados en copiedTrades
-    const seen = new Set();
-    botStatus.copiedTrades = botStatus.copiedTrades.filter(trade => {
-        const key = trade.tokenId + trade.txHash;
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-    });
+    // 🔥 FIX FINAL: Eliminamos el filtro destructivo de Set.
+    // Solo limitamos la longitud de la tabla a las últimas 25 operaciones
+    // para que la interfaz web del Dashboard no se vuelva lenta.
+    
+    if (botStatus.copiedTrades.length > 25) {
+        botStatus.copiedTrades = botStatus.copiedTrades.slice(0, 25);
+    }
 
     saveConfigToDisk("Cleanup de copied state");
 }
