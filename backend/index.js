@@ -1887,7 +1887,6 @@ async function autoSellManager() {
                             const halfValue = (half * bestPrice).toFixed(2);
 
                             await sendAlert(
-                                `🤖 PolySniper:\n` +
                                 `🌓 TAKE PROFIT PARCIAL (50%)\n` +
                                 `📈 Mercado: ${marketNameShort}\n` +
                                 `💰 Mitad asegurada: +$${halfValue}\n` +
@@ -1956,7 +1955,6 @@ async function autoSellManager() {
                     await updateRealBalances();
 
                     await sendAlert(
-                        `🤖 PolySniper:\n` +
                         `✅ TAKE PROFIT TOTAL (${originTag})\n` +
                         `📈 Mercado: ${marketNameShort}\n` +
                         `💰 Ganancia: +${profit.toFixed(1)}%\n` +
@@ -2033,7 +2031,6 @@ async function autoSellManager() {
                     await updateRealBalances();
 
                     await sendAlert(
-                        `🤖 PolySniper:\n` +
                         `🛑 STOP LOSS EJECUTADO (${originTag})\n` +
                         `📉 Mercado: ${marketNameShort}\n` +
                         `💰 Pérdida: ${profit.toFixed(1)}%\n` +
@@ -3294,7 +3291,6 @@ Responde en formato JSON.
 
                     // Reemplaza tu línea actual por esta:
                     await sendAlert(
-                        `🤖 PolySniper:\n` +
                         `⏳ CHRONOS HARVESTER\n` +
                         `🎯 ${market.title}\n` +
                         `🛒 Compra: *NO* a $${currentLivePrice}\n` +
