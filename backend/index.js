@@ -1879,13 +1879,13 @@ async function autoSellManager() {
         if (!botStatus.partialSells) botStatus.partialSells = [];
         const hasDonePartial = botStatus.partialSells.includes(pos.tokenId);
 
-        // Debug (solo posiciones con movimiento relevante)
         if (Math.abs(profit) >= 8) {
             console.log(`[DEBUG AUTOSELL] ${originTag} | ${marketNameShort} | Profit: ${profit.toFixed(1)}% | Precio: $${currentSharePrice.toFixed(3)} | TP Config: ${riskConfig.takeProfitThreshold}%`);
         }
 
         // ====================== TP PARCIAL ======================
         if (isWhaleTrade && profit >= 45 && profit < 80 && !hasDonePartial) {
+            // ... (mantengo tu código de parcial sin cambios) ...
             console.log(`[DEBUG PARCIAL] Intentando TP Parcial en ${marketNameShort}`);
             try {
                 const bookResp = await axios.get(`https://clob.polymarket.com/book?token_id=${pos.tokenId}`, { 
@@ -1899,18 +1899,15 @@ async function autoSellManager() {
 
                     if (spread <= maxSlip && bestPrice > 0.001) {
                         const half = parseFloat(pos.exactSize || pos.size || 0) / 2;
-
                         const result = await executeSellOnChain(pos.conditionId || null, pos.tokenId, half, bestPrice, "0.01");
                         
                         if (result?.success) {
                             botStatus.partialSells.push(pos.tokenId);
                             console.log(`✅ TP PARCIAL EJECUTADO en ${marketNameShort}`);
-
                             saveConfigToDisk("TP Parcial");
                             await updateRealBalances();
 
                             const halfValue = (half * bestPrice).toFixed(2);
-
                             await sendAlert(
                                 `🌓 TAKE PROFIT PARCIAL (50%)\n` +
                                 `📈 Mercado: ${marketNameShort}\n` +
@@ -1930,20 +1927,16 @@ async function autoSellManager() {
         // ====================== TP TOTAL - FIX DEFINITIVO ======================
         let effectiveTpThreshold = riskConfig.takeProfitThreshold || 15;
 
-        // Prioridad 1: Regla personalizada (la más importante)
         const customRule = getCustomMarketRules(pos.marketName || "");
         if (customRule && customRule.takeProfitThreshold !== undefined) {
             effectiveTpThreshold = customRule.takeProfitThreshold;
-        }
-        // Prioridad 2: Engine específico
-        else if (originTag === "EQUALIZER") effectiveTpThreshold = botStatus.equalizerTpThreshold ?? 15;
+        } else if (originTag === "EQUALIZER") effectiveTpThreshold = botStatus.equalizerTpThreshold ?? 15;
         else if (originTag === "CHRONOS") effectiveTpThreshold = botStatus.chronosTpThreshold ?? 20;
         else if (originTag === "KINETIC") effectiveTpThreshold = botStatus.kineticTpThreshold ?? 10;
         else if (isWhaleTrade && hasDonePartial) effectiveTpThreshold = botStatus.whalePostPartialTp ?? 80;
 
-        // 🔥 FIX: Evita TP con ganancia casi cero solo por precio alto
         const shouldTakeProfit = profit >= effectiveTpThreshold;
-        const highPriceBypass = currentSharePrice >= 0.90 && profit >= 5.0;   // ← Solo si hay ganancia real
+        const highPriceBypass = currentSharePrice >= 0.90 && profit >= 5.0;
 
         if (shouldTakeProfit || highPriceBypass) {
             console.log(`[TP TOTAL TRIGGER] ${marketNameShort} → Profit ${profit.toFixed(1)}% (Threshold: ${effectiveTpThreshold}%)`);
@@ -1961,13 +1954,14 @@ async function autoSellManager() {
 
                 let maxAllowedSlippage = botStatus.riskSettings.tpLiquiditySlippage || 65;
 
-                if (currentSharePrice >= 0.85 || profit >= 20) maxAllowedSlippage = 99.0;
+                if (currentSharePrice >= 0.85 || profit >= 20) maxAllowedSlippage = 99.9;   // ← subido a 99.9
                 else if (currentSharePrice >= 0.75 || profit >= 15) maxAllowedSlippage = 95.0;
                 else if (profit > 80) maxAllowedSlippage = 98.0;
 
                 console.log(`[DEBUG TOTAL] Spread: ${spreadDropPct.toFixed(1)}% | Máx permitido: ${maxAllowedSlippage}% | Best Bid: $${bestPrice.toFixed(3)}`);
 
-                if (spreadDropPct > maxAllowedSlippage && currentSharePrice < 0.97) {
+                // 🔥 FIX FINAL: Solo aborta si el spread es EXTREMO y el precio aún no es muy alto
+                if (spreadDropPct > maxAllowedSlippage && currentSharePrice < 0.98) {
                     console.log(`⚠️ [ALERTA LIQUIDEZ TP] Abortando ${marketNameShort} (spread ${spreadDropPct.toFixed(1)}%)`);
                     continue;
                 }
@@ -2003,8 +1997,9 @@ async function autoSellManager() {
             continue;
         }
 
-        // ====================== STOP LOSS ======================
+        // ====================== STOP LOSS (sin cambios) ======================
         if (profit <= riskConfig.stopLossThreshold) {
+            // ... (tu código de Stop Loss actual, sin tocar) ...
             const isLotteryTicket = currentSharePrice <= 0.03;
             const isWorthRescuing = parseFloat(pos.currentValue || 0) >= 0.50;
 
