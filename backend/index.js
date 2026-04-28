@@ -461,16 +461,27 @@ async function conectarClob() {
         });
 
         console.log("Derivando API Key...");
-        let apiCreds;
         
         try {
-            // 🔥 FIX QUANT (Error 400): Intentamos derivar la llave existente primero
-            apiCreds = await authClient.deriveApiKey();
-            console.log("✅ API Key derivada correctamente de la wallet.");
+            // Obtenemos las credenciales
+            const creds = await clobClient.createOrDeriveApiKey();
+            
+            // 🔥 FIX CRÍTICO V2: Re-creamos el cliente inyectando la propiedad "creds"
+            // Esto es lo que permite que executeSellOnChain y executeTradeOnChain firmen correctamente
+            clobClient = new ClobClient({
+                host: "https://clob.polymarket.com",
+                chain: 137,
+                signer: wallet,                    
+                funder: PROXY_WALLET,
+                signatureType: 2,
+                creds: creds, // <=== ESTE ES EL INGREDIENTE FALTANTE
+                builderCode: process.env.POLY_BUILDER_CODE || undefined
+            });
+            
+            console.log("✅ API Key derivada e inyectada correctamente.");
         } catch (e) {
-            console.log("⚠️ No se encontró API Key previa, creando una nueva...");
-            // Si falla porque no existe, entonces la creamos
-            apiCreds = await authClient.createApiKey();
+            console.log("⚠️ Error al derivar la API Key:", e.message);
+            throw e;
         }
 
         console.log("✅ API Credentials V2 obtenidas");
