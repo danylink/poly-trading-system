@@ -440,6 +440,7 @@ console.log("✅ MODO SNIPER PRODUCCIÓN ACTIVADO (CLOB V2 + pUSD)");
 console.log("Wallet conectada:", wallet.address);
 
 
+let clobClient = null;
 // ==========================================
 // AUTENTICACIÓN CLOB V2 (L1 + L2 AUTH UNIFICADA)
 // ==========================================
