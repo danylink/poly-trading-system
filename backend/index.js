@@ -438,13 +438,6 @@ const PUSD_ADDRESS = "0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB";
 console.log("✅ MODO SNIPER PRODUCCIÓN ACTIVADO (CLOB V2 + pUSD)");
 console.log("Wallet conectada:", wallet.address);
 
-
-// ==========================================
-// 1. CONEXIÓN CLOB V2 - VERSIÓN FINAL PARA PROXY (Usando clave pre-creada)
-let clobClient = null;
-//let POLY_APY_KEY = '019d2dbf-dede-76c0-a866-4c631385a520';
-//let POLY_BUILDER_CODE = '0x06816839ca170c9d2676c0c73bb69a437d3aa679ef6645187923f8b6026e89ed';
-
 // ==========================================
 // 1. CONEXIÓN CLOB V2 - VERSIÓN OFICIAL (Usando creds completas)
 let clobClient = null;
