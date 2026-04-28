@@ -443,14 +443,17 @@ console.log("Wallet conectada:", wallet.address);
 // 1. CONEXIÓN CLOB V2 - VERSIÓN OFICIAL (Docs Polymarket)
 let clobClient = null;
 
+// ==========================================
+// AUTENTICACIÓN CLOB V2 (L1 + L2 AUTH)
+// ==========================================
 async function conectarClob() {
     try {
         console.log("🔐 Autenticando con Polymarket CLOB V2...");
 
-        const PROXY_WALLET = "0x876E00CBF5c4fe22F4FA263F4cb713650cB758d2";
+        const PROXY_WALLET = process.env.POLY_PROXY_ADDRESS || "0x876E00CBF5c4fe22F4FA263F4cb713650cB758d2";
 
-        // Constructor V2 correcto según documentación oficial
-        clobClient = new ClobClient({
+        // PASO 1: Cliente L1 (Solo para firmar y obtener credenciales)
+        let authClient = new ClobClient({
             host: "https://clob.polymarket.com",
             chain: 137,
             signer: wallet,                    // ← Obligatorio
@@ -460,13 +463,35 @@ async function conectarClob() {
         });
 
         console.log("Derivando API Key...");
-        const apiCreds = await clobClient.createOrDeriveApiKey();
+        let apiCreds;
+        
+        try {
+            // 🔥 FIX QUANT (Error 400): Intentamos derivar la llave existente primero
+            apiCreds = await authClient.deriveApiKey();
+            console.log("✅ API Key derivada correctamente de la wallet.");
+        } catch (e) {
+            console.log("⚠️ No se encontró API Key previa, creando una nueva...");
+            // Si falla porque no existe, entonces la creamos
+            apiCreds = await authClient.createApiKey();
+        }
 
         console.log("✅ API Credentials V2 obtenidas");
 
+        // PASO 2: Cliente L2 (Completamente autenticado con Credenciales)
+        // Sobrescribimos la variable global clobClient con el cliente full-auth
+        clobClient = new ClobClient({
+            host: "https://clob.polymarket.com",
+            chain: 137,
+            signer: wallet,
+            funder: PROXY_WALLET,
+            signatureType: 2,
+            creds: apiCreds, // <--- ESTO ES LO OBLIGATORIO Y NUEVO EN LA V2
+            builderCode: process.env.POLY_BUILDER_CODE || undefined
+        });
+
         await new Promise(r => setTimeout(r, 2000));
 
-        console.log("✅ CLOB V2 Client conectado correctamente");
+        console.log("✅ CLOB V2 Client conectado y autenticado correctamente");
         console.log(`   - Funder (Proxy): ${PROXY_WALLET}`);
         console.log(`   - Signature Type: 2`);
 
