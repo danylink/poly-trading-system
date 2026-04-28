@@ -4351,40 +4351,40 @@ app.listen(PORT, async () => {
     setInterval(refreshWatchlist, 4 * 60 * 1000);
 
     // 3. Copy Trading HFT paralelo (Chunks)
-    setInterval(checkAndCopyWhaleTrades, 30000); // 30 segundos
+    //setInterval(checkAndCopyWhaleTrades, 30000); // 30 segundos
 
     // 4. Guardián del servidor (RAM + CPU)
-    setInterval(monitorSystemHealth, 90000); // 90 segundos
+    //setInterval(monitorSystemHealth, 90000); // 90 segundos
 
     // 5. Auto Redeem
-    setInterval(autoRedeemPositions, 300000);   // 5 minutos
+    //setInterval(autoRedeemPositions, 300000);   // 5 minutos
 
     // 🐋 6. Radar de Ballenas Macro (Cada 1 Hora)
-    setInterval(runWhaleRadar, 60 * 60 * 1000);
-    setTimeout(runWhaleRadar, 5000); 
+    //setInterval(runWhaleRadar, 60 * 60 * 1000);
+    //setTimeout(runWhaleRadar, 5000); 
 
     // 🌊 7. Quantum Equalizer: Alimentador de Memoria
-    setInterval(updateHighFrequencyRadar, 60 * 1000); // 60 segundos
+    //setInterval(updateHighFrequencyRadar, 60 * 1000); // 60 segundos
 
     // 🌊 8. Quantum Equalizer: Escáner de Shocks de Liquidez
-    setInterval(checkForLiquidityShocks, 2 * 60 * 1000); // 2 minutos
+    //setInterval(checkForLiquidityShocks, 2 * 60 * 1000); // 2 minutos
 
     // ==========================================
     // ⏳ 9. CHRONOS HARVESTER - INICIALIZACIÓN CORRECTA - Cosechador de Theta Decay
     // ==========================================
-    console.log("⏳ [CHRONOS] Programando ejecución cada 15 minutos...");
+    //console.log("⏳ [CHRONOS] Programando ejecución cada 15 minutos...");
 
     // Primera ejecución inmediata (pero después de cargar la watchlist)
-    setTimeout(async () => {
-        console.log("⏳ [CHRONOS] Primera ejecución manual después de cargar watchlist...");
-        await runChronosHarvester();
-    }, 8000); // Espera 8 segundos para que refreshWatchlist termine
+    // setTimeout(async () => {
+    //     console.log("⏳ [CHRONOS] Primera ejecución manual después de cargar watchlist...");
+    //     await runChronosHarvester();
+    // }, 8000); // Espera 8 segundos para que refreshWatchlist termine
 
     // Luego el intervalo normal
-    setInterval(runChronosHarvester, 15 * 60 * 1000);
+    //setInterval(runChronosHarvester, 15 * 60 * 1000);
 
     // 🌊 10. Kinetic Pressure: Radar de Desequilibrio
-    setInterval(runKineticPressureScanner, 20 * 1000); // 20 segundos
+    //setInterval(runKineticPressureScanner, 20 * 1000); // 20 segundos
 
     // 🧹 11. Garbage Collector: Limpieza profunda de RAM
     setInterval(runGarbageCollector, 12 * 60 * 60 * 1000); // 12 horas
