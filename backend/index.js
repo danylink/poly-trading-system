@@ -462,7 +462,7 @@ async function conectarClob() {
         });
 
         console.log("Derivando API Key...");
-        
+        /*
         try {
             // 2. Ahora sí usamos clobClient, porque ya fue creado arriba
             const creds = await clobClient.createOrDeriveApiKey();
@@ -483,6 +483,7 @@ async function conectarClob() {
             console.log("⚠️ Error al derivar la API Key:", e.message);
             throw e;
         }
+        */
 
         console.log("✅ API Credentials V2 obtenidas y configuradas");
 
