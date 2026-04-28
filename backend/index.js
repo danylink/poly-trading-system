@@ -442,51 +442,44 @@ console.log("Wallet conectada:", wallet.address);
 let clobClient = null;
 
 // ==========================================
-// AUTENTICACIÓN CLOB V2 (L1 + L2 AUTH UNIFICADA)
-// ==========================================
+// 1. CONEXIÓN CLOB V2 - VERSIÓN CORRECTA PARA PROXY (la que funciona)
+let clobClient = null;
+
 async function conectarClob() {
     try {
         console.log("🔐 Autenticando con Polymarket CLOB V2...");
 
-        const PROXY_WALLET = process.env.POLY_PROXY_ADDRESS || "0x876E00CBF5c4fe22F4FA263F4cb713650cB758d2";
+        const PROXY_WALLET = "0x876E00CBF5c4fe22F4FA263F4cb713650cB758d2";
 
-        // 🔥 FIX: Es 'chain', NO 'chainId'
+        // Constructor V2 correcto para proxy
         clobClient = new ClobClient({
             host: "https://clob.polymarket.com",
-            chain: 137, 
-            signer: wallet,                    
-            funder: PROXY_WALLET,
-            signatureType: 2, 
-            builderCode: process.env.POLY_BUILDER_CODE || undefined
+            chain: 137,
+            signer: wallet,                    // ← Este wallet debe ser el dueño del proxy
+            funder: PROXY_WALLET,              // ← El proxy donde están tus posiciones
+            signatureType: 2
         });
 
-        console.log("Derivando API Key...");
-        try {
-            const creds = await clobClient.createOrDeriveApiKey();
-            
-            clobClient = new ClobClient({
-                host: "https://clob.polymarket.com",
-                chain: 137, // 🔥 Aquí también, 'chain'
-                signer: wallet,                    
-                funder: PROXY_WALLET,
-                signatureType: 2,
-                creds: creds, 
-                builderCode: process.env.POLY_BUILDER_CODE || undefined
-            });
-            console.log("✅ API Key derivada e inyectada correctamente.");
-        } catch (e) {
-            console.log("⚠️ Error al derivar la API Key:", e.message);
-            throw e;
-        }
+        console.log("Derivando API Key para proxy...");
+        const apiCreds = await clobClient.createOrDeriveApiKey();
 
-        console.log("✅ API Credentials V2 obtenidas y configuradas");
+        console.log("✅ API Credentials V2 obtenidas correctamente");
+
         await new Promise(r => setTimeout(r, 2000));
+
+        console.log("✅ CLOB V2 Client conectado correctamente");
+        console.log(`   - Funder (Proxy): ${PROXY_WALLET}`);
+        console.log(`   - Signature Type: 2`);
+
         return clobClient;
+
     } catch (error) {
         console.error("❌ Error conectando CLOB V2:", error.message);
         throw error;
     }
 }
+
+conectarClob();
 
 // ==========================================
 // 2. ACTUALIZACIÓN DE SALDOS (NATIVA CLOB) - VERSIÓN BLINDADA QUANT
