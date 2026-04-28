@@ -450,10 +450,10 @@ async function conectarClob() {
 
         const PROXY_WALLET = process.env.POLY_PROXY_ADDRESS || "0x876E00CBF5c4fe22F4FA263F4cb713650cB758d2";
 
-        // 🔥 REGRESAMOS A SIGNATURE TYPE 2 (CTF Proxy Estándar de Polymarket)
+        // 🔥 FIX: Es 'chain', NO 'chainId'
         clobClient = new ClobClient({
             host: "https://clob.polymarket.com",
-            chainId: 137, 
+            chain: 137, 
             signer: wallet,                    
             funder: PROXY_WALLET,
             signatureType: 2, 
@@ -466,10 +466,10 @@ async function conectarClob() {
             
             clobClient = new ClobClient({
                 host: "https://clob.polymarket.com",
-                chainId: 137,
+                chain: 137, // 🔥 Aquí también, 'chain'
                 signer: wallet,                    
                 funder: PROXY_WALLET,
-                signatureType: 2, // 🔥 MANTENEMOS EL 2 AQUÍ TAMBIÉN
+                signatureType: 2,
                 creds: creds, 
                 builderCode: process.env.POLY_BUILDER_CODE || undefined
             });
