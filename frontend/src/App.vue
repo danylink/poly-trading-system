@@ -1362,22 +1362,51 @@ onUnmounted(() => {
                     {{ pos.outcome }}
                   </span>
 
-                  <!-- 🔥 NUEVO: Etiqueta de Ballena con Nickname -->
-                  <span v-if="pos.nickname" 
-                        class="inline-flex items-center gap-1 text-[9px] font-black text-purple-400 bg-purple-500/10 border border-purple-500/30 px-2 py-0.5 rounded-md">
-                    🐋 {{ pos.nickname }}
-                  </span>
+                  <!-- BADGES DE ORIGEN -->
+                  <div class="flex flex-wrap gap-1.5">
+                    <!-- === BALLENA === -->
+                    <span v-if="pos.nickname"
+                          class="inline-flex items-center gap-1 text-[10px] font-black px-3 py-0.5 rounded-md bg-purple-600 text-white border border-purple-500/50 shadow-inner">
+                      🐋 {{ pos.nickname }}
+                    </span>
 
-                  <span v-else-if="pos.engine && !['EQUALIZER', 'CHRONOS', 'KINETIC'].includes(pos.engine)" 
-                        class="inline-flex items-center gap-1 text-[9px] font-black px-2 py-0.5 rounded-md border shadow-inner uppercase tracking-widest"
-                        :class="pos.engine.includes('Trinity') || pos.engine.includes('Consenso') ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30' : 
-                               (pos.engine === 'Grok' ? 'text-red-400 bg-red-500/10 border-red-500/30' : 
-                               (pos.engine === 'Gemini' ? 'text-blue-400 bg-blue-500/10 border-blue-500/30' : 
-                               'text-[#D4AF37] bg-[#D4AF37]/10 border-[#D4AF37]/30'))">
-                    {{ pos.engine.includes('Trinity') || pos.engine.includes('Consenso') ? '🔥' : 
-                       (pos.engine === 'Grok' ? '𝕏' : 
-                       (pos.engine === 'Gemini' ? '🔮' : '🧠')) }} {{ pos.engine }}
-                  </span>
+                    <!-- === KINETIC PRESSURE === -->
+                    <span v-else-if="pos.engine === 'KINETIC'"
+                          class="inline-flex items-center gap-1 text-[10px] font-black px-3 py-0.5 rounded-md bg-orange-500 text-white border border-orange-400/50">
+                      ⚡ KINETIC
+                    </span>
+
+                    <!-- === QUANTUM EQUALIZER === -->
+                    <span v-else-if="pos.engine === 'EQUALIZER'"
+                          class="inline-flex items-center gap-1 text-[10px] font-black px-3 py-0.5 rounded-md bg-cyan-500 text-white border border-cyan-400/50">
+                      📊 EQUALIZER
+                    </span>
+
+                    <!-- === CHRONOS HARVESTER === -->
+                    <span v-else-if="pos.engine === 'CHRONOS'"
+                          class="inline-flex items-center gap-1 text-[10px] font-black px-3 py-0.5 rounded-md bg-violet-500 text-white border border-violet-400/50">
+                      ⏳ CHRONOS
+                    </span>
+
+                    <!-- === MODELOS IA (Trinity, Grok, Gemini, etc.) === -->
+                    <span v-else-if="pos.engine && !['EQUALIZER', 'CHRONOS', 'KINETIC'].includes(pos.engine)" 
+                          class="inline-flex items-center gap-1 text-[9px] font-black px-2 py-0.5 rounded-md border shadow-inner uppercase tracking-widest"
+                          :class="pos.engine.includes('Trinity') || pos.engine.includes('Consenso') ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30' : 
+                                (pos.engine === 'Grok' ? 'text-red-400 bg-red-500/10 border-red-500/30' : 
+                                (pos.engine === 'Gemini' ? 'text-blue-400 bg-blue-500/10 border-blue-500/30' : 
+                                'text-[#D4AF37] bg-[#D4AF37]/10 border-[#D4AF37]/30'))">
+                      {{ pos.engine.includes('Trinity') || pos.engine.includes('Consenso') ? '🔥' : 
+                        (pos.engine === 'Grok' ? '𝕏' : 
+                        (pos.engine === 'Gemini' ? '🔮' : '🧠')) }} {{ pos.engine }}
+                    </span>
+
+                    <!-- Fallback IA genérico -->
+                    <span v-else
+                          class="inline-flex items-center gap-1 text-[9px] font-black px-2 py-0.5 rounded-md bg-zinc-700 text-zinc-400 border border-zinc-600">
+                      🧠 IA
+                    </span>
+                  </div>
+                  
                 </div>
                 <span class="text-zinc-200 font-bold text-sm line-clamp-2" :title="pos.marketName">{{ pos.marketName }}</span>
                 <span class="text-[#D4AF37] font-mono text-[10px] mt-1">{{ pos.size }} Acciones</span>

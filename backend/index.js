@@ -551,8 +551,17 @@ async function updateRealBalances() {
                     const invested = pos.initialValue ? parseFloat(pos.initialValue) : Math.max(0, valorActual - cashPnl);
                     const entryPrice = pos.avgPrice ? parseFloat(pos.avgPrice) : (size > 0 ? (invested / size) : 0);
 
-                    // Recuperar Nickname de Ballena si existe
+                    // Recuperar datos de origen (Ballena o Engine)
                     const whaleData = botStatus.copiedPositions?.find(p => p.tokenId === currentTokenId);
+                    const savedEngine = botStatus.positionEngines?.[currentTokenId] || null;
+
+                    let finalEngine = savedEngine;
+                    let finalNickname = null;
+
+                    if (whaleData && whaleData.nickname) {
+                        finalNickname = whaleData.nickname;
+                        finalEngine = null;           // ← Importante: null para que no entre en IA badge
+                    }
 
                     botStatus.activePositions.push({
                         tokenId: currentTokenId,
@@ -566,10 +575,10 @@ async function updateRealBalances() {
                         percentPnl: percentPnl,
                         category: getMarketCategoryEnhanced(pos.title || pos.market || ""),
                         outcome: outcomeVal,
-                        engine: botStatus.positionEngines[currentTokenId] || null, 
+                        engine: finalEngine, 
                         sizeCopied: invested, // <-- RESTAURA VISUALMENTE LA INVERSIÓN (Con precisión absoluta)
                         priceEntry: entryPrice, // <-- RESTAURA VISUALMENTE EL PRECIO (Con precisión absoluta)
-                        nickname: whaleData ? whaleData.nickname : null 
+                        nickname: finalNickname
                     });
                 }
             }
