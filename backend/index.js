@@ -433,11 +433,10 @@ const parser = new Parser();
 const provider = new ethers.providers.JsonRpcProvider(process.env.POLYGON_RPC_URL);
 const wallet = new ethers.Wallet(process.env.POLY_PRIVATE_KEY, provider);
 
-// 🔥 NUEVO: pUSD (nuevo collateral token)
-const PUSD_ADDRESS = "0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB"; // pUSD oficial
-const CTF_EXCHANGE_V2 = "0x..."; // Si lo necesitas más adelante
+// 🔥 NUEVO COLLATERAL (pUSD)
+const PUSD_ADDRESS = "0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB";   // ← Oficial
 
-console.log("✅ MODO SNIPER PRODUCCIÓN ACTIVADO (CLOB V2)");
+console.log("✅ MODO SNIPER PRODUCCIÓN ACTIVADO (CLOB V2 + pUSD)");
 console.log("Wallet conectada:", wallet.address);
 
 // ==========================================
