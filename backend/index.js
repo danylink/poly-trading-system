@@ -443,9 +443,7 @@ console.log("Wallet conectada:", wallet.address);
 // 1. CONEXIÓN CLOB V2 - VERSIÓN OFICIAL (Docs Polymarket)
 let clobClient = null;
 
-// ==========================================
-// AUTENTICACIÓN CLOB V2 (L1 + L2 AUTH)
-// ==========================================
+
 // ==========================================
 // AUTENTICACIÓN CLOB V2 (L1 + L2 AUTH UNIFICADA)
 // ==========================================
@@ -455,7 +453,7 @@ async function conectarClob() {
 
         const PROXY_WALLET = process.env.POLY_PROXY_ADDRESS || "0x876E00CBF5c4fe22F4FA263F4cb713650cB758d2";
 
-        // 🔥 FIX QUANT: Creamos un ÚNICO cliente y dejamos que él maneje la transición L1 -> L2
+        // Creamos el cliente base
         clobClient = new ClobClient({
             host: "https://clob.polymarket.com",
             chain: 137,
@@ -468,21 +466,29 @@ async function conectarClob() {
         console.log("Derivando API Key...");
         
         try {
-            // Intentamos derivar la llave y si tiene éxito, 
-            // el SDK automáticamente inyecta las credenciales en clobClient.creds
-            const creds = await clobClient.deriveApiKey();
-            console.log("✅ API Key derivada correctamente de la wallet.");
-            clobClient.creds = creds; // Nos aseguramos de forzar la asignación
+            // Generamos las credenciales
+            const creds = await clobClient.createOrDeriveApiKey();
+            
+            // 🔥 FIX CRÍTICO V2: Debemos inyectar explícitamente las credenciales 
+            // de vuelta al cliente para que pueda firmar las órdenes
+            clobClient = new ClobClient({
+                host: "https://clob.polymarket.com",
+                chain: 137,
+                signer: wallet,                    
+                funder: PROXY_WALLET,
+                signatureType: 2,
+                creds: creds, // <- El ingrediente secreto
+                builderCode: process.env.POLY_BUILDER_CODE || undefined
+            });
+            
+            console.log("✅ API Key derivada e inyectada correctamente.");
         } catch (e) {
-            console.log("⚠️ No se encontró API Key previa, creando una nueva...");
-            // Si no existe, creamos una nueva y la asignamos
-            const creds = await clobClient.createApiKey();
-            clobClient.creds = creds;
+            console.log("⚠️ Error al derivar la API Key:", e.message);
+            throw e;
         }
 
-        console.log("✅ API Credentials V2 obtenidas");
+        console.log("✅ API Credentials V2 obtenidas y configuradas");
         
-        // Pequeño retardo para asegurar propagación de estado
         await new Promise(r => setTimeout(r, 2000));
 
         console.log("✅ CLOB V2 Client conectado y autenticado correctamente");
@@ -1215,7 +1221,8 @@ async function refreshWatchlist() {
 }
 
 // ==========================================
-// 8. EJECUCIÓN DE COMPRA - VERSIÓN V2 (Manteniendo toda tu lógica inteligente)
+// 8. EJECUCIÓN DE COMPRA - VERSIÓN V2 (Blindada y Simétrica)
+// ==========================================
 async function executeTradeOnChain(conditionId, tokenId, amountUsdc, currentPrice, marketTickSize = "0.01") {
     try {
         console.log(`\n--- ⚖️ EJECUCIÓN ON-CHAIN EN POLYMARKET V2 ---`);
@@ -1223,7 +1230,7 @@ async function executeTradeOnChain(conditionId, tokenId, amountUsdc, currentPric
 
         if (!clobClient) throw new Error("clobClient V2 no está inicializado.");
 
-        // 1. Obtener Orderbook fresco (igual que tenías)
+        // 1. Obtener Orderbook fresco
         let bookData;
         try {
             const bookResp = await axios.get(`https://clob.polymarket.com/book?token_id=${tokenId}`, {
@@ -1239,7 +1246,7 @@ async function executeTradeOnChain(conditionId, tokenId, amountUsdc, currentPric
         let isNegRisk = false;
         let minOrderSize = 5;
 
-        // Datos del mercado (mismo que tenías)
+        // 2. Extraer parámetros vitales del mercado V2
         try {
             const marketInfo = await axios.get(`https://clob.polymarket.com/markets/${conditionId}`);
             if (marketInfo.data) {
@@ -1247,10 +1254,17 @@ async function executeTradeOnChain(conditionId, tokenId, amountUsdc, currentPric
                 if (marketInfo.data.minimum_order_size) {
                     minOrderSize = parseFloat(marketInfo.data.minimum_order_size);
                 }
+                // 🔥 FIX: Actualizar el tick size real desde la API
+                const tokenData = marketInfo.data.tokens?.find(t => t.token_id === tokenId);
+                if (tokenData?.minimum_tick_size) trueTickSize = tokenData.minimum_tick_size;
             }
         } catch (e) {}
 
-        // ====================== CÁLCULO INTELIGENTE DE PRECIO (MANTENIDO) ======================
+        // 🔥 FIX: Decimales dinámicos igual que en la venta
+        const tickStr = String(trueTickSize);
+        const decimales = tickStr === "0.001" ? 3 : (tickStr === "0.0001" ? 4 : 2);
+
+        // ====================== CÁLCULO INTELIGENTE DE PRECIO ======================
         let basePrice = parseFloat(currentPrice);
         
         if (bookData?.asks && bookData.asks.length > 0) {
@@ -1262,24 +1276,29 @@ async function executeTradeOnChain(conditionId, tokenId, amountUsdc, currentPric
             }
         }
 
-        const entrySlippagePct = botStatus.riskSettings.entrySlippage || 5;
+        const entrySlippagePct = botStatus.riskSettings?.entrySlippage || 5;
         let limitPrice = basePrice * (1 + entrySlippagePct / 100);
         
         if (limitPrice > 0.99) limitPrice = 0.99;
-        limitPrice = Number(limitPrice.toFixed(4));
+        
+        // 🔥 FIX CRÍTICO: Redondeo exacto según el tickSize del mercado (Evita rechazos)
+        limitPrice = Number(limitPrice.toFixed(decimales));
+        if (limitPrice <= 0) limitPrice = parseFloat(tickStr);
 
         console.log(`📡 Precio final con slippage: $${limitPrice} (slippage ${entrySlippagePct}%)`);
 
-        // ====================== CÁLCULO DE SHARES (MANTENIDO) ======================
+        // ====================== CÁLCULO DE SHARES ======================
         let targetAmount = parseFloat(amountUsdc);
-        let numShares = Number((targetAmount / limitPrice).toFixed(4));
+        
+        // 🔥 FIX: Redondear a 2 decimales fijos para evitar dust y trailing zeros
+        let numShares = Number((targetAmount / limitPrice).toFixed(2));
 
         if (numShares < minOrderSize) {
             numShares = minOrderSize;
             console.log(`⚠️ Ajustando al mínimo del mercado: ${minOrderSize} shares`);
         }
 
-        console.log(`📡 Orden BUY V2: ${numShares} shares | Precio: $${limitPrice} | Monto: $${(numShares * limitPrice).toFixed(2)}`);
+        console.log(`📡 Orden BUY V2: ${numShares} shares | Precio: $${limitPrice} | Monto estimado: $${(numShares * limitPrice).toFixed(2)}`);
 
         // ====================== EJECUCIÓN V2 ======================
         const order = {
@@ -1290,7 +1309,7 @@ async function executeTradeOnChain(conditionId, tokenId, amountUsdc, currentPric
         };
 
         const options = {
-            tickSize: String(trueTickSize),
+            tickSize: tickStr, // Usa el string seguro
             negRisk: isNegRisk
         };
 
@@ -1310,13 +1329,17 @@ async function executeTradeOnChain(conditionId, tokenId, amountUsdc, currentPric
 
     } catch (error) {
         console.error("❌ Error en executeTradeOnChain V2:", error.message);
-        if (error.response?.data) {
-            console.error("   Detalle API V2:", JSON.stringify(error.response.data));
+        
+        // 🔥 FIX: Agregar el mismo reintento anti-mismatch que la Venta
+        if (error.message?.includes("order_version_mismatch")) {
+            console.log(`🔄 order_version_mismatch detectado → reintentando en 800ms...`);
+            await new Promise(r => setTimeout(r, 800));
+            return await executeTradeOnChain(conditionId, tokenId, amountUsdc, currentPrice, marketTickSize);
         }
+        
         throw error;
     }
 }
-
 // ==========================================
 // 9. Función para recuperar trades reales
 // ==========================================
