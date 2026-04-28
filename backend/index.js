@@ -482,25 +482,37 @@ async function conectarClob() {
 // ==========================================
 // 2. ACTUALIZACIÓN DE SALDOS (NATIVA CLOB) - VERSIÓN BLINDADA QUANT
 // ==========================================
+// ==========================================
+// 2. ACTUALIZACIÓN DE SALDOS (NATIVA CLOB) - VERSIÓN BLINDADA QUANT
+// ==========================================
 async function updateRealBalances() {
     try {
-// 1. Gas (POL)
+        // 1. Balance de Gas (POL)
         const polBal = await provider.getBalance(wallet.address);
         botStatus.balancePOL = Number(ethers.utils.formatEther(polBal)).toFixed(3);
 
-        // 2. pUSD en MetaMask
-        const pusdAbi = ["function balanceOf(address) view returns (uint256)"];
-        const pusdContract = new ethers.Contract(PUSD_ADDRESS, pusdAbi, provider);
-        const walletBalRaw = await pusdContract.balanceOf(wallet.address);
+        // 2. Balance USDC en MetaMask
+        const usdcAbi = ["function balanceOf(address) view returns (uint256)"];
+        const usdcContract = new ethers.Contract(USDC_ADDRESS, usdcAbi, provider);
+        const walletBalRaw = await usdcContract.balanceOf(wallet.address);
         botStatus.walletOnlyUSDC = (parseFloat(ethers.utils.formatUnits(walletBalRaw, 6))).toFixed(2);
 
-        // 3. Balance en Polymarket (pUSD)
+        // 3. Balance en Polymarket (CLOB V2)
         if (clobClient) {
-            await clobClient.updateBalanceAllowance({ asset_type: "COLLATERAL" });
-            const balanceData = await clobClient.getBalanceAllowance({ asset_type: "COLLATERAL" });
-            const clobMonto = parseFloat(balanceData.balance || 0) / 1000000;
-            botStatus.clobOnlyUSDC = clobMonto.toFixed(2);
-            botStatus.balanceUSDC = botStatus.clobOnlyUSDC;
+            try {
+                // Aseguramos que la API key esté presente
+                await clobClient.updateBalanceAllowance({ asset_type: "COLLATERAL" });
+                const balanceData = await clobClient.getBalanceAllowance({ asset_type: "COLLATERAL" });
+                
+                const clobMonto = parseFloat(balanceData.balance || 0) / 1000000;
+                botStatus.clobOnlyUSDC = clobMonto.toFixed(2);
+                botStatus.balanceUSDC = botStatus.clobOnlyUSDC;
+                
+                console.log(`💰 Balance CLOB V2: $${botStatus.clobOnlyUSDC}`);
+            } catch (balanceError) {
+                console.warn("⚠️ Error obteniendo balance CLOB V2:", balanceError.message);
+                botStatus.clobOnlyUSDC = "0.00";
+            }
         }
 
         // 4. Posiciones activas + CANJEAR (FIX FINAL)
@@ -583,17 +595,6 @@ async function updateRealBalances() {
             // LIMPIEZA AUTOMÁTICA de copiedTrades
             await cleanupCopiedTrades();
 
-            // Log
-        if (Math.random() < 0.25) {
-            const metaMaskVal = parseFloat(botStatus.walletOnlyUSDC || 0);
-            const polyVal = parseFloat(botStatus.clobOnlyUSDC || 0);
-            const unclaimedVal = parseFloat(botStatus.unclaimedUSDC || 0);
-            const activePosValue = botStatus.activePositions.reduce((acc, p) => acc + parseFloat(p.currentValue || 0), 0);
-            const carteraTotalReal = (metaMaskVal + polyVal + activePosValue + unclaimedVal).toFixed(2);
-
-            console.log(`📊 Balances: Cartera Total: $${carteraTotalReal} | Disponible (Poly pUSD): $${polyVal.toFixed(2)}`);
-        }
-
         } catch (apiError) {
             console.log("⚠️ Error al obtener posiciones:", apiError.message);
         }
@@ -612,7 +613,6 @@ async function updateRealBalances() {
     } catch (e) { 
         console.error("❌ Error general actualizando balances:", e.message); 
     }
-
     updateCarteraTotal();
 }
 
