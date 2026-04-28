@@ -465,18 +465,18 @@ async function conectarClob() {
         
         try {
             // 2. Ahora sí usamos clobClient, porque ya fue creado arriba
-            //const creds = await clobClient.createOrDeriveApiKey();
+            const creds = await clobClient.createOrDeriveApiKey();
             
             // 3. Re-instanciamos clobClient pero ahora le inyectamos las credenciales
-            // clobClient = new ClobClient({
-            //     host: "https://clob.polymarket.com",
-            //     chain: 137,
-            //     signer: wallet,                    
-            //     funder: PROXY_WALLET,
-            //     signatureType: 2,
-            //     creds: creds, // <=== LA LLAVE MAESTRA
-            //     builderCode: process.env.POLY_BUILDER_CODE || undefined
-            // });
+            clobClient = new ClobClient({
+                host: "https://clob.polymarket.com",
+                chain: 137,
+                signer: wallet,                    
+                funder: PROXY_WALLET,
+                signatureType: 2,
+                creds: creds, // <=== LA LLAVE MAESTRA
+                builderCode: process.env.POLY_BUILDER_CODE || undefined
+            });
             
             console.log("✅ API Key derivada e inyectada correctamente.");
         } catch (e) {
