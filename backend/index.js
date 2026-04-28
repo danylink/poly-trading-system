@@ -2154,6 +2154,7 @@ async function runBot() {
         await fetchRealTrades();
         await updateRealBalances();
         await cleanupCopiedState();
+        return;
 
         // 2. Copy-Trading (Auto + Custom)
         if (botStatus.copyTradingCustomEnabled || 
