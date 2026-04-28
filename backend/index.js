@@ -441,7 +441,7 @@ console.log("✅ MODO SNIPER PRODUCCIÓN ACTIVADO (CLOB V2)");
 console.log("Wallet conectada:", wallet.address);
 
 // ==========================================
-// 1. CONEXIÓN CLOB V2 - VERSIÓN FUNCIONAL (Abril 2026)
+// 1. CONEXIÓN CLOB V2 - VERSIÓN ESTABLE (FIX SIGNER)
 let clobClient = null;
 
 async function conectarClob() {
@@ -450,20 +450,19 @@ async function conectarClob() {
 
         const PROXY_WALLET = "0x876E00CBF5c4fe22F4FA263F4cb713650cB758d2";
 
-        // Constructor correcto para V2
+        // Constructor V2 recomendado
         clobClient = new ClobClient({
             host: "https://clob.polymarket.com",
             chain: 137,
-            privateKey: process.env.POLY_PRIVATE_KEY,     // ← Clave privada directa
+            signer: wallet,           // ← Usamos el wallet ethers.js que ya creaste arriba
             funder: PROXY_WALLET,
             signatureType: 2
         });
 
-        // Derivar API Key
-        console.log("Derivando API credentials...");
-        const creds = await clobClient.createOrDeriveApiKey();
+        console.log("Derivando API Key...");
+        const apiCreds = await clobClient.createOrDeriveApiKey();
 
-        console.log("✅ API Credentials V2 obtenidas correctamente");
+        console.log("✅ API Credentials V2 obtenidas");
 
         await new Promise(r => setTimeout(r, 1500));
 
@@ -475,9 +474,7 @@ async function conectarClob() {
 
     } catch (error) {
         console.error("❌ Error conectando CLOB V2:", error.message);
-        if (error.message.includes("Signer")) {
-            console.error("💡 Consejo: Asegúrate que POLY_PRIVATE_KEY esté correctamente en tu .env");
-        }
+        console.error("🔍 Detalle completo:", error);
         throw error;
     }
 }
