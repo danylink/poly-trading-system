@@ -521,15 +521,25 @@ async function updateRealBalances() {
         // 3. Balance en Polymarket CLOB V2 (pUSD)
         if (clobClient) {
             try {
-                // En V2 el balance es pUSD (Poly-USDC)
-                // Usamos el método oficial del SDK autenticado (L2)
-                const balanceData = await clobClient.getCollateralBalance();
-                // El balance viene en unidades básicas (6 decimales)
-                const clobMonto = parseFloat(balanceData.amount || 0);
+                // Forzamos la API Key (necesario en V2 con proxy)
+                if (process.env.POLY_API_KEY) {
+                    clobClient.apiKey = process.env.POLY_API_KEY;
+                }
+
+                console.log("🔑 Actualizando balance allowance...");
+
+                await clobClient.updateBalanceAllowance({ asset_type: "COLLATERAL" });
+                const balanceData = await clobClient.getBalanceAllowance({ asset_type: "COLLATERAL" });
+                
+                const clobMonto = parseFloat(balanceData.balance || 0) / 1000000;
                 botStatus.clobOnlyUSDC = clobMonto.toFixed(2);
                 botStatus.balanceUSDC = botStatus.clobOnlyUSDC;
-            } catch (balError) {
-                console.log("⚠️ Error obteniendo balance CLOB V2:", balError.message);
+
+                console.log(`💰 Balance CLOB V2 (pUSD): $${botStatus.clobOnlyUSDC}`);
+
+            } catch (balanceError) {
+                console.warn("⚠️ Error obteniendo balance CLOB V2:", balanceError.message);
+                botStatus.clobOnlyUSDC = "0.00";
             }
         }
 
