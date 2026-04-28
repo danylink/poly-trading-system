@@ -438,9 +438,6 @@ const PUSD_ADDRESS = "0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB";
 console.log("✅ MODO SNIPER PRODUCCIÓN ACTIVADO (CLOB V2 + pUSD)");
 console.log("Wallet conectada:", wallet.address);
 
-
-let clobClient = null;
-
 // ==========================================
 // 1. CONEXIÓN CLOB V2 - VERSIÓN CORRECTA PARA PROXY (la que funciona)
 let clobClient = null;
