@@ -439,54 +439,54 @@ const PUSD_ADDRESS = "0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB";
 console.log("✅ MODO SNIPER PRODUCCIÓN ACTIVADO (CLOB V2 + pUSD)");
 console.log("Wallet conectada:", wallet.address);
 
-// ==========================================
-// AUTENTICACIÓN CLOB V2 (L1 + L2 AUTH UNIFICADA)
-// ==========================================
-let clobClient = null;
 
+let clobClient = null;
+// ==========================================
+// AUTENTICACIÓN CLOB V2 (L1 + L2 AUTH)
+// ==========================================
 async function conectarClob() {
     try {
         console.log("🔐 Autenticando con Polymarket CLOB V2...");
 
         const PROXY_WALLET = process.env.POLY_PROXY_ADDRESS || "0x876E00CBF5c4fe22F4FA263F4cb713650cB758d2";
 
-        // Creamos el cliente base sin credenciales
-        clobClient = new ClobClient({
+        // PASO 1: Cliente L1 (Solo para firmar y obtener credenciales)
+        let authClient = new ClobClient({
             host: "https://clob.polymarket.com",
             chain: 137,
-            signer: wallet,                    
+            signer: wallet,                    // ← Obligatorio
             funder: PROXY_WALLET,
             signatureType: 2,
             builderCode: process.env.POLY_BUILDER_CODE || undefined
         });
 
         console.log("Derivando API Key...");
+        let apiCreds;
         
         try {
-            // Obtenemos las credenciales
-            const creds = await clobClient.createOrDeriveApiKey();
-            
-            // 🔥 FIX CRÍTICO V2: Re-creamos el cliente inyectando la propiedad "creds"
-            // Esto es lo que permite que executeSellOnChain y executeTradeOnChain firmen correctamente
-            clobClient = new ClobClient({
-                host: "https://clob.polymarket.com",
-                chain: 137,
-                signer: wallet,                    
-                funder: PROXY_WALLET,
-                signatureType: 2,
-                creds: creds, // <=== ESTE ES EL INGREDIENTE FALTANTE
-                builderCode: process.env.POLY_BUILDER_CODE || undefined
-            });
-            
-            console.log("✅ API Key derivada e inyectada correctamente.");
+            // 🔥 FIX QUANT (Error 400): Intentamos derivar la llave existente primero
+            apiCreds = await authClient.deriveApiKey();
+            console.log("✅ API Key derivada correctamente de la wallet.");
         } catch (e) {
-            console.log("⚠️ Error al derivar la API Key:", e.message);
-            throw e;
+            console.log("⚠️ No se encontró API Key previa, creando una nueva...");
+            // Si falla porque no existe, entonces la creamos
+            apiCreds = await authClient.createApiKey();
         }
 
-        console.log("✅ API Credentials V2 obtenidas y configuradas");
-        
-        // Pequeño retardo para asegurar propagación de estado
+        console.log("✅ API Credentials V2 obtenidas");
+
+        // PASO 2: Cliente L2 (Completamente autenticado con Credenciales)
+        // Sobrescribimos la variable global clobClient con el cliente full-auth
+        clobClient = new ClobClient({
+            host: "https://clob.polymarket.com",
+            chain: 137,
+            signer: wallet,
+            funder: PROXY_WALLET,
+            signatureType: 2,
+            creds: apiCreds, // <--- ESTO ES LO OBLIGATORIO Y NUEVO EN LA V2
+            builderCode: process.env.POLY_BUILDER_CODE || undefined
+        });
+
         await new Promise(r => setTimeout(r, 2000));
 
         console.log("✅ CLOB V2 Client conectado y autenticado correctamente");
