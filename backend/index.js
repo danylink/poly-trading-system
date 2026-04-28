@@ -479,8 +479,6 @@ async function conectarClob() {
     }
 }
 
-conectarClob();
-
 // ==========================================
 // 2. ACTUALIZACIÓN DE SALDOS (NATIVA CLOB) - VERSIÓN BLINDADA QUANT
 // ==========================================
