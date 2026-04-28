@@ -440,20 +440,17 @@ console.log("✅ MODO SNIPER PRODUCCIÓN ACTIVADO (CLOB V2 + pUSD)");
 console.log("Wallet conectada:", wallet.address);
 
 // ==========================================
-// 1. CONEXIÓN CLOB V2 - VERSIÓN OFICIAL (Docs Polymarket)
-let clobClient = null;
-
-
-// ==========================================
 // AUTENTICACIÓN CLOB V2 (L1 + L2 AUTH UNIFICADA)
 // ==========================================
+let clobClient = null;
+
 async function conectarClob() {
     try {
         console.log("🔐 Autenticando con Polymarket CLOB V2...");
 
         const PROXY_WALLET = process.env.POLY_PROXY_ADDRESS || "0x876E00CBF5c4fe22F4FA263F4cb713650cB758d2";
 
-        // Creamos el cliente base
+        // Creamos el cliente base sin credenciales
         clobClient = new ClobClient({
             host: "https://clob.polymarket.com",
             chain: 137,
@@ -466,18 +463,18 @@ async function conectarClob() {
         console.log("Derivando API Key...");
         
         try {
-            // Generamos las credenciales
+            // Obtenemos las credenciales
             const creds = await clobClient.createOrDeriveApiKey();
             
-            // 🔥 FIX CRÍTICO V2: Debemos inyectar explícitamente las credenciales 
-            // de vuelta al cliente para que pueda firmar las órdenes
+            // 🔥 FIX CRÍTICO V2: Re-creamos el cliente inyectando la propiedad "creds"
+            // Esto es lo que permite que executeSellOnChain y executeTradeOnChain firmen correctamente
             clobClient = new ClobClient({
                 host: "https://clob.polymarket.com",
                 chain: 137,
                 signer: wallet,                    
                 funder: PROXY_WALLET,
                 signatureType: 2,
-                creds: creds, // <- El ingrediente secreto
+                creds: creds, // <=== ESTE ES EL INGREDIENTE FALTANTE
                 builderCode: process.env.POLY_BUILDER_CODE || undefined
             });
             
@@ -489,6 +486,7 @@ async function conectarClob() {
 
         console.log("✅ API Credentials V2 obtenidas y configuradas");
         
+        // Pequeño retardo para asegurar propagación de estado
         await new Promise(r => setTimeout(r, 2000));
 
         console.log("✅ CLOB V2 Client conectado y autenticado correctamente");
