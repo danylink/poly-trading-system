@@ -445,6 +445,10 @@ let clobClient = null;
 //let POLY_APY_KEY = '019d2dbf-dede-76c0-a866-4c631385a520';
 //let POLY_BUILDER_CODE = '0x06816839ca170c9d2676c0c73bb69a437d3aa679ef6645187923f8b6026e89ed';
 
+// ==========================================
+// 1. CONEXIÓN CLOB V2 - VERSIÓN OFICIAL (Usando creds completas)
+let clobClient = null;
+
 async function conectarClob() {
     try {
         console.log("🔐 Autenticando con Polymarket CLOB V2...");
@@ -457,11 +461,15 @@ async function conectarClob() {
             signer: wallet,
             funder: PROXY_WALLET,
             signatureType: 2,
-            apiKey: process.env.POLY_API_KEY,           // ← Clave que ya tienes en el dashboard
-            builderCode: process.env.POLY_BUILDER_CODE   // ← Código de constructor
+            creds: {                                      // ← ESTO ES LO QUE FALTABA
+                apiKey: process.env.POLY_API_KEY,
+                secret: process.env.POLY_SECRET,
+                passphrase: process.env.POLY_PASSPHRASE
+            },
+            builderCode: process.env.POLY_BUILDER_CODE
         });
 
-        console.log("✅ Usando Clave API pre-creada del dashboard (no se crea nueva)");
+        console.log("✅ Usando credenciales completas del dashboard");
         console.log("✅ CLOB V2 Client conectado correctamente");
         console.log(`   - Funder (Proxy): ${PROXY_WALLET}`);
         console.log(`   - Signer: ${wallet.address}`);
