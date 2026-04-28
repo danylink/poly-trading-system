@@ -429,18 +429,18 @@ const chatId = process.env.TELEGRAM_CHAT_ID;
 const parser = new Parser();
 
 // ==========================================
-// --- CONFIGURACIÓN BLOCKCHAIN (V2) ---
+// --- CONFIGURACIÓN BLOCKCHAIN (V2 OFICIAL) ---
 const provider = new ethers.providers.JsonRpcProvider(process.env.POLYGON_RPC_URL);
 const wallet = new ethers.Wallet(process.env.POLY_PRIVATE_KEY, provider);
 
-// 🔥 NUEVO COLLATERAL (pUSD)
-const PUSD_ADDRESS = "0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB";   // ← Oficial
+// 🔥 NUEVO COLLATERAL OFICIAL (pUSD)
+const PUSD_ADDRESS = "0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB";
 
 console.log("✅ MODO SNIPER PRODUCCIÓN ACTIVADO (CLOB V2 + pUSD)");
 console.log("Wallet conectada:", wallet.address);
 
 // ==========================================
-// 1. CONEXIÓN CLOB V2 - VERSIÓN ESTABLE (FIX SIGNER)
+// 1. CONEXIÓN CLOB V2 - VERSIÓN OFICIAL (Docs Polymarket)
 let clobClient = null;
 
 async function conectarClob() {
@@ -449,13 +449,14 @@ async function conectarClob() {
 
         const PROXY_WALLET = "0x876E00CBF5c4fe22F4FA263F4cb713650cB758d2";
 
-        // Constructor V2 recomendado
+        // Constructor V2 correcto según documentación oficial
         clobClient = new ClobClient({
             host: "https://clob.polymarket.com",
             chain: 137,
-            signer: wallet,           // ← Usamos el wallet ethers.js que ya creaste arriba
+            signer: wallet,                    // ← Obligatorio
             funder: PROXY_WALLET,
-            signatureType: 2
+            signatureType: 2,
+            builderCode: process.env.POLY_BUILDER_CODE || undefined
         });
 
         console.log("Derivando API Key...");
@@ -463,17 +464,15 @@ async function conectarClob() {
 
         console.log("✅ API Credentials V2 obtenidas");
 
-        await new Promise(r => setTimeout(r, 1500));
+        await new Promise(r => setTimeout(r, 2000));
 
         console.log("✅ CLOB V2 Client conectado correctamente");
         console.log(`   - Funder (Proxy): ${PROXY_WALLET}`);
         console.log(`   - Signature Type: 2`);
 
         return clobClient;
-
     } catch (error) {
         console.error("❌ Error conectando CLOB V2:", error.message);
-        console.error("🔍 Detalle completo:", error);
         throw error;
     }
 }
@@ -483,7 +482,6 @@ async function conectarClob() {
 // ==========================================
 async function updateRealBalances() {
     try {
-
         // 1. Gas (POL)
         const polBal = await provider.getBalance(wallet.address);
         botStatus.balancePOL = Number(ethers.utils.formatEther(polBal)).toFixed(3);
@@ -494,7 +492,7 @@ async function updateRealBalances() {
         const walletBalRaw = await pusdContract.balanceOf(wallet.address);
         botStatus.walletOnlyUSDC = (parseFloat(ethers.utils.formatUnits(walletBalRaw, 6))).toFixed(2);
 
-        // 3. Balance en Polymarket (CLOB V2)
+        // 3. Balance en Polymarket (pUSD)
         if (clobClient) {
             try {
                 await clobClient.updateBalanceAllowance({ asset_type: "COLLATERAL" });
@@ -603,7 +601,7 @@ async function updateRealBalances() {
             const activePosValue = botStatus.activePositions.reduce((acc, p) => acc + parseFloat(p.currentValue || 0), 0);
             const carteraTotalReal = (metaMaskVal + polyVal + activePosValue + unclaimedVal).toFixed(2);
 
-            console.log(`📊 Balances: Cartera Total: $${carteraTotalReal} | Disponible (Poly): $${polyVal.toFixed(2)} | MetaMask: $${metaMaskVal.toFixed(2)} | Gas: ${botStatus.balancePOL} POL`);
+            console.log(`📊 Balances: Cartera Total: $${carteraTotalReal} | Disponible (Poly pUSD): $${polyVal.toFixed(2)}`);
         }
 
     } catch (e) { 
