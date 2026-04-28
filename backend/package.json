@@ -6,7 +6,6 @@
     "@anthropic-ai/sdk": "^0.18.0",
     "@google/generative-ai": "^0.24.1",
     "@polymarket/clob-client-v2": "^1.0.0",
-    //"@polymarket/clob-client": "^5.8.1",
     "@polymarket/order-utils": "^3.0.1",
     "cors": "^2.8.6",
     "dotenv": "^16.6.1",

@@ -3,7 +3,7 @@
     "standard": {
       "predictionThreshold": 0.7,
       "edgeThreshold": 0.06,
-      "takeProfitThreshold": 30,
+      "takeProfitThreshold": 25,
       "stopLossThreshold": -25,
       "microBetAmount": 2
     },
@@ -43,147 +43,430 @@
   "maxActiveSportsMarkets": 5,
   "customWhales": [
     {
-      "address": "0x492442eab586f242b53bda933fd5de859c8a3782",
-      "nickname": "Multicolored",
-      "enabled": true
+      "address": "0xc4d5a24a240ec9f52669e3251e0473fd0c5687cf",
+      "nickname": "Courageous-Polish",
+      "enabled": true,
+      "lastActive": 1777382610550
     },
     {
-      "address": "0xc2e7800b5af46e6093872b177b7a5e7f0563be51",
-      "nickname": "BeachBoy4",
-      "enabled": true
+      "address": "0x5edc7bba7516cd28dc886ad576ba197bb114bbad",
+      "nickname": "Pristine-Soul",
+      "enabled": true,
+      "lastActive": 1777382610578
     },
     {
-      "address": "0x2a2c53bd278c04da9962fcf96490e17f3dfb9bc1",
-      "nickname": "Horizon",
-      "enabled": true
+      "address": "0x67bc6af6806df61ba5144b125174ecf5f821d54e",
+      "nickname": "Limp-Colt",
+      "enabled": true,
+      "lastActive": 1777382610606
     },
     {
-      "address": "0xbddf61af533ff524d27154e589d2d7a81510c684",
-      "nickname": "Countryside",
-      "enabled": true
+      "address": "0xb6fa57039ea79185895500dbd0067c288594abcf",
+      "nickname": "Different-Ecclesia",
+      "enabled": true,
+      "lastActive": 1777382610632
     },
     {
-      "address": "0x9d84ce0306f8551e02efef1680475fc0f1dc1344",
-      "nickname": "debased",
-      "enabled": true
+      "address": "0x55173bc7f6e52f45ec05fd14fbc6f34e81b6e334",
+      "nickname": "Serene-Close",
+      "enabled": true,
+      "lastActive": 1777382610666
     },
     {
-      "address": "0x91c019d0a6c0c2a507a0e303f269d06b12d1b827",
-      "nickname": "Macro_Oracle",
-      "enabled": true
+      "address": "0xe59b2f5304450fb446cc3e3643f3a4937ac4343f",
+      "nickname": "Imperturbable-Drainage",
+      "enabled": true,
+      "lastActive": 1777382610697
     },
     {
-      "address": "0x5b3f7e02df350172db26a111a148a0429f5d1798",
-      "nickname": "Capitol_Quant",
-      "enabled": true
+      "address": "0x6480542954b70a674a74bd1a6015dec362dc8dc5",
+      "nickname": "Talkative-Killer",
+      "enabled": true,
+      "lastActive": 1777382610724
     },
     {
-      "address": "0x2c1a82f3a610f135b023e3870f7899723deca8a0",
-      "nickname": "Satoshi_Fund",
-      "enabled": true
+      "address": "0xd1a63a243042d864520512fbdbd2fd20e0ab1507",
+      "nickname": "Blissful-Maestro",
+      "enabled": true,
+      "lastActive": 1777382610749
     },
     {
-      "address": "0x17db3fcd93ba12d38382a0cade24b200185c5f6d",
-      "nickname": "fengdubiying",
-      "enabled": true
+      "address": "0x75bd4409cfd0346a055138f69f959b770cdf0288",
+      "nickname": "Reasonable-Wick",
+      "enabled": true,
+      "lastActive": 1777382610776
     },
     {
-      "address": "0xdbade4c82fb72780a0db9a38f821d8671aba9c95",
-      "nickname": "SwissMiss",
-      "enabled": true
+      "address": "0x436bc6bd9e00eb00f0e81515ee7571757ab84f72",
+      "nickname": "Aware-Cookie",
+      "enabled": true,
+      "lastActive": 1777382610809
     },
     {
-      "address": "0x56687bf447db6ffa42ffe2204a05edaa20f55839",
-      "nickname": "Theo4",
-      "enabled": true
+      "address": "0x8b235de145126f0095afc2265c065b9f88796bf7",
+      "nickname": "Parallel-Ethyl",
+      "enabled": true,
+      "lastActive": 1777382610841
     },
     {
-      "address": "0x1f2dd6d473f3e824cd2f8a89d9c69fb96f6ad0cf",
-      "nickname": "Fredi9999",
-      "enabled": true
+      "address": "0xead152b855effa6b5b5837f53b24c0756830c76a",
+      "nickname": "Unconscious-Penguin",
+      "enabled": true,
+      "lastActive": 1777382610877
     },
     {
-      "address": "0x6a72f61820b26b1fe4d956e17b6dc2a1ea3033ee",
-      "nickname": "kch123",
-      "enabled": true
+      "address": "0x2a69660046d7acc4ab204d7cc5ba78b0776cd2f7",
+      "nickname": "Gleeful-Cauliflower",
+      "enabled": true,
+      "lastActive": 1777382610902
     },
     {
-      "address": "0x204f72f35326db932158cba6adff0b9a1da95e14",
-      "nickname": "swisstony",
-      "enabled": true
+      "address": "0x740210b8ab336c71b319f400b8907f7091c98020",
+      "nickname": "Vivid-Reclamation",
+      "enabled": true,
+      "lastActive": 1777382610926
     },
     {
-      "address": "0xe90bec87d9ef430f27f9dcfe72c34b76967d5da2",
-      "nickname": "gmanas",
-      "enabled": true
+      "address": "0x6d3c5bd13984b2de47c3a88ddc455309aab3d294",
+      "nickname": "Scornful-West",
+      "enabled": true,
+      "lastActive": 1777382610961
+    },
+    {
+      "address": "0xc5187cb669690150643ba2f9aac6b7d98d212594",
+      "nickname": "Spirited-Priest",
+      "enabled": true,
+      "lastActive": 1777382610992
+    },
+    {
+      "address": "0x993fe20a9ecfb7e3c072f7f8c3dcbf87243b35cb",
+      "nickname": "White-Donkey",
+      "enabled": true,
+      "lastActive": 1777382611016
+    },
+    {
+      "address": "0x8a98109fb0f1d87d9bfcb4486ba3587b95c51b92",
+      "nickname": "Blaring-Backdrop",
+      "enabled": true,
+      "lastActive": 1777382611048
+    },
+    {
+      "address": "0x36d8cbf698826ca74d9e444df634e303de4cc7c7",
+      "nickname": "Celebrated-Picture",
+      "enabled": true,
+      "lastActive": 1777382611072
+    },
+    {
+      "address": "0xeface9902242b0399856f981600b907dcc9bc9a1",
+      "nickname": "Crazy-Fishmonger",
+      "enabled": true,
+      "lastActive": 1777382611098
+    },
+    {
+      "address": "0xd5aff8ad5f04e6b2307882c085ee3bbd0ba05d38",
+      "nickname": "Minor-Applause",
+      "enabled": true,
+      "lastActive": 1777382611132
+    },
+    {
+      "address": "0xe8dd7741ccb12350957ec71e9ee332e0d1e6ec86",
+      "nickname": "Real-Veteran",
+      "enabled": true,
+      "lastActive": 1777382611164
+    },
+    {
+      "address": "0x36901eb0f21519cc9055662a6d2483e96da1e16f",
+      "nickname": "Deserted-Bitter",
+      "enabled": true,
+      "lastActive": 1777382611190
     }
   ],
   "dailyLossLimit": 15,
   "copiedPositions": [
     {
-      "tokenId": "114124908308155690607429928412375081987315496557547618359166831545915027210442",
-      "whale": "0x9d84ce0306f8551e02efef1680475fc0f1dc1344",
-      "sizeCopied": 6.7112,
-      "priceEntry": 0.6136,
-      "marketName": "Will SpaceX IPO by June 30, 2026?"
+      "tokenId": "76365405023480211768966532998654785223008164944229461320151310988629202731862",
+      "whale": "0xe8dd7741ccb12350957ec71e9ee332e0d1e6ec86",
+      "nickname": "Real-Veteran",
+      "sizeCopied": 10.3576,
+      "priceEntry": 0.99,
+      "marketName": "Will Alphabet be the largest company in the world by market cap on June 30?"
     },
     {
-      "tokenId": "6481065406228558365238644843443361794127708339263750609499644517192303031538",
-      "whale": "0xdbade4c82fb72780a0db9a38f821d8671aba9c95",
-      "sizeCopied": 5.8256,
-      "priceEntry": 0.3432,
-      "marketName": "SAVE Act becomes law by December 31, 2026?"
+      "tokenId": "71766068780847592275832975634222479355839510113984416677534711254568813110393",
+      "whale": "0xe8dd7741ccb12350957ec71e9ee332e0d1e6ec86",
+      "nickname": "Real-Veteran",
+      "sizeCopied": 9.0632,
+      "priceEntry": 0.99,
+      "marketName": "Will the Indian National Congress (INC) win the most seats in the 2026 Assam Legislative Assembly election?"
     },
     {
-      "tokenId": "105987781619256106320834214634481569201469680689697403303566741875570620946936",
-      "whale": "0xdbade4c82fb72780a0db9a38f821d8671aba9c95",
-      "nickname": "SwissMiss",
-      "sizeCopied": 29.654400000000003,
-      "priceEntry": 0.6226996331621423,
-      "marketName": "Will FISA Section 702 reauthorization become law this year?"
+      "tokenId": "104229190536018572121484173191541354156604939029235105329744131361979375738338",
+      "whale": "0x8a98109fb0f1d87d9bfcb4486ba3587b95c51b92",
+      "nickname": "Blaring-Backdrop",
+      "sizeCopied": 14.747200000000001,
+      "priceEntry": 0.5824,
+      "marketName": "US x Iran diplomatic meeting by May 15, 2026?"
     },
     {
-      "tokenId": "34725319619481449303683205321575387830621885144032007351760845722414708369841",
-      "whale": "0x204f72f35326db932158cba6adff0b9a1da95e14",
-      "nickname": "swisstony",
-      "sizeCopied": 28.3616,
-      "priceEntry": 0.7488,
-      "marketName": "Valencia CF leading at halftime?"
+      "tokenId": "103413290350495652352524674850785946279173087085625776965843097224480869539138",
+      "whale": "0xeface9902242b0399856f981600b907dcc9bc9a1",
+      "nickname": "Crazy-Fishmonger",
+      "sizeCopied": 13.0056,
+      "priceEntry": 0.99,
+      "marketName": "Will Brooks Rosser win American Idol Season 24?"
+    },
+    {
+      "tokenId": "50292933818751585369672690878774599873941191925538325333138798248932182222864",
+      "whale": "0xeface9902242b0399856f981600b907dcc9bc9a1",
+      "nickname": "Crazy-Fishmonger",
+      "sizeCopied": 11.9656,
+      "priceEntry": 0.5512,
+      "marketName": "Will Nithya Raman win the 2026 Los Angeles mayoral election?"
+    },
+    {
+      "tokenId": "26401947112654804199203893947494409130280149210425302412100872308552708797119",
+      "whale": "0x36901eb0f21519cc9055662a6d2483e96da1e16f",
+      "nickname": "Deserted-Bitter",
+      "sizeCopied": 11.4528,
+      "priceEntry": 0.8314874164433355,
+      "marketName": "Will the price of Bitcoin be above $76,000 on April 28?"
+    },
+    {
+      "tokenId": "65765289176998763457205322099261318699189624434673752170535208488681006089209",
+      "whale": "0x6d3c5bd13984b2de47c3a88ddc455309aab3d294",
+      "nickname": "Scornful-West",
+      "sizeCopied": 9.9024,
+      "priceEntry": 0.6344,
+      "marketName": "Will CA San Lorenzo de Almagro win on 2026-04-28?"
+    },
+    {
+      "tokenId": "5071068515369649710029235690795450357739518007641887752174033660466662576402",
+      "whale": "0x36901eb0f21519cc9055662a6d2483e96da1e16f",
+      "nickname": "Deserted-Bitter",
+      "sizeCopied": 11.339200000000002,
+      "priceEntry": 0.9671999998230193,
+      "marketName": "Will the price of Bitcoin be above $78,000 on April 28?"
+    },
+    {
+      "tokenId": "105936209728390877466087311003098438413380274261172346796046683814802770299563",
+      "whale": "0xe8dd7741ccb12350957ec71e9ee332e0d1e6ec86",
+      "nickname": "Real-Veteran",
+      "sizeCopied": 11.16,
+      "priceEntry": 0.99,
+      "marketName": "Will the ECB announce a 50+ bps increase at the June 2026 meeting?"
     }
   ],
   "copiedTrades": [
     {
-      "id": 1776536685767,
-      "txHash": "0x22131b1db282f0cacb99cbae3c9eb4ab451c08beb93c1bd1bffe34a1ef32120b",
-      "whale": "0xdbade4c8...",
-      "nickname": "SwissMiss",
-      "tokenId": "105987781619256106320834214634481569201469680689697403303566741875570620946936",
-      "size": 29.654400000000003,
-      "price": 0.6226996331621423,
-      "time": "6:24:45 PM",
-      "market": "Will FISA Section 702 reauthorization become law this year?"
+      "id": 1777365630545,
+      "txHash": "",
+      "whale": "0xd1a63a243042d864520512fbdbd2fd20e0ab1507",
+      "nickname": "Blissful-Maestro",
+      "tokenId": "28862013592379269304119128335962901508101117785582411821357465917272013618834",
+      "size": 8.6288,
+      "price": 0.99,
+      "time": "8:40:30 AM",
+      "market": "Will the ECB announce an increase at the April 2026 meeting?"
     },
     {
-      "id": 1776286227420,
-      "txHash": "0x58b131be36fc5c262ba7744d384b484d18421bb34939852b0dc9f488a53f4398",
-      "whale": "0x9d84ce03...",
-      "tokenId": "114124908308155690607429928412375081987315496557547618359166831545915027210442",
-      "size": 6.7112,
-      "price": 0.6136,
-      "time": "8:50:27 PM",
-      "market": "Will SpaceX IPO by June 30, 2026?"
+      "id": 1777364221139,
+      "txHash": "",
+      "whale": "0xe8dd7741ccb12350957ec71e9ee332e0d1e6ec86",
+      "nickname": "Real-Veteran",
+      "tokenId": "105936209728390877466087311003098438413380274261172346796046683814802770299563",
+      "size": 11.16,
+      "price": 0.99,
+      "time": "8:17:01 AM",
+      "market": "Will the ECB announce a 50+ bps increase at the June 2026 meeting?"
+    },
+    {
+      "id": 1777364190546,
+      "txHash": "",
+      "whale": "0xe8dd7741ccb12350957ec71e9ee332e0d1e6ec86",
+      "nickname": "Real-Veteran",
+      "tokenId": "83558045297911395649080947063026404284849828587825556624318439821322935513705",
+      "size": 11.16,
+      "price": 0.7072,
+      "time": "8:16:30 AM",
+      "market": "Will the ECB announce no change at the June 2026 meeting?"
+    },
+    {
+      "id": 1777360711280,
+      "txHash": "",
+      "whale": "0x36901eb0f21519cc9055662a6d2483e96da1e16f",
+      "nickname": "Deserted-Bitter",
+      "tokenId": "5071068515369649710029235690795450357739518007641887752174033660466662576402",
+      "size": 11.339200000000002,
+      "price": 0.9671999998230193,
+      "time": "7:18:31 AM",
+      "market": "Will the price of Bitcoin be above $78,000 on April 28?"
+    },
+    {
+      "id": 1777351042811,
+      "txHash": "",
+      "whale": "0x6d3c5bd13984b2de47c3a88ddc455309aab3d294",
+      "nickname": "Scornful-West",
+      "tokenId": "65765289176998763457205322099261318699189624434673752170535208488681006089209",
+      "size": 9.9024,
+      "price": 0.6344,
+      "time": "4:37:22 AM",
+      "market": "Will CA San Lorenzo de Almagro win on 2026-04-28?"
+    },
+    {
+      "id": 1777345373141,
+      "txHash": "",
+      "whale": "0x36901eb0f21519cc9055662a6d2483e96da1e16f",
+      "nickname": "Deserted-Bitter",
+      "tokenId": "26401947112654804199203893947494409130280149210425302412100872308552708797119",
+      "size": 11.4528,
+      "price": 0.8314874164433355,
+      "time": "3:02:53 AM",
+      "market": "Will the price of Bitcoin be above $76,000 on April 28?"
+    },
+    {
+      "id": 1777344203720,
+      "txHash": "",
+      "whale": "0xeface9902242b0399856f981600b907dcc9bc9a1",
+      "nickname": "Crazy-Fishmonger",
+      "tokenId": "50292933818751585369672690878774599873941191925538325333138798248932182222864",
+      "size": 11.9656,
+      "price": 0.5512,
+      "time": "2:43:23 AM",
+      "market": "Will Nithya Raman win the 2026 Los Angeles mayoral election?"
+    },
+    {
+      "id": 1777341683828,
+      "txHash": "",
+      "whale": "0xeface9902242b0399856f981600b907dcc9bc9a1",
+      "nickname": "Crazy-Fishmonger",
+      "tokenId": "103413290350495652352524674850785946279173087085625776965843097224480869539138",
+      "size": 13.0056,
+      "price": 0.99,
+      "time": "2:01:23 AM",
+      "market": "Will Brooks Rosser win American Idol Season 24?"
+    },
+    {
+      "id": 1777337903404,
+      "txHash": "",
+      "whale": "0x8a98109fb0f1d87d9bfcb4486ba3587b95c51b92",
+      "nickname": "Blaring-Backdrop",
+      "tokenId": "104229190536018572121484173191541354156604939029235105329744131361979375738338",
+      "size": 14.747200000000001,
+      "price": 0.5824,
+      "time": "12:58:23 AM",
+      "market": "US x Iran diplomatic meeting by May 15, 2026?"
+    },
+    {
+      "id": 1777335081874,
+      "txHash": "",
+      "whale": "0x8a98109fb0f1d87d9bfcb4486ba3587b95c51b92",
+      "nickname": "Blaring-Backdrop",
+      "tokenId": "103276346517706583724291562088856295045370865542838991157026154495929964898102",
+      "size": 15.6584,
+      "price": 0.7488,
+      "time": "12:11:21 AM",
+      "market": "US x Iran diplomatic meeting by May 5, 2026?"
+    },
+    {
+      "id": 1777334767992,
+      "txHash": "",
+      "whale": "0x8a98109fb0f1d87d9bfcb4486ba3587b95c51b92",
+      "nickname": "Blaring-Backdrop",
+      "tokenId": "27413838353174106032543688429086466524477590332994852162615655865819795164419",
+      "size": 17.7504,
+      "price": 0.6864,
+      "time": "12:06:07 AM",
+      "market": "Will Trump visit China by May 15?"
+    },
+    {
+      "id": 1777334767263,
+      "txHash": "",
+      "whale": "0x8a98109fb0f1d87d9bfcb4486ba3587b95c51b92",
+      "nickname": "Blaring-Backdrop",
+      "tokenId": "51545532861486385873692934524720384955493736271416969951012544640145812214434",
+      "size": 17.7504,
+      "price": 0.8320000000000001,
+      "time": "12:06:07 AM",
+      "market": "Will Trump visit China by May 31?"
+    },
+    {
+      "id": 1777334629542,
+      "txHash": "",
+      "whale": "0x67bc6af6806df61ba5144b125174ecf5f821d54e",
+      "nickname": "Limp-Colt",
+      "tokenId": "11860607772349332991076953711276491732463246158502547301609855788223626456599",
+      "size": 19.287200000000002,
+      "price": 0.99,
+      "time": "12:03:49 AM",
+      "market": "Will the Fed increase interest rates by 25 bps after the June 2026 meeting?"
+    },
+    {
+      "id": 1777313594874,
+      "txHash": "0x24c32141a9e55837e18608ce4d32302c724631aa4218022d8c6b18673e391e6d",
+      "whale": "0x8a98109f...",
+      "nickname": "Blaring-Backdrop",
+      "tokenId": "64706035347482993104399772555177879877574275930031570104391724786902103307827",
+      "size": 4.9239999999999995,
+      "price": 0.99,
+      "time": "6:13:14 PM",
+      "market": "Will Anthropic have the best AI model at the end of April 2026?"
+    },
+    {
+      "id": 1777311703005,
+      "txHash": "0xb33053f939cfd6f128a0e91cd1f915107b3ecc77cdda50380a7f60d39eff37fc",
+      "whale": "0xb6fa5703...",
+      "nickname": "Different-Ecclesia",
+      "tokenId": "25945415793931624559794421130954173506522916582203134613102786444988212496867",
+      "size": 6.1488000000000005,
+      "price": 0.99,
+      "time": "5:41:43 PM",
+      "market": "Will Rafael López Aliaga win the 2026 Peruvian presidential election?"
+    },
+    {
+      "id": 1777308267343,
+      "txHash": "0x0df1772483fe36775da1013b06df0a0469098fa455227de2b9c66e5178584022",
+      "whale": "0x8a98109f...",
+      "nickname": "Blaring-Backdrop",
+      "tokenId": "31322939969386218062893936997086058166263963345358385554657299529044067614241",
+      "size": 10.0848,
+      "price": 0.99,
+      "time": "4:44:27 PM",
+      "market": "Will Apple be the largest company in the world by market cap on June 30?"
+    },
+    {
+      "id": 1777308123232,
+      "txHash": "0x9871d792e7dafa65278989c3ccac59f1a076a835ae519dc64d98686bfb59f7cf",
+      "whale": "0xe8dd7741...",
+      "nickname": "Real-Veteran",
+      "tokenId": "71766068780847592275832975634222479355839510113984416677534711254568813110393",
+      "size": 9.0632,
+      "price": 0.99,
+      "time": "4:42:03 PM",
+      "market": "Will the Indian National Congress (INC) win the most seats in the 2026 Assam Legislative Assembly election?"
+    },
+    {
+      "id": 1777307147088,
+      "txHash": "0xaa17486e8228baeb6a44c71880e297f2d6caecfaa6264acfc303f25150672d08",
+      "whale": "0xe8dd7741...",
+      "nickname": "Real-Veteran",
+      "tokenId": "76365405023480211768966532998654785223008164944229461320151310988629202731862",
+      "size": 10.3576,
+      "price": 0.99,
+      "time": "4:25:47 PM",
+      "market": "Will Alphabet be the largest company in the world by market cap on June 30?"
     }
   ],
   "riskSettings": {
     "entrySlippage": 5,
     "panicSlippage": 40,
     "maxGasPrice": 1.5,
-    "tradeCooldownMin": 90
+    "tradeCooldownMin": 90,
+    "tpLiquiditySlippage": 65
   },
-"customMarketRules": [
+  "customMarketRules": [
     {
       "keyword": "Will Trump say",
-      "takeProfitThreshold": 28,
+      "takeProfitThreshold": 25,
       "stopLossThreshold": -25,
       "microBetAmount": 2,
       "predictionThreshold": 0.75,
@@ -191,7 +474,7 @@
     },
     {
       "keyword": "Trump say",
-      "takeProfitThreshold": 28,
+      "takeProfitThreshold": 25,
       "stopLossThreshold": -25,
       "microBetAmount": 2,
       "predictionThreshold": 0.75,
@@ -202,71 +485,71 @@
       "takeProfitThreshold": 18,
       "stopLossThreshold": -22,
       "microBetAmount": 1.2,
-      "predictionThreshold": 0.80,
-      "edgeThreshold": 0.10
+      "predictionThreshold": 0.8,
+      "edgeThreshold": 0.1
     },
     {
       "keyword": "Bitcoin Up or Down",
       "takeProfitThreshold": 20,
       "stopLossThreshold": -28,
       "microBetAmount": 2.5,
-      "predictionThreshold": 0.80,
-      "edgeThreshold": 0.10
+      "predictionThreshold": 0.8,
+      "edgeThreshold": 0.1
     },
     {
       "keyword": "Ethereum Up or Down",
       "takeProfitThreshold": 20,
       "stopLossThreshold": -28,
       "microBetAmount": 2.5,
-      "predictionThreshold": 0.80,
-      "edgeThreshold": 0.10
+      "predictionThreshold": 0.8,
+      "edgeThreshold": 0.1
     },
     {
       "keyword": "Solana Up or Down",
-      "takeProfitThreshold": 22,
-      "stopLossThreshold": -30,
-      "microBetAmount": 2,
-      "predictionThreshold": 0.80,
-      "edgeThreshold": 0.10
+      "takeProfitThreshold": 21,
+      "stopLossThreshold": -28,
+      "microBetAmount": 2.5,
+      "predictionThreshold": 0.8,
+      "edgeThreshold": 0.1
     },
     {
       "keyword": "US x Iran",
-      "takeProfitThreshold": 28,
-      "stopLossThreshold": -35,
+      "takeProfitThreshold": 25,
+      "stopLossThreshold": -32,
       "microBetAmount": 3,
       "predictionThreshold": 0.75,
       "edgeThreshold": 0.08
     },
     {
       "keyword": "meeting by",
-      "takeProfitThreshold": 30,
-      "stopLossThreshold": -35,
+      "takeProfitThreshold": 25,
+      "stopLossThreshold": -32,
       "microBetAmount": 3,
-      "predictionThreshold": 0.70,
+      "predictionThreshold": 0.7,
       "edgeThreshold": 0.06
     },
     {
       "keyword": "Temperature in",
-      "takeProfitThreshold": 22,
+      "takeProfitThreshold": 20,
       "stopLossThreshold": -25,
       "microBetAmount": 1.8,
-      "predictionThreshold": 0.70,
+      "predictionThreshold": 0.7,
       "edgeThreshold": 0.06
     },
     {
       "keyword": "CPI",
-      "takeProfitThreshold": 25,
+      "takeProfitThreshold": 24,
       "stopLossThreshold": -30,
       "microBetAmount": 3,
-      "predictionThreshold": 0.60,
-      "edgeThreshold": 0.04
+      "predictionThreshold": 0.65,
+      "edgeThreshold": 0.05
     },
     {
       "keyword": "interest rate",
-      "takeProfitThreshold": 28,
-      "stopLossThreshold": -32,
+      "takeProfitThreshold": 25,
+      "stopLossThreshold": 30,
       "microBetAmount": 3,
-      "predictionThreshold": 0.60,
+      "predictionThreshold": 0.6,
       "edgeThreshold": 0.04
     },
     {
@@ -274,15 +557,15 @@
       "takeProfitThreshold": 25,
       "stopLossThreshold": -30,
       "microBetAmount": 3,
-      "predictionThreshold": 0.60,
-      "edgeThreshold": 0.04
+      "predictionThreshold": 0.65,
+      "edgeThreshold": 0.05
     },
     {
       "keyword": "Elon",
-      "takeProfitThreshold": 22,
+      "takeProfitThreshold": 23,
       "stopLossThreshold": -28,
       "microBetAmount": 2,
-      "predictionThreshold": 0.85,
+      "predictionThreshold": 0.82,
       "edgeThreshold": 0.12
     },
     {
@@ -290,43 +573,188 @@
       "takeProfitThreshold": 20,
       "stopLossThreshold": -30,
       "microBetAmount": 1.5,
-      "predictionThreshold": 0.70,
+      "predictionThreshold": 0.7,
       "edgeThreshold": 0.06
     },
     {
       "keyword": "by April",
-      "takeProfitThreshold": 26,
+      "takeProfitThreshold": 24,
       "stopLossThreshold": -30,
       "microBetAmount": 2.5,
-      "predictionThreshold": 0.70,
+      "predictionThreshold": 0.7,
       "edgeThreshold": 0.06
     },
     {
       "keyword": "by May",
-      "takeProfitThreshold": 26,
+      "takeProfitThreshold": 25,
       "stopLossThreshold": -30,
       "microBetAmount": 2.5,
-      "predictionThreshold": 0.70,
+      "predictionThreshold": 0.7,
       "edgeThreshold": 0.06
     },
     {
       "keyword": "Ukraine",
-      "takeProfitThreshold": 30,
-      "stopLossThreshold": -35,
+      "takeProfitThreshold": 27,
+      "stopLossThreshold": -32,
       "microBetAmount": 3,
       "predictionThreshold": 0.75,
       "edgeThreshold": 0.08
     },
     {
       "keyword": "Israel",
-      "takeProfitThreshold": 28,
-      "stopLossThreshold": -35,
+      "takeProfitThreshold": 27,
+      "stopLossThreshold": -32,
       "microBetAmount": 3,
       "predictionThreshold": 0.75,
       "edgeThreshold": 0.08
     }
   ],
-  "maxCopyMarketsPerWhale": 7,
-  "copyMinWhaleSize": 80,
-  "copyTimeWindowMinutes": 30
+  "maxCopyMarketsPerWhale": 4,
+  "copyMinWhaleSize": 300,
+  "copyTimeWindowMinutes": 60,
+  "autoWhaleCount": 10,
+  "maxCopyMarketsCustom": 10,
+  "maxCopyDaysForWhales": 15,
+  "aiStats": {
+    "wins": 2,
+    "losses": 5,
+    "totalTrades": 7,
+    "winRate": 28.57142857142857
+  },
+  "whaleStats": {
+    "wins": 29,
+    "losses": 6,
+    "totalTrades": 35,
+    "winRate": 82.85714285714286
+  },
+  "equalizerEnabled": true,
+  "equalizerShockThreshold": 9,
+  "equalizerBetAmount": 5,
+  "chronosEnabled": true,
+  "chronosBetAmount": 5,
+  "chronosMinPrice": 0.55,
+  "chronosMaxPrice": 0.92,
+  "positionEngines": {
+    "11559295611257532225821725033208879392031201617541244930217987702916581317956": "KINETIC",
+    "40136077028828766729079427926717149832178638984078096656663665857067952213094": "KINETIC",
+    "10870735844129363112340856470351944311017018042006506909643772792437247001424": "Trinity (C+G+X)",
+    "32147008355659804125892674759049935163012941513976642230827340740486234165908": "Claude",
+    "98936404052602111010217159877299750605455327804479128851175635002084257037640": "KINETIC",
+    "112346610027430017959000814421052069769830523911552505381383611025665200411867": "KINETIC",
+    "98436641230723151368663058688747316556677441322145539877519556661285772238457": "Consenso (G+X)",
+    "7170790312683026300654000356829798666040541517627516886105897269429552506030": "KINETIC",
+    "50175226108008019331140287518883720941150150394045790891371820280907276470207": "KINETIC",
+    "87658127667468770094012115406242855681182532136553293278416476838737781172646": "KINETIC",
+    "67677363805946088807966424483896220422335242776357164538783001801164840746377": "Consenso (G+X)",
+    "20701713334469435798563248779564378063201128176240344849363719197512382066565": "Claude",
+    "75786991843030376924146111039192973749745650882872244718655426808139401826873": "Claude",
+    "85120833651263817981584521912033450432131933070129494562817380804851730741370": "KINETIC",
+    "58967660738128270951126660999279085686776351029045994035307848489358761299487": "Claude",
+    "20913567777203686176676354935019853862900859679737945267900649763409198517281": "Claude",
+    "50640444387034687241565289771870761433602678143123051888885238461111439245073": "Gemini",
+    "56820561557753146071455578401114389283100523418006282786042143525581730971259": "Claude",
+    "67083959099600306064456807437720884287056462842321423726915141068760220720335": "Claude",
+    "97302765871084392993262320211146729242259362420460000986874364412113762270416": "KINETIC",
+    "58900383789683627241289799878326411745689264966697018862420174342581432835915": "KINETIC",
+    "86341449571526342845293586489791776479657456842791136715431631798360871947084": "Claude",
+    "7836604255847180413266859859964716283879316149422430982996735010977406280677": "KINETIC",
+    "13766832573835273618619726296448743817363626192127917323991550933932181075000": "KINETIC",
+    "80588826967397606219465924107035379248071077261833129847927065216796235344741": "KINETIC",
+    "54144935870668523189790367821036364356328985793056171434370395923137050193682": "Consenso (G+G)",
+    "69855882945963359260402839086073824972470114613095915351248891366256207717269": "Consenso (G+G)",
+    "42940702119599253258971621720022798466758471997870724216436913732898531557535": "Consenso (G+G)",
+    "21085826861814719925593528929889585964749364155149549755010739021657875110604": "Consenso (C+G)",
+    "63644763464034691367428527733393916036342796100129702980469514153898496549749": "Limp-Colt",
+    "80469343647895842790271695551281751609170192170590649536165321439365630389654": "Reasonable-Wick",
+    "38310927461258927563020508025396887688249787380193911540547071417200646834355": "Blaring-Backdrop",
+    "2485184219203170158934346318875050681929324146725920554316117645302722327248": "Pristine-Soul",
+    "3539761353871947758222904778438532904194418510639880694720927872335191948765": "Pristine-Soul",
+    "102447579374170701068873021654048989952660764659006305952410860896511921232343": "Pristine-Soul",
+    "55765847355741097780600930565608518744585604458569127909454911647199765501966": "Pristine-Soul",
+    "47634466547617839934032219229279945162541382502913745126666974137002716262684": "Pristine-Soul",
+    "25245826787224338410010088676982472331814131701235656578925446163384798724305": "Pristine-Soul",
+    "47017405184502675981467508075775615441360798090463694595132629118753589748231": "Pristine-Soul",
+    "106145986602385783543638735436980137160096587657317174963773239309552677197215": "Scornful-West",
+    "37726096291033755960138434480309842752392906581303110222866737197011090444316": "Blaring-Backdrop",
+    "46581835831525280126714747999686373127429627947256474439860896007472960168455": "Blaring-Backdrop",
+    "69625364846840598716576766409133467014678469688514096710920250102107522915422": "Blaring-Backdrop",
+    "56765604206329295201800708509102770552215845482784718397590899836102045975284": "Blaring-Backdrop",
+    "926377706175971731068420551849041218012736398250875962020506643091812084572": "Blaring-Backdrop",
+    "24429453948511895232993532364199656930724466822195815272282466096567931005383": "Consenso (G+G)",
+    "54383069793418849643689735308812220614278041657384240586815851049234599775935": "Parallel-Ethyl",
+    "64703998724474008677827057135436893758254552168142785204605792475717308499827": "Blaring-Backdrop",
+    "39464750844708419211911843168766556696281098915649956618085241756070838623784": "Real-Veteran",
+    "37158037760862237158315983561743155818179448788878107323051941865974333305818": "Real-Veteran",
+    "94941417861317742266019938943369867097143509694427965708221763679221717266992": "Blissful-Maestro",
+    "41453862431529252750296169469817799199077831277259528208626927300042664515467": "KINETIC",
+    "189816502311168455874486021111973706103250513404045586151374551967685071265": "Real-Veteran",
+    "87854174148074652060467921081181402357467303721471806610111179101805869578687": "Blaring-Backdrop",
+    "44366458982156171422796551330299704518162863942866740121745454633979905778791": "Limp-Colt",
+    "74147201895208107009330545295719115072026516942875110065804553594994054886570": "KINETIC",
+    "58879299945592013948525261328444396601397408171613924748929269227017026499887": "Real-Veteran",
+    "90713175285238837229141362456380660699457701142142655731293716395090014512187": "Limp-Colt",
+    "28977243062813034949874697835837271758139020303200731933724428328829406136251": "Scornful-West",
+    "5142995875706954663752746871512163313683716603289381030654403043571284491864": "Real-Veteran",
+    "12933385462445051219548039807631278921517469211617755773732773415883384410827": "Blaring-Backdrop",
+    "74292979757339462077229067343314887338701734041537703421934381767727342599495": "KINETIC",
+    "72159733567464963532374629649568037209051833878835521607936703013973131442445": "KINETIC",
+    "3192096297883233317980054223347505806328861779294287219193063118192480857863": "Real-Veteran",
+    "76365405023480211768966532998654785223008164944229461320151310988629202731862": "Real-Veteran",
+    "11713179905711979530482617184949599169552906679471161462716508217175932604073": "Real-Veteran",
+    "79789232395720638858274738847227972167237508904058868259908731026531836677826": "Real-Veteran",
+    "60392034336577338231742284512109234079906014441771834628360951615171328173979": "Real-Veteran",
+    "78358410652416917074153480147457833026846238321183973347826605475618415914957": "Real-Veteran",
+    "558600218792430158020964384658762756367786275998757133304987611939841005404": "Limp-Colt",
+    "99456650424133736956039585691300410620940890840527738509048704347998059446617": "Real-Veteran",
+    "97710109583548962149843212512472607006323328698571693557093171625193701334062": "Real-Veteran",
+    "4528490762135909959115497570788016411978328864019966148234176368340272472492": "Real-Veteran",
+    "70060237851313004783028047667393043178166859809195834114691174001731493138888": "Real-Veteran",
+    "93562735332424505709238310095500293744119052743226259840881160944445026381473": "Real-Veteran",
+    "71766068780847592275832975634222479355839510113984416677534711254568813110393": "Real-Veteran",
+    "31322939969386218062893936997086058166263963345358385554657299529044067614241": "Blaring-Backdrop",
+    "87867655886597602246343219118466209171336975885609074206023274992882510129809": "Real-Veteran",
+    "98355046396540846011292192248416059322894050047463258765501387272967935434415": "Real-Veteran",
+    "79554291285012969606755801145386416302852619250080326729763881050425186690118": "Limp-Colt",
+    "48066369667805430817908031623380363044251613682970289027405831101033695676422": "Limp-Colt",
+    "66472530526607403665764174469535581313431620503458162037694255082037262361788": "Limp-Colt",
+    "92387849785958608854241813313501025693454360647697662432296641859450521424216": "Limp-Colt",
+    "106042778569020456846448290057936385726097394899443862594454878965392595546558": "Real-Veteran",
+    "25945415793931624559794421130954173506522916582203134613102786444988212496867": "Different-Ecclesia",
+    "64706035347482993104399772555177879877574275930031570104391724786902103307827": "Blaring-Backdrop",
+    "114266735877811876021362945683127542532778925409590599016489267644246881997088": "Blaring-Backdrop",
+    "103276346517706583724291562088856295045370865542838991157026154495929964898102": "Blaring-Backdrop",
+    "56409629354841265497977669080866364301934066635201913020279946112889034606252": "KINETIC",
+    "63793863556797000275658055032630323870409121083156088967324457427143870125073": "KINETIC",
+    "11860607772349332991076953711276491732463246158502547301609855788223626456599": "Limp-Colt",
+    "51545532861486385873692934524720384955493736271416969951012544640145812214434": "Blaring-Backdrop",
+    "27413838353174106032543688429086466524477590332994852162615655865819795164419": "Blaring-Backdrop",
+    "104229190536018572121484173191541354156604939029235105329744131361979375738338": "Blaring-Backdrop",
+    "108923623456125487461611122542110692279624116536772616266566091750105875271523": "Blaring-Backdrop",
+    "17731796396300538710784957388367421669328424080436429737027300810700992224038": "Blissful-Maestro",
+    "103413290350495652352524674850785946279173087085625776965843097224480869539138": "Crazy-Fishmonger",
+    "50292933818751585369672690878774599873941191925538325333138798248932182222864": "Crazy-Fishmonger",
+    "26401947112654804199203893947494409130280149210425302412100872308552708797119": "Deserted-Bitter",
+    "65765289176998763457205322099261318699189624434673752170535208488681006089209": "Scornful-West",
+    "98960802858729919652336445618575870541336567074229486472487367268221867433036": "Trinity (C+G+X)",
+    "45720947308530468765087874228584729250108790729495800420104302263408503667446": "Real-Veteran",
+    "58154574909590813657096858535882625339077077643653677858955479541043465171526": "Real-Veteran",
+    "5071068515369649710029235690795450357739518007641887752174033660466662576402": "Deserted-Bitter",
+    "83558045297911395649080947063026404284849828587825556624318439821322935513705": "Real-Veteran",
+    "106218476120020443701164366533230270947720665241134331161476871907878920925845": "Real-Veteran",
+    "105936209728390877466087311003098438413380274261172346796046683814802770299563": "Real-Veteran",
+    "89280061260215241762992011576906452916898123320727275673852693675334252864643": "Real-Veteran",
+    "60518761730089703697687086065329793943542981115918493878608511267366446878693": "Claude",
+    "28862013592379269304119128335962901508101117785582411821357465917272013618834": "Blissful-Maestro",
+    "79278785324805720193025265843473095986154275499188036329821080825823670954027": "Real-Veteran",
+    "70226715059808237556770408965090524273050999885705831276979966165234919231370": "Real-Veteran",
+    "81097202530255890086947705586015720359043721552008538666524800226878436743413": "Real-Veteran"
+  },
+  "kineticEnabled": true,
+  "kineticBetAmount": 10,
+  "kineticImbalanceRatio": 8,
+  "kineticDepthPercent": 2,
+  "equalizerTpThreshold": 15,
+  "chronosTpThreshold": 20,
+  "kineticTpThreshold": 10,
+  "whalePostPartialTp": 80
 }
