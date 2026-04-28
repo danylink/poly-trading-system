@@ -4,6 +4,7 @@ import { botStatus } from '../config.js';
 import { getMarketCategoryEnhanced, isMarketAllowed, getRiskProfile, getCustomMarketRules } from '../utils/helpers.js';
 import { analyzeMarketWithClaude, analyzeMarketWithGemini, analyzeMarketWithGrok } from '../utils/ia.js'; // ← lo crearemos después
 import { executeTradeOnChain } from '../services/polymarketService.js';
+import { pendingOrdersCache, closedPositionsCache } from '../../utils/memory.js';
 import { sendSniperAlert } from '../services/telegramService.js';
 import { recordPriceToMemory } from '../utils/memory.js';
 

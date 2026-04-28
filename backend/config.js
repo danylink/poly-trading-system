@@ -100,6 +100,8 @@ export let botStatus = {
     copiedPositions: [],
     copiedTrades: [],
     copyTradingStats: { totalCopied: 0, successful: 0 },
+    preferGaslessRedeem: true,
+    partialSells: [],
 };
 
 // ==========================================
