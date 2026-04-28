@@ -440,6 +440,7 @@ console.log("Wallet conectada:", wallet.address);
 
 
 let clobClient = null;
+
 // ==========================================
 // AUTENTICACIÓN CLOB V2 (L1 + L2 AUTH UNIFICADA)
 // ==========================================
@@ -449,33 +450,28 @@ async function conectarClob() {
 
         const PROXY_WALLET = process.env.POLY_PROXY_ADDRESS || "0x876E00CBF5c4fe22F4FA263F4cb713650cB758d2";
 
-        // 1. Inicializamos la variable GLOBAL clobClient (dejando de ser null)
+        // 🔥 FIX 1: chainId y signatureType 1
         clobClient = new ClobClient({
             host: "https://clob.polymarket.com",
-            chain: 137,
+            chainId: 137, 
             signer: wallet,                    
             funder: PROXY_WALLET,
-            signatureType: 2,
+            signatureType: 1, 
             builderCode: process.env.POLY_BUILDER_CODE || undefined
         });
 
         console.log("Derivando API Key...");
-        
         try {
-            // 2. Ahora sí usamos clobClient, porque ya fue creado arriba
             const creds = await clobClient.createOrDeriveApiKey();
-            
-            // 3. Re-instanciamos clobClient pero ahora le inyectamos las credenciales
             clobClient = new ClobClient({
                 host: "https://clob.polymarket.com",
-                chain: 137,
+                chainId: 137,
                 signer: wallet,                    
                 funder: PROXY_WALLET,
-                signatureType: 2,
-                creds: creds, // <=== LA LLAVE MAESTRA
+                signatureType: 1, 
+                creds: creds, 
                 builderCode: process.env.POLY_BUILDER_CODE || undefined
             });
-            
             console.log("✅ API Key derivada e inyectada correctamente.");
         } catch (e) {
             console.log("⚠️ Error al derivar la API Key:", e.message);
@@ -483,13 +479,7 @@ async function conectarClob() {
         }
 
         console.log("✅ API Credentials V2 obtenidas y configuradas");
-
         await new Promise(r => setTimeout(r, 2000));
-
-        console.log("✅ CLOB V2 Client conectado y autenticado correctamente");
-        console.log(`   - Funder (Proxy): ${PROXY_WALLET}`);
-        console.log(`   - Signature Type: 2`);
-
         return clobClient;
     } catch (error) {
         console.error("❌ Error conectando CLOB V2:", error.message);
@@ -1296,15 +1286,18 @@ async function executeTradeOnChain(conditionId, tokenId, amountUsdc, currentPric
         console.log(`📡 Orden BUY V2: ${numShares} shares | Precio: $${limitPrice} | Monto estimado: $${(numShares * limitPrice).toFixed(2)}`);
 
         // ====================== EJECUCIÓN V2 ======================
+        const proxyAddress = process.env.POLY_PROXY_ADDRESS || "0x876E00CBF5c4fe22F4FA263F4cb713650cB758d2";
+        
         const order = {
             tokenID: tokenId,
-            price: limitPrice,
-            size: numShares,
-            side: Side.BUY
+            price: safeLimitPrice,
+            size: sharesToSell,
+            side: Side.SELL,
+            maker: proxyAddress // 🔥 FIX CRÍTICO: Forzamos el proxy como dueño
         };
 
         const options = {
-            tickSize: tickStr, // Usa el string seguro
+            tickSize: String(trueTickSize),
             negRisk: isNegRisk
         };
 
@@ -2528,11 +2521,14 @@ async function executeSellOnChain(conditionId, tokenId, exactShares, limitPrice,
         console.log(`📡 [SELL V2] Orden FINAL: ${sharesToSell} shares | Precio: $${safeLimitPrice}`);
 
         // ====================== EJECUCIÓN V2 ======================
+        const proxyAddress = process.env.POLY_PROXY_ADDRESS || "0x876E00CBF5c4fe22F4FA263F4cb713650cB758d2";
+        
         const order = {
             tokenID: tokenId,
             price: safeLimitPrice,
             size: sharesToSell,
-            side: Side.SELL
+            side: Side.SELL,
+            maker: proxyAddress // 🔥 FIX CRÍTICO: Forzamos el proxy como dueño
         };
 
         const options = {
