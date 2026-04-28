@@ -440,8 +440,10 @@ console.log("Wallet conectada:", wallet.address);
 
 
 // ==========================================
-// 1. CONEXIÓN CLOB V2 - VERSIÓN QUE DEBERÍA FUNCIONAR (Basada en tu V1)
+// 1. CONEXIÓN CLOB V2 - VERSIÓN FINAL PARA PROXY (Usando clave pre-creada)
 let clobClient = null;
+let POLY_APY_KEY = '019d2dbf-dede-76c0-a866-4c631385a520';
+let POLY_BUILDER_CODE = '0x06816839ca170c9d2676c0c73bb69a437d3aa679ef6645187923f8b6026e89ed';
 
 async function conectarClob() {
     try {
@@ -449,37 +451,25 @@ async function conectarClob() {
 
         const PROXY_WALLET = "0x876E00CBF5c4fe22F4FA263F4cb713650cB758d2";
 
-        // Constructor V2 correcto (equivalente a tu V1)
         clobClient = new ClobClient({
             host: "https://clob.polymarket.com",
             chain: 137,
-            signer: wallet,                    // ← Tu wallet que firma (0xDe27...)
-            funder: PROXY_WALLET,              // ← El proxy donde están las posiciones
-            signatureType: 2
+            signer: wallet,
+            funder: PROXY_WALLET,
+            signatureType: 2,
+            apiKey: POLY_APY_KEY,           // ← Clave pre-creada del dashboard
+            builderCode: POLY_BUILDER_CODE  // ← Código de constructor
         });
 
-        console.log("Derivando API Key...");
-        const apiCreds = await clobClient.createOrDeriveApiKey();
-
-        console.log("✅ API Credentials V2 obtenidas");
-
-        await new Promise(resolve => setTimeout(resolve, 1500));
-
+        console.log("✅ Usando Clave API pre-creada del dashboard (no se crea nueva)");
         console.log("✅ CLOB V2 Client conectado correctamente");
         console.log(`   - Funder (Proxy): ${PROXY_WALLET}`);
-        console.log(`   - Signature Type: 2`);
+        console.log(`   - Signer: ${wallet.address}`);
 
         return clobClient;
 
     } catch (error) {
         console.error("❌ Error conectando CLOB V2:", error.message);
-        
-        // Mensaje de ayuda más claro
-        if (error.message.includes("Could not create api key")) {
-            console.error("💡 Posible causa: La POLY_PRIVATE_KEY en tu .env NO es la que controla el proxy wallet.");
-            console.error("   La wallet que firma debe ser la dueña del proxy 0x876E00...");
-        }
-        
         throw error;
     }
 }
