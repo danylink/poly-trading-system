@@ -440,9 +440,8 @@ console.log("✅ MODO SNIPER PRODUCCIÓN ACTIVADO (CLOB V2 + pUSD)");
 console.log("Wallet conectada:", wallet.address);
 
 
-let clobClient = null;
 // ==========================================
-// AUTENTICACIÓN CLOB V2 (L1 + L2 AUTH)
+// AUTENTICACIÓN CLOB V2 (L1 + L2 AUTH UNIFICADA)
 // ==========================================
 async function conectarClob() {
     try {
@@ -450,11 +449,11 @@ async function conectarClob() {
 
         const PROXY_WALLET = process.env.POLY_PROXY_ADDRESS || "0x876E00CBF5c4fe22F4FA263F4cb713650cB758d2";
 
-        // PASO 1: Cliente L1 (Solo para firmar y obtener credenciales)
-        let authClient = new ClobClient({
+        // 1. Inicializamos la variable GLOBAL clobClient (dejando de ser null)
+        clobClient = new ClobClient({
             host: "https://clob.polymarket.com",
             chain: 137,
-            signer: wallet,                    // ← Obligatorio
+            signer: wallet,                    
             funder: PROXY_WALLET,
             signatureType: 2,
             builderCode: process.env.POLY_BUILDER_CODE || undefined
@@ -463,18 +462,17 @@ async function conectarClob() {
         console.log("Derivando API Key...");
         
         try {
-            // Obtenemos las credenciales
+            // 2. Ahora sí usamos clobClient, porque ya fue creado arriba
             const creds = await clobClient.createOrDeriveApiKey();
             
-            // 🔥 FIX CRÍTICO V2: Re-creamos el cliente inyectando la propiedad "creds"
-            // Esto es lo que permite que executeSellOnChain y executeTradeOnChain firmen correctamente
+            // 3. Re-instanciamos clobClient pero ahora le inyectamos las credenciales
             clobClient = new ClobClient({
                 host: "https://clob.polymarket.com",
                 chain: 137,
                 signer: wallet,                    
                 funder: PROXY_WALLET,
                 signatureType: 2,
-                creds: creds, // <=== ESTE ES EL INGREDIENTE FALTANTE
+                creds: creds, // <=== LA LLAVE MAESTRA
                 builderCode: process.env.POLY_BUILDER_CODE || undefined
             });
             
@@ -484,19 +482,7 @@ async function conectarClob() {
             throw e;
         }
 
-        console.log("✅ API Credentials V2 obtenidas");
-
-        // PASO 2: Cliente L2 (Completamente autenticado con Credenciales)
-        // Sobrescribimos la variable global clobClient con el cliente full-auth
-        clobClient = new ClobClient({
-            host: "https://clob.polymarket.com",
-            chain: 137,
-            signer: wallet,
-            funder: PROXY_WALLET,
-            signatureType: 2,
-            creds: apiCreds, // <--- ESTO ES LO OBLIGATORIO Y NUEVO EN LA V2
-            builderCode: process.env.POLY_BUILDER_CODE || undefined
-        });
+        console.log("✅ API Credentials V2 obtenidas y configuradas");
 
         await new Promise(r => setTimeout(r, 2000));
 
