@@ -434,6 +434,7 @@ const wallet = new ethers.Wallet(process.env.POLY_PRIVATE_KEY, provider);
 
 // 🔥 NUEVO COLLATERAL OFICIAL (pUSD)
 const PUSD_ADDRESS = "0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB";
+const USDC_ADDRESS = "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359";
 
 console.log("✅ MODO SNIPER PRODUCCIÓN ACTIVADO (CLOB V2 + pUSD)");
 console.log("Wallet conectada:", wallet.address);
