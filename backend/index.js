@@ -3,7 +3,6 @@ import { webcrypto } from 'node:crypto';
 if (!globalThis.crypto) {
     globalThis.crypto = webcrypto;
 }
-//import { ClobClient, Side, OrderType } from '@polymarket/clob-client';
 import { ClobClient, Side, OrderType } from "@polymarket/clob-client-v2";
 import Anthropic from '@anthropic-ai/sdk';
 import { ethers } from 'ethers';
