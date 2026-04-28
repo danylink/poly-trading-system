@@ -476,47 +476,6 @@ async function conectarClob() {
     }
 }
 
-// Llamada inicial
-conectarClob();
-
-async function conectarClob() {
-    try {
-        console.log("🔐 Autenticando con Polymarket...");
-
-        // 🚨 EL FIX PRINCIPAL: Tu funder exitoso
-        const PROXY_WALLET = "0x876E00CBF5c4fe22F4FA263F4cb713650cB758d2"; 
-
-        // Cliente temporal para derivar API credentials
-        const authClient = new ClobClient("https://clob.polymarket.com", 137, wallet);
-        const apiCreds = await authClient.createOrDeriveApiKey();
-
-        console.log("✅ API Credentials obtenidas");
-
-        // Cliente FINAL
-        clobClient = new ClobClient(
-            "https://clob.polymarket.com",
-            137,
-            wallet,           
-            apiCreds,
-            2,                // Signature Type 2
-            PROXY_WALLET      // El funder correcto
-        );
-
-        await new Promise(resolve => setTimeout(resolve, 1500)); 
-
-        console.log("✅ CLOB Client conectado correctamente");
-        console.log(`   - Funder (Proxy): ${PROXY_WALLET}`);
-        console.log(`   - Signature Type: 2`);
-
-        return clobClient;
-
-    } catch (error) {
-        console.error("❌ Error conectando CLOB:", error.message);
-        throw error;
-    }
-}
-conectarClob();
-
 // ==========================================
 // 2. ACTUALIZACIÓN DE SALDOS (NATIVA CLOB) - VERSIÓN BLINDADA QUANT
 // ==========================================
