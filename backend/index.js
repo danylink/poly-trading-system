@@ -442,8 +442,8 @@ console.log("Wallet conectada:", wallet.address);
 // ==========================================
 // 1. CONEXIÓN CLOB V2 - VERSIÓN FINAL PARA PROXY (Usando clave pre-creada)
 let clobClient = null;
-let POLY_APY_KEY = '019d2dbf-dede-76c0-a866-4c631385a520';
-let POLY_BUILDER_CODE = '0x06816839ca170c9d2676c0c73bb69a437d3aa679ef6645187923f8b6026e89ed';
+//let POLY_APY_KEY = '019d2dbf-dede-76c0-a866-4c631385a520';
+//let POLY_BUILDER_CODE = '0x06816839ca170c9d2676c0c73bb69a437d3aa679ef6645187923f8b6026e89ed';
 
 async function conectarClob() {
     try {
@@ -457,8 +457,8 @@ async function conectarClob() {
             signer: wallet,
             funder: PROXY_WALLET,
             signatureType: 2,
-            apiKey: POLY_APY_KEY,           // ← Clave pre-creada del dashboard
-            builderCode: POLY_BUILDER_CODE  // ← Código de constructor
+            apiKey: process.env.POLY_API_KEY,           // ← Clave que ya tienes en el dashboard
+            builderCode: process.env.POLY_BUILDER_CODE   // ← Código de constructor
         });
 
         console.log("✅ Usando Clave API pre-creada del dashboard (no se crea nueva)");
@@ -475,8 +475,7 @@ async function conectarClob() {
 }
 
 // ==========================================
-// 2. ACTUALIZACIÓN DE SALDOS (NATIVA CLOB) - VERSIÓN BLINDADA QUANT
-// ==========================================
+// 2. ACTUALIZACIÓN DE SALDOS (V2 + pUSD) - VERSIÓN CORREGIDA
 async function updateRealBalances() {
     try {
         // 1. Gas (POL)
@@ -489,9 +488,14 @@ async function updateRealBalances() {
         const walletBalRaw = await pusdContract.balanceOf(wallet.address);
         botStatus.walletOnlyUSDC = (parseFloat(ethers.utils.formatUnits(walletBalRaw, 6))).toFixed(2);
 
-        // 3. Balance en Polymarket (pUSD)
+        // 3. Balance en Polymarket (CLOB V2) - FIX PRINCIPAL
         if (clobClient) {
             try {
+                // 🔥 Forzamos la API Key explícitamente (esto resuelve el error más común)
+                if (process.env.POLY_API_KEY) {
+                    clobClient.apiKey = process.env.POLY_API_KEY;
+                }
+
                 await clobClient.updateBalanceAllowance({ asset_type: "COLLATERAL" });
                 const balanceData = await clobClient.getBalanceAllowance({ asset_type: "COLLATERAL" });
                 
@@ -500,17 +504,17 @@ async function updateRealBalances() {
                 botStatus.balanceUSDC = botStatus.clobOnlyUSDC;
 
                 console.log(`💰 Balance CLOB V2 (pUSD): $${botStatus.clobOnlyUSDC}`);
+
             } catch (balanceError) {
                 console.warn("⚠️ Error obteniendo balance CLOB V2:", balanceError.message);
                 botStatus.clobOnlyUSDC = "0.00";
             }
         }
 
-        // 4. Posiciones activas + CANJEAR (FIX FINAL)
+        // 4. Posiciones activas + CANJEAR (tu código actual, solo agregamos un pequeño log)
         try {
             const userAddress = process.env.POLY_PROXY_ADDRESS || "0x876E00CBF5c4fe22F4FA263F4cb713650cB758d2";
             
-            // 🔥 FIX CRÍTICO 1: Límite a 500 para evitar posiciones invisibles
             const response = await fetch(`https://data-api.polymarket.com/positions?user=${userAddress}&limit=500`);
             const positions = await response.json();
             
@@ -520,7 +524,7 @@ async function updateRealBalances() {
             if (Array.isArray(positions) && positions.length > 0) {
                 for (const pos of positions) {
                     const size = parseFloat(pos.size || 0);
-                    if (size < 0.1) continue; // Ignoramos polvo (dust)
+                    if (size < 0.1) continue;
 
                     const cashPnl = parseFloat(pos.cashPnl || 0);
                     const percentPnl = parseFloat(pos.percentPnl || 0);
@@ -528,13 +532,11 @@ async function updateRealBalances() {
 
                     const isRedeemable = pos.redeemable === true || pos['canjeable'] === true;
 
-                    // 🔥 CLAVE: Si está lista para canjear, NO la mostramos en activePositions
                     if (isRedeemable) {
                         totalUnclaimed += valorActual;
-                        continue;   // ← Ocultamos del dashboard
+                        continue;
                     }
 
-                    // Solo agregamos posiciones realmente activas
                     let outcomeVal = "N/A";
                     if (pos.outcome) {
                         outcomeVal = String(pos.outcome).toUpperCase();
@@ -545,11 +547,9 @@ async function updateRealBalances() {
 
                     const currentTokenId = pos.asset || pos.token_id || pos.asset_id;
 
-                    // 🔥 FIX CRÍTICO 2: Extracción Directa desde la API para precisión matemática total
                     const invested = pos.initialValue ? parseFloat(pos.initialValue) : Math.max(0, valorActual - cashPnl);
                     const entryPrice = pos.avgPrice ? parseFloat(pos.avgPrice) : (size > 0 ? (invested / size) : 0);
 
-                    // Recuperar datos de origen (Ballena o Engine)
                     const whaleData = botStatus.copiedPositions?.find(p => p.tokenId === currentTokenId);
                     const savedEngine = botStatus.positionEngines?.[currentTokenId] || null;
 
@@ -558,7 +558,7 @@ async function updateRealBalances() {
 
                     if (whaleData && whaleData.nickname) {
                         finalNickname = whaleData.nickname;
-                        finalEngine = null;           // ← Importante: null para que no entre en IA badge
+                        finalEngine = null;
                     }
 
                     botStatus.activePositions.push({
@@ -574,23 +574,21 @@ async function updateRealBalances() {
                         category: getMarketCategoryEnhanced(pos.title || pos.market || ""),
                         outcome: outcomeVal,
                         engine: finalEngine, 
-                        sizeCopied: invested, // <-- RESTAURA VISUALMENTE LA INVERSIÓN (Con precisión absoluta)
-                        priceEntry: entryPrice, // <-- RESTAURA VISUALMENTE EL PRECIO (Con precisión absoluta)
+                        sizeCopied: invested,
+                        priceEntry: entryPrice,
                         nickname: finalNickname
                     });
                 }
             }
             
             botStatus.unclaimedUSDC = totalUnclaimed.toFixed(2);
-
-            // LIMPIEZA AUTOMÁTICA de copiedTrades
             await cleanupCopiedTrades();
 
         } catch (apiError) {
             console.log("⚠️ Error al obtener posiciones:", apiError.message);
         }
 
-        // Log de balances
+        // Log final
         if (Math.random() < 0.25) {
             const metaMaskVal = parseFloat(botStatus.walletOnlyUSDC || 0);
             const polyVal = parseFloat(botStatus.clobOnlyUSDC || 0);
@@ -602,8 +600,9 @@ async function updateRealBalances() {
         }
 
     } catch (e) { 
-        console.error("❌ Error general actualizando balances:", e.message); 
+        console.error("❌ Error general actualizando balances V2:", e.message); 
     }
+
     updateCarteraTotal();
 }
 
