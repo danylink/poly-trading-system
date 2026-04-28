@@ -4342,7 +4342,7 @@ app.listen(PORT, async () => {
     // ==================== INTERVALOS RECOMENDADOS (Sincronizados) ====================
 
     // 1. Motor principal de IA + Sniper (Acelerado a 45s para no chocar con la Watchlist)
-    setInterval(runBot, 45000);           
+    //setInterval(runBot, 45000);           
 
     // 2. Vigilancia de ganancias y PnL
     //setInterval(monitorPortfolio, 180000); // 3 minutos
