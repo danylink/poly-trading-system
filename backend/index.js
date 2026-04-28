@@ -465,7 +465,7 @@ async function conectarClob() {
         
         try {
             // 2. Ahora sí usamos clobClient, porque ya fue creado arriba
-            const creds = await clobClient.createOrDeriveApiKey();
+            //const creds = await clobClient.createOrDeriveApiKey();
             
             // 3. Re-instanciamos clobClient pero ahora le inyectamos las credenciales
             // clobClient = new ClobClient({
