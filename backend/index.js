@@ -503,52 +503,40 @@ async function conectarClob() {
 conectarClob();
 
 // ==========================================
-// 2. ACTUALIZACIÓN DE SALDOS (V2 + pUSD) - VERSIÓN CORREGIDA Y BLINDADA
+// ACTUALIZAR BALANCES REALES - VERSIÓN V2 (pUSD + SDK L2)
+// ==========================================
 async function updateRealBalances() {
     try {
-        // 1. Gas (POL)
+        // 1. Balance de Gas (POL) - Sigue igual
         const polBal = await provider.getBalance(wallet.address);
         botStatus.balancePOL = Number(ethers.utils.formatEther(polBal)).toFixed(3);
 
-        // 2. pUSD en MetaMask
-        const pusdAbi = ["function balanceOf(address) view returns (uint256)"];
-        const pusdContract = new ethers.Contract(PUSD_ADDRESS, pusdAbi, provider);
-        const walletBalRaw = await pusdContract.balanceOf(wallet.address);
+        // 2. Balance USDC en MetaMask (Saldo fuera de Polymarket)
+        const usdcAbi = ["function balanceOf(address) view returns (uint256)"];
+        const usdcContract = new ethers.Contract(USDC_ADDRESS, usdcAbi, provider);
+        const walletBalRaw = await usdcContract.balanceOf(wallet.address);
         botStatus.walletOnlyUSDC = (parseFloat(ethers.utils.formatUnits(walletBalRaw, 6))).toFixed(2);
 
-        // 3. Balance en Polymarket (CLOB V2) - FIX CRÍTICO
+        // 3. Balance en Polymarket CLOB V2 (pUSD)
         if (clobClient) {
             try {
-                // 🔥 FORZAMOS la API Key explícitamente (esto resuelve el error más común en V2)
-                if (process.env.POLY_API_KEY) {
-                    clobClient.apiKey = process.env.POLY_API_KEY;
-                }
-
-                console.log("🔑 Forzando API Key antes de consultar balance...");
-
-                await clobClient.updateBalanceAllowance({ asset_type: "COLLATERAL" });
-                const balanceData = await clobClient.getBalanceAllowance({ asset_type: "COLLATERAL" });
-                
-                const clobMonto = parseFloat(balanceData.balance || 0) / 1000000;
+                // En V2 el balance es pUSD (Poly-USDC)
+                // Usamos el método oficial del SDK autenticado (L2)
+                const balanceData = await clobClient.getCollateralBalance();
+                // El balance viene en unidades básicas (6 decimales)
+                const clobMonto = parseFloat(balanceData.amount || 0);
                 botStatus.clobOnlyUSDC = clobMonto.toFixed(2);
                 botStatus.balanceUSDC = botStatus.clobOnlyUSDC;
-
-                console.log(`💰 Balance CLOB V2 (pUSD): $${botStatus.clobOnlyUSDC}`);
-
-            } catch (balanceError) {
-                console.warn("⚠️ Error obteniendo balance CLOB V2:", balanceError.message);
-                if (balanceError.message.includes("API Credentials")) {
-                    console.warn("💡 Intentando forzar credenciales de nuevo...");
-                    if (process.env.POLY_API_KEY) clobClient.apiKey = process.env.POLY_API_KEY;
-                }
-                botStatus.clobOnlyUSDC = "0.00";
+            } catch (balError) {
+                console.log("⚠️ Error obteniendo balance CLOB V2:", balError.message);
             }
         }
 
-        // 4. Posiciones activas + CANJEAR (tu código actual, solo agregamos un pequeño log)
+        // 4. Posiciones activas + CANJEAR
         try {
             const userAddress = process.env.POLY_PROXY_ADDRESS || "0x876E00CBF5c4fe22F4FA263F4cb713650cB758d2";
             
+            // Mantenemos el límite de 500 para ver todo el portafolio
             const response = await fetch(`https://data-api.polymarket.com/positions?user=${userAddress}&limit=500`);
             const positions = await response.json();
             
@@ -558,42 +546,39 @@ async function updateRealBalances() {
             if (Array.isArray(positions) && positions.length > 0) {
                 for (const pos of positions) {
                     const size = parseFloat(pos.size || 0);
-                    if (size < 0.1) continue;
+                    if (size < 0.1) continue; // Ignoramos polvo (dust)
 
                     const cashPnl = parseFloat(pos.cashPnl || 0);
                     const percentPnl = parseFloat(pos.percentPnl || 0);
                     const valorActual = parseFloat(pos.currentValue || pos.value || 0);
 
-                    const isRedeemable = pos.redeemable === true || pos['canjeable'] === true;
+                    // En V2, el campo 'redeemable' es el estándar
+                    const isRedeemable = pos.redeemable === true || pos.status === 'REDEEMABLE';
 
                     if (isRedeemable) {
                         totalUnclaimed += valorActual;
-                        continue;
+                        continue;   // Ocultamos del dashboard como pediste
                     }
 
+                    // Lógica de Outcome (YES/NO) mejorada para V2
                     let outcomeVal = "N/A";
                     if (pos.outcome) {
                         outcomeVal = String(pos.outcome).toUpperCase();
-                    } else if (pos.assetName && typeof pos.assetName === 'string') {
-                        if (pos.assetName.toUpperCase().includes("-YES")) outcomeVal = "YES";
-                        else if (pos.assetName.toUpperCase().includes("-NO")) outcomeVal = "NO";
+                    } else if (pos.assetName) {
+                        const name = pos.assetName.toUpperCase();
+                        if (name.includes("-YES") || name.endsWith(" YES")) outcomeVal = "YES";
+                        else if (name.includes("-NO") || name.endsWith(" NO")) outcomeVal = "NO";
                     }
 
                     const currentTokenId = pos.asset || pos.token_id || pos.asset_id;
 
+                    // Extracción de inversión y precio de entrada con precisión V2
                     const invested = pos.initialValue ? parseFloat(pos.initialValue) : Math.max(0, valorActual - cashPnl);
                     const entryPrice = pos.avgPrice ? parseFloat(pos.avgPrice) : (size > 0 ? (invested / size) : 0);
 
+                    // Recuperar Nickname y Tatuaje de Motor
                     const whaleData = botStatus.copiedPositions?.find(p => p.tokenId === currentTokenId);
-                    const savedEngine = botStatus.positionEngines?.[currentTokenId] || null;
-
-                    let finalEngine = savedEngine;
-                    let finalNickname = null;
-
-                    if (whaleData && whaleData.nickname) {
-                        finalNickname = whaleData.nickname;
-                        finalEngine = null;
-                    }
+                    const engineTag = botStatus.positionEngines[currentTokenId] || null;
 
                     botStatus.activePositions.push({
                         tokenId: currentTokenId,
@@ -605,24 +590,28 @@ async function updateRealBalances() {
                         currentValue: valorActual.toFixed(2),
                         cashPnl: cashPnl,
                         percentPnl: percentPnl,
-                        category: getMarketCategoryEnhanced(pos.title || pos.market || ""),
+                        category: pos.category || (typeof getMarketCategoryEnhanced === 'function' ? getMarketCategoryEnhanced(pos.title || pos.market || "") : "OTHER"),
                         outcome: outcomeVal,
-                        engine: finalEngine, 
+                        engine: engineTag, 
                         sizeCopied: invested,
                         priceEntry: entryPrice,
-                        nickname: finalNickname
+                        nickname: whaleData ? whaleData.nickname : null 
                     });
                 }
             }
             
             botStatus.unclaimedUSDC = totalUnclaimed.toFixed(2);
-            await cleanupCopiedTrades();
+
+            // Sincronización de trades copiados (Cleanup)
+            if (typeof cleanupCopiedTrades === 'function') {
+                await cleanupCopiedTrades();
+            }
 
         } catch (apiError) {
-            console.log("⚠️ Error al obtener posiciones:", apiError.message);
+            console.log("⚠️ Error al obtener posiciones API:", apiError.message);
         }
 
-        // Log final
+        // Log aleatorio de balances para monitoreo
         if (Math.random() < 0.25) {
             const metaMaskVal = parseFloat(botStatus.walletOnlyUSDC || 0);
             const polyVal = parseFloat(botStatus.clobOnlyUSDC || 0);
@@ -630,14 +619,14 @@ async function updateRealBalances() {
             const activePosValue = botStatus.activePositions.reduce((acc, p) => acc + parseFloat(p.currentValue || 0), 0);
             const carteraTotalReal = (metaMaskVal + polyVal + activePosValue + unclaimedVal).toFixed(2);
 
-            console.log(`📊 Balances: Cartera Total: $${carteraTotalReal} | Disponible (Poly pUSD): $${polyVal.toFixed(2)}`);
+            console.log(`📊 Balances V2: Cartera Total: $${carteraTotalReal} | Disponible (pUSD): $${polyVal.toFixed(2)} | MetaMask: $${metaMaskVal.toFixed(2)} | Gas: ${botStatus.balancePOL} POL`);
         }
 
     } catch (e) { 
-        console.error("❌ Error general actualizando balances V2:", e.message); 
+        console.error("❌ Error general actualizando balances:", e.message); 
     }
 
-    updateCarteraTotal();
+    if (typeof updateCarteraTotal === 'function') updateCarteraTotal();
 }
 
 // ==========================================
