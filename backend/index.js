@@ -442,33 +442,57 @@ console.log("Wallet conectada:", wallet.address);
 // 1. CONEXIÓN CLOB V2 - VERSIÓN OFICIAL (Usando creds completas)
 let clobClient = null;
 
+// ==========================================
+// AUTENTICACIÓN CLOB V2 (L1 + L2 AUTH UNIFICADA)
+// ==========================================
 async function conectarClob() {
     try {
         console.log("🔐 Autenticando con Polymarket CLOB V2...");
 
-        const PROXY_WALLET = "0x876E00CBF5c4fe22F4FA263F4cb713650cB758d2";
+        const PROXY_WALLET = process.env.POLY_PROXY_ADDRESS || "0x876E00CBF5c4fe22F4FA263F4cb713650cB758d2";
 
+        // 1. Inicializamos la variable GLOBAL clobClient (dejando de ser null)
         clobClient = new ClobClient({
             host: "https://clob.polymarket.com",
             chain: 137,
-            signer: wallet,
+            signer: wallet,                    
             funder: PROXY_WALLET,
             signatureType: 2,
-            creds: {                                      // ← ESTO ES LO QUE FALTABA
-                apiKey: process.env.POLY_API_KEY,
-                secret: process.env.POLY_SECRET,
-                passphrase: process.env.POLY_PASSPHRASE
-            },
-            builderCode: process.env.POLY_BUILDER_CODE
+            builderCode: process.env.POLY_BUILDER_CODE || undefined
         });
 
-        console.log("✅ Usando credenciales completas del dashboard");
-        console.log("✅ CLOB V2 Client conectado correctamente");
+        console.log("Derivando API Key...");
+        
+        try {
+            // 2. Ahora sí usamos clobClient, porque ya fue creado arriba
+            const creds = await clobClient.createOrDeriveApiKey();
+            
+            // 3. Re-instanciamos clobClient pero ahora le inyectamos las credenciales
+            clobClient = new ClobClient({
+                host: "https://clob.polymarket.com",
+                chain: 137,
+                signer: wallet,                    
+                funder: PROXY_WALLET,
+                signatureType: 2,
+                creds: creds, // <=== LA LLAVE MAESTRA
+                builderCode: process.env.POLY_BUILDER_CODE || undefined
+            });
+            
+            console.log("✅ API Key derivada e inyectada correctamente.");
+        } catch (e) {
+            console.log("⚠️ Error al derivar la API Key:", e.message);
+            throw e;
+        }
+
+        console.log("✅ API Credentials V2 obtenidas y configuradas");
+
+        await new Promise(r => setTimeout(r, 2000));
+
+        console.log("✅ CLOB V2 Client conectado y autenticado correctamente");
         console.log(`   - Funder (Proxy): ${PROXY_WALLET}`);
-        console.log(`   - Signer: ${wallet.address}`);
+        console.log(`   - Signature Type: 2`);
 
         return clobClient;
-
     } catch (error) {
         console.error("❌ Error conectando CLOB V2:", error.message);
         throw error;
