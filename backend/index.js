@@ -441,8 +441,8 @@ console.log("✅ MODO SNIPER PRODUCCIÓN ACTIVADO (CLOB V2)");
 console.log("Wallet conectada:", wallet.address);
 
 // ==========================================
-// 1. CONEXIÓN CLOB V2 (CORRECTA 2026)
-let clobClient;
+// 1. CONEXIÓN CLOB V2 - VERSIÓN FUNCIONAL (Abril 2026)
+let clobClient = null;
 
 async function conectarClob() {
     try {
@@ -450,28 +450,34 @@ async function conectarClob() {
 
         const PROXY_WALLET = "0x876E00CBF5c4fe22F4FA263F4cb713650cB758d2";
 
-        // Constructor V2: Objeto de opciones
+        // Constructor correcto para V2
         clobClient = new ClobClient({
-            host: "https://clob.polymarket.com",   // Ya apunta a V2
-            chain: 137,                            // Polygon
-            key: process.env.POLY_PRIVATE_KEY,     // Para derivar API key
+            host: "https://clob.polymarket.com",
+            chain: 137,
+            privateKey: process.env.POLY_PRIVATE_KEY,     // ← Clave privada directa
             funder: PROXY_WALLET,
             signatureType: 2
         });
 
-        // Derivar credenciales
-        const apiCreds = await clobClient.createOrDeriveApiKey();
-        console.log("✅ API Credentials V2 obtenidas");
+        // Derivar API Key
+        console.log("Derivando API credentials...");
+        const creds = await clobClient.createOrDeriveApiKey();
 
-        await new Promise(r => setTimeout(r, 1200));
+        console.log("✅ API Credentials V2 obtenidas correctamente");
+
+        await new Promise(r => setTimeout(r, 1500));
 
         console.log("✅ CLOB V2 Client conectado correctamente");
         console.log(`   - Funder (Proxy): ${PROXY_WALLET}`);
-        console.log(`   - Collateral: pUSD`);
+        console.log(`   - Signature Type: 2`);
 
         return clobClient;
+
     } catch (error) {
         console.error("❌ Error conectando CLOB V2:", error.message);
+        if (error.message.includes("Signer")) {
+            console.error("💡 Consejo: Asegúrate que POLY_PRIVATE_KEY esté correctamente en tu .env");
+        }
         throw error;
     }
 }
