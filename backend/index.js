@@ -4345,10 +4345,10 @@ app.listen(PORT, async () => {
     setInterval(runBot, 45000);           
 
     // 2. Vigilancia de ganancias y PnL
-    setInterval(monitorPortfolio, 180000); // 3 minutos
+    //setInterval(monitorPortfolio, 180000); // 3 minutos
 
     // 🔥 NUEVO: Watchlists Macro y Micro (Actualización independiente cada 4 min)
-    setInterval(refreshWatchlist, 4 * 60 * 1000);
+    //setInterval(refreshWatchlist, 4 * 60 * 1000);
 
     // 3. Copy Trading HFT paralelo (Chunks)
     //setInterval(checkAndCopyWhaleTrades, 30000); // 30 segundos
