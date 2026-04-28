@@ -474,6 +474,8 @@ async function conectarClob() {
     }
 }
 
+conectarClob();
+
 // ==========================================
 // 2. ACTUALIZACIÓN DE SALDOS (V2 + pUSD) - VERSIÓN CORREGIDA Y BLINDADA
 async function updateRealBalances() {
@@ -4302,78 +4304,72 @@ app.post('/api/radar/force', async (req, res) => {
 });
 
 // ==========================================
-// 11. INICIO DEL MOTOR DEL SNIPER - VERSIÓN ROBUSTA (CLOB V2)
+// 11. INICIO DEL MOTOR DEL SNIPER
+// ==========================================
 app.listen(PORT, async () => {
     console.log(`\n======================================================`);
     console.log(`🎯 POLY-SNIPER V2: SERVIDOR ACTIVO EN PUERTO ${PORT}`);
     console.log(`======================================================\n`);
+    
+    // 🔥 DISPARAMOS EL AUTO-SELECTOR ANTES DE ARRANCAR EL BOT
+    await initGemini();
 
-    try {
-        // 1. Inicializaciones críticas (en orden)
-        await initGemini();
-        console.log("✅ Gemini inicializado");
+    // ==================== INTERVALOS RECOMENDADOS (Sincronizados) ====================
 
-        await conectarClob();           // ← ESPERAMOS a que CLOB V2 esté listo
-        console.log("✅ CLOB V2 conectado correctamente");
+    // 1. Motor principal de IA + Sniper (Acelerado a 45s para no chocar con la Watchlist)
+    setInterval(runBot, 45000);           
 
-        // 2. Carga inicial de datos
-        await refreshWatchlist();
-        await updateRealBalances();
+    // 2. Vigilancia de ganancias y PnL
+    setInterval(monitorPortfolio, 180000); // 3 minutos
 
-        console.log("✅ Watchlist y balances cargados. Iniciando motores...");
+    // 🔥 NUEVO: Watchlists Macro y Micro (Actualización independiente cada 4 min)
+    setInterval(refreshWatchlist, 4 * 60 * 1000);
 
-        // ==================== INTERVALOS (Solo después de que todo esté listo) ====================
+    // 3. Copy Trading HFT paralelo (Chunks)
+    setInterval(checkAndCopyWhaleTrades, 30000); // 30 segundos
 
-        // Motor principal IA + Sniper
-        setInterval(runBot, 45000);
+    // 4. Guardián del servidor (RAM + CPU)
+    setInterval(monitorSystemHealth, 90000); // 90 segundos
 
-        // Copy Trading
-        setInterval(checkAndCopyWhaleTrades, 30000);
+    // 5. Auto Redeem
+    setInterval(autoRedeemPositions, 300000);   // 5 minutos
 
-        // Vigilancia PnL
-        setInterval(monitorPortfolio, 180000);
+    // 🐋 6. Radar de Ballenas Macro (Cada 1 Hora)
+    setInterval(runWhaleRadar, 60 * 60 * 1000);
+    setTimeout(runWhaleRadar, 5000); 
 
-        // Watchlist Macro/Micro
-        setInterval(refreshWatchlist, 4 * 60 * 1000);
+    // 🌊 7. Quantum Equalizer: Alimentador de Memoria
+    setInterval(updateHighFrequencyRadar, 60 * 1000); // 60 segundos
 
-        // System Health
-        setInterval(monitorSystemHealth, 90000);
+    // 🌊 8. Quantum Equalizer: Escáner de Shocks de Liquidez
+    setInterval(checkForLiquidityShocks, 2 * 60 * 1000); // 2 minutos
 
-        // Auto Redeem
-        setInterval(autoRedeemPositions, 300000);
+    // ==========================================
+    // ⏳ 9. CHRONOS HARVESTER - INICIALIZACIÓN CORRECTA - Cosechador de Theta Decay
+    // ==========================================
+    console.log("⏳ [CHRONOS] Programando ejecución cada 15 minutos...");
 
-        // Radar Ballenas
-        setInterval(runWhaleRadar, 60 * 60 * 1000);
-        setTimeout(runWhaleRadar, 10000);
+    // Primera ejecución inmediata (pero después de cargar la watchlist)
+    setTimeout(async () => {
+        console.log("⏳ [CHRONOS] Primera ejecución manual después de cargar watchlist...");
+        await runChronosHarvester();
+    }, 8000); // Espera 8 segundos para que refreshWatchlist termine
 
-        // Quantum Equalizer
-        setInterval(updateHighFrequencyRadar, 60 * 1000);
-        setInterval(checkForLiquidityShocks, 2 * 60 * 1000);
+    // Luego el intervalo normal
+    setInterval(runChronosHarvester, 15 * 60 * 1000);
 
-        // Chronos Harvester
-        console.log("⏳ [CHRONOS] Programando ejecución cada 15 minutos...");
-        setTimeout(async () => {
-            console.log("⏳ [CHRONOS] Primera ejecución manual...");
-            await runChronosHarvester();
-        }, 12000);
-        setInterval(runChronosHarvester, 15 * 60 * 1000);
+    // 🌊 10. Kinetic Pressure: Radar de Desequilibrio
+    setInterval(runKineticPressureScanner, 20 * 1000); // 20 segundos
 
-        // Kinetic Pressure
-        setInterval(runKineticPressureScanner, 20 * 1000);
+    // 🧹 11. Garbage Collector: Limpieza profunda de RAM
+    setInterval(runGarbageCollector, 12 * 60 * 60 * 1000); // 12 horas
 
-        // Garbage Collector
-        setInterval(runGarbageCollector, 12 * 60 * 60 * 1000);
+    // 🔥 Reportes diarios automáticos
+    scheduleDailyReports();
 
-        // Reportes diarios
-        scheduleDailyReports();
-
-        // Primera ejecución del sniper
-        setTimeout(() => {
-            runBot();
-        }, 5000);
-
-    } catch (err) {
-        console.error("❌ ERROR CRÍTICO DURANTE INICIALIZACIÓN:", err.message);
-        console.error("El bot NO se iniciará correctamente. Revisa las credenciales o conexión.");
-    }
+    // Arranque inicial controlado
+    await refreshWatchlist(); // Cargamos la memoria Macro por primera vez
+    updateRealBalances().then(() => {
+        runBot();   // Primera ejecución del escáner IA
+    });
 });
