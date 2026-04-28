@@ -3,7 +3,8 @@ import { webcrypto } from 'node:crypto';
 if (!globalThis.crypto) {
     globalThis.crypto = webcrypto;
 }
-import { ClobClient, Side, OrderType } from '@polymarket/clob-client';
+//import { ClobClient, Side, OrderType } from '@polymarket/clob-client';
+import { ClobClient, Side, OrderType } from "@polymarket/clob-client-v2";
 import Anthropic from '@anthropic-ai/sdk';
 import { ethers } from 'ethers';
 import * as dotenv from 'dotenv';
@@ -427,24 +428,56 @@ const telegram = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN);
 const chatId = process.env.TELEGRAM_CHAT_ID;
 const parser = new Parser();
 
-// --- CONFIGURACIÓN BLOCKCHAIN ---
+// ==========================================
+// --- CONFIGURACIÓN BLOCKCHAIN (V2) ---
 const provider = new ethers.providers.JsonRpcProvider(process.env.POLYGON_RPC_URL);
 const wallet = new ethers.Wallet(process.env.POLY_PRIVATE_KEY, provider);
-const USDC_ADDRESS = "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359";
-const CTF_EXCHANGE_ADDRESS = "0x4BFb304598296E5105583dA39cE9dcFD29944545"; 
 
-const ERC20_ABI = [
-    "function approve(address spender, uint256 amount) public returns (bool)",
-    "function allowance(address owner, address spender) view returns (uint256)"
-];
+// 🔥 NUEVO: pUSD (nuevo collateral token)
+const PUSD_ADDRESS = "0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB"; // pUSD oficial
+const CTF_EXCHANGE_V2 = "0x..."; // Si lo necesitas más adelante
 
-console.log("✅ MODO SNIPER PRODUCCIÓN ACTIVADO");
+console.log("✅ MODO SNIPER PRODUCCIÓN ACTIVADO (CLOB V2)");
 console.log("Wallet conectada:", wallet.address);
 
 // ==========================================
-// 1. CONEXIÓN CLOB (VERSIÓN CORRECTA 2026)
-// ==========================================
+// 1. CONEXIÓN CLOB V2 (CORRECTA 2026)
 let clobClient;
+
+async function conectarClob() {
+    try {
+        console.log("🔐 Autenticando con Polymarket CLOB V2...");
+
+        const PROXY_WALLET = "0x876E00CBF5c4fe22F4FA263F4cb713650cB758d2";
+
+        // Constructor V2: Objeto de opciones
+        clobClient = new ClobClient({
+            host: "https://clob.polymarket.com",   // Ya apunta a V2
+            chain: 137,                            // Polygon
+            key: process.env.POLY_PRIVATE_KEY,     // Para derivar API key
+            funder: PROXY_WALLET,
+            signatureType: 2
+        });
+
+        // Derivar credenciales
+        const apiCreds = await clobClient.createOrDeriveApiKey();
+        console.log("✅ API Credentials V2 obtenidas");
+
+        await new Promise(r => setTimeout(r, 1200));
+
+        console.log("✅ CLOB V2 Client conectado correctamente");
+        console.log(`   - Funder (Proxy): ${PROXY_WALLET}`);
+        console.log(`   - Collateral: pUSD`);
+
+        return clobClient;
+    } catch (error) {
+        console.error("❌ Error conectando CLOB V2:", error.message);
+        throw error;
+    }
+}
+
+// Llamada inicial
+conectarClob();
 
 async function conectarClob() {
     try {
@@ -489,17 +522,17 @@ conectarClob();
 // ==========================================
 async function updateRealBalances() {
     try {
-        // 1. Balance de Gas (POL)
+// 1. Gas (POL)
         const polBal = await provider.getBalance(wallet.address);
         botStatus.balancePOL = Number(ethers.utils.formatEther(polBal)).toFixed(3);
 
-        // 2. Balance USDC en MetaMask
-        const usdcAbi = ["function balanceOf(address) view returns (uint256)"];
-        const usdcContract = new ethers.Contract(USDC_ADDRESS, usdcAbi, provider);
-        const walletBalRaw = await usdcContract.balanceOf(wallet.address);
+        // 2. pUSD en MetaMask
+        const pusdAbi = ["function balanceOf(address) view returns (uint256)"];
+        const pusdContract = new ethers.Contract(PUSD_ADDRESS, pusdAbi, provider);
+        const walletBalRaw = await pusdContract.balanceOf(wallet.address);
         botStatus.walletOnlyUSDC = (parseFloat(ethers.utils.formatUnits(walletBalRaw, 6))).toFixed(2);
 
-        // 3. Balance USDC en Polymarket (CLOB)
+        // 3. Balance en Polymarket (pUSD)
         if (clobClient) {
             await clobClient.updateBalanceAllowance({ asset_type: "COLLATERAL" });
             const balanceData = await clobClient.getBalanceAllowance({ asset_type: "COLLATERAL" });
@@ -587,6 +620,17 @@ async function updateRealBalances() {
 
             // LIMPIEZA AUTOMÁTICA de copiedTrades
             await cleanupCopiedTrades();
+
+            // Log
+        if (Math.random() < 0.25) {
+            const metaMaskVal = parseFloat(botStatus.walletOnlyUSDC || 0);
+            const polyVal = parseFloat(botStatus.clobOnlyUSDC || 0);
+            const unclaimedVal = parseFloat(botStatus.unclaimedUSDC || 0);
+            const activePosValue = botStatus.activePositions.reduce((acc, p) => acc + parseFloat(p.currentValue || 0), 0);
+            const carteraTotalReal = (metaMaskVal + polyVal + activePosValue + unclaimedVal).toFixed(2);
+
+            console.log(`📊 Balances: Cartera Total: $${carteraTotalReal} | Disponible (Poly pUSD): $${polyVal.toFixed(2)}`);
+        }
 
         } catch (apiError) {
             console.log("⚠️ Error al obtener posiciones:", apiError.message);
@@ -1196,20 +1240,20 @@ async function refreshWatchlist() {
 }
 
 // ==========================================
-// 8. EJECUCIÓN DE COMPRA - VERSIÓN ANTI "CROSSES THE BOOK"
-// ==========================================
+// 8. EJECUCIÓN DE COMPRA - VERSIÓN V2 (Manteniendo toda tu lógica inteligente)
 async function executeTradeOnChain(conditionId, tokenId, amountUsdc, currentPrice, marketTickSize = "0.01") {
     try {
-        console.log(`\n--- ⚖️ EJECUCIÓN ON-CHAIN EN POLYMARKET ---`);
+        console.log(`\n--- ⚖️ EJECUCIÓN ON-CHAIN EN POLYMARKET V2 ---`);
         console.log(`🎯 Token: ${tokenId.substring(0,12)}... | Monto: $${amountUsdc} | Precio base: $${currentPrice}`);
 
-        if (!clobClient) throw new Error("clobClient no está inicializado.");
+        if (!clobClient) throw new Error("clobClient V2 no está inicializado.");
 
-        // 1. Obtener Orderbook fresco para evitar "crosses the book"
+        // 1. Obtener Orderbook fresco (igual que tenías)
         let bookData;
         try {
             const bookResp = await axios.get(`https://clob.polymarket.com/book?token_id=${tokenId}`, {
-                httpsAgent: agent, timeout: 8000
+                httpsAgent: agent, 
+                timeout: 8000
             });
             bookData = bookResp.data;
         } catch (e) {
@@ -1220,19 +1264,20 @@ async function executeTradeOnChain(conditionId, tokenId, amountUsdc, currentPric
         let isNegRisk = false;
         let minOrderSize = 5;
 
-        // Datos del mercado
+        // Datos del mercado (mismo que tenías)
         try {
             const marketInfo = await axios.get(`https://clob.polymarket.com/markets/${conditionId}`);
             if (marketInfo.data) {
                 isNegRisk = marketInfo.data.neg_risk === true;
-                if (marketInfo.data.minimum_order_size) minOrderSize = parseFloat(marketInfo.data.minimum_order_size);
+                if (marketInfo.data.minimum_order_size) {
+                    minOrderSize = parseFloat(marketInfo.data.minimum_order_size);
+                }
             }
         } catch (e) {}
 
-        // ====================== CÁLCULO INTELIGENTE DE PRECIO ======================
+        // ====================== CÁLCULO INTELIGENTE DE PRECIO (MANTENIDO) ======================
         let basePrice = parseFloat(currentPrice);
         
-        // Si tenemos asks, usamos el mejor Ask como referencia
         if (bookData?.asks && bookData.asks.length > 0) {
             const bestAsk = parseFloat(bookData.asks[0].price);
             console.log(`📊 Best Ask actual: $${bestAsk}`);
@@ -1246,11 +1291,11 @@ async function executeTradeOnChain(conditionId, tokenId, amountUsdc, currentPric
         let limitPrice = basePrice * (1 + entrySlippagePct / 100);
         
         if (limitPrice > 0.99) limitPrice = 0.99;
-        limitPrice = Number(limitPrice.toFixed(4)); // Más precisión
+        limitPrice = Number(limitPrice.toFixed(4));
 
         console.log(`📡 Precio final con slippage: $${limitPrice} (slippage ${entrySlippagePct}%)`);
 
-        // ====================== CÁLCULO DE SHARES ======================
+        // ====================== CÁLCULO DE SHARES (MANTENIDO) ======================
         let targetAmount = parseFloat(amountUsdc);
         let numShares = Number((targetAmount / limitPrice).toFixed(4));
 
@@ -1259,34 +1304,39 @@ async function executeTradeOnChain(conditionId, tokenId, amountUsdc, currentPric
             console.log(`⚠️ Ajustando al mínimo del mercado: ${minOrderSize} shares`);
         }
 
-        console.log(`📡 Orden BUY: ${numShares} shares | Precio: $${limitPrice} | Monto: $${(numShares * limitPrice).toFixed(2)}`);
+        console.log(`📡 Orden BUY V2: ${numShares} shares | Precio: $${limitPrice} | Monto: $${(numShares * limitPrice).toFixed(2)}`);
+
+        // ====================== EJECUCIÓN V2 ======================
+        const order = {
+            tokenID: tokenId,
+            price: limitPrice,
+            size: numShares,
+            side: Side.BUY
+        };
+
+        const options = {
+            tickSize: String(trueTickSize),
+            negRisk: isNegRisk
+        };
 
         const response = await clobClient.createAndPostOrder(
-            {
-                tokenID: tokenId,
-                price: limitPrice,
-                side: Side.BUY,
-                size: numShares,
-            },
-            { 
-                tickSize: String(trueTickSize), 
-                negRisk: isNegRisk 
-            }, 
+            order,
+            options,
             OrderType.GTC
         );
 
         if (response && response.success) {
-            console.log(`🎉 ¡ORDEN ACEPTADA! Order ID: ${response.orderID}`);
-            return { success: true, hash: response.orderID };
+            console.log(`🎉 ¡ORDEN V2 ACEPTADA! Order ID: ${response.orderID}`);
+            return { success: true, hash: response.orderID || response.id };
         } else {
-            console.log(`❌ Orden rechazada:`, JSON.stringify(response));
+            console.log(`❌ Orden V2 rechazada:`, JSON.stringify(response));
             throw new Error(`Orden rechazada: ${JSON.stringify(response)}`);
         }
 
     } catch (error) {
-        console.error("❌ Error en executeTradeOnChain:", error.message);
+        console.error("❌ Error en executeTradeOnChain V2:", error.message);
         if (error.response?.data) {
-            console.error("   Detalle API:", JSON.stringify(error.response.data));
+            console.error("   Detalle API V2:", JSON.stringify(error.response.data));
         }
         throw error;
     }
@@ -1831,22 +1881,32 @@ async function getCurrentPositionValue(tokenId) {
 }
 
 // ==========================================
-// AUTO SELL MANAGER - VERSIÓN ULTRA AGRESIVA 99.9% (FIX ETIQUETAS + LIQUIDEZ)
-// ==========================================
+// AUTO SELL MANAGER - VERSIÓN ULTRA AGRESIVA 99.9% (ANTI order_version_mismatch)
 async function autoSellManager() {
     if (!botStatus.autoTradeEnabled) return;
 
     const positionsToReview = [...botStatus.activePositions];
 
+    // Anti-spam global por token
+    if (!global.lastSellAttempt) global.lastSellAttempt = {};
+
     for (const pos of positionsToReview) {
         if (pos.status && pos.status.includes('CANJEAR')) continue;
 
         const marketNameShort = (pos.marketName || "Mercado desconocido").substring(0, 60);
+        const tokenId = pos.tokenId;
 
-        // Actualizar precio actual si es necesario
+        // ====================== ANTI-SPAM ======================
+        const now = Date.now();
+        if (global.lastSellAttempt[tokenId] && now - global.lastSellAttempt[tokenId] < 1800) { // 1.8 segundos mínimo
+            continue;
+        }
+        global.lastSellAttempt[tokenId] = now;
+
+        // Actualizar precio actual
         if (!pos.currentValue || typeof pos.currentValue !== 'number') {
             try {
-                pos.currentValue = await getCurrentPositionValue?.(pos.tokenId) || pos.currentValue || 0;
+                pos.currentValue = await getCurrentPositionValue?.(tokenId) || pos.currentValue || 0;
             } catch (e) {
                 console.warn(`[AUTOSELL] No se pudo actualizar precio de ${marketNameShort}`);
             }
@@ -1861,29 +1921,24 @@ async function autoSellManager() {
             ? ((currentSharePrice - entryPrice) / entryPrice) * 100 
             : 0;
 
-        // ====================== FIX ETIQUETADO (EL BUG QUE MENCIONAS) ======================
+        // ====================== ETIQUETADO (Mantenido) ======================
         let originTag = 'IA';
         let isWhaleTrade = false;
 
-        // Prioridad 1: Si tiene engine explícito → usar ese (Trinity, Kinetic, EQUALIZER, etc.)
         if (pos.engine && pos.engine !== null && pos.engine !== 'null') {
-            originTag = pos.engine;                    // Ej: "Trinity (C+G+X)"
+            originTag = pos.engine;
             isWhaleTrade = false;
-        } 
-        // Prioridad 2: Solo si NO tiene engine → entonces sí es ballena pura
-        else if (pos.nickname || (pos.sizeCopied !== undefined && pos.sizeCopied > 0)) {
+        } else if (pos.nickname || (pos.sizeCopied !== undefined && pos.sizeCopied > 0)) {
             isWhaleTrade = true;
             originTag = 'WHALE';
-        } 
-        // Prioridad 3: Engines especiales (por si acaso)
-        else if (pos.engine === "EQUALIZER") originTag = 'EQUALIZER';
+        } else if (pos.engine === "EQUALIZER") originTag = 'EQUALIZER';
         else if (pos.engine === "CHRONOS") originTag = 'CHRONOS';
         else if (pos.engine === "KINETIC") originTag = 'KINETIC';
 
         const { config: riskConfig } = getRiskProfile(pos.marketName || "", isWhaleTrade);
 
         if (!botStatus.partialSells) botStatus.partialSells = [];
-        const hasDonePartial = botStatus.partialSells.includes(pos.tokenId);
+        const hasDonePartial = botStatus.partialSells.includes(tokenId);
 
         if (Math.abs(profit) >= 8) {
             console.log(`[DEBUG AUTOSELL] ${originTag} | ${marketNameShort} | Profit: ${profit.toFixed(1)}% | Precio: $${currentSharePrice.toFixed(3)}`);
@@ -1891,10 +1946,9 @@ async function autoSellManager() {
 
         // ====================== TP PARCIAL ======================
         if (isWhaleTrade && profit >= 45 && profit < 80 && !hasDonePartial) {
-            // ... (tu código de TP Parcial sin cambios) ...
             console.log(`[DEBUG PARCIAL] Intentando TP Parcial en ${marketNameShort}`);
             try {
-                const bookResp = await axios.get(`https://clob.polymarket.com/book?token_id=${pos.tokenId}`, { 
+                const bookResp = await axios.get(`https://clob.polymarket.com/book?token_id=${tokenId}`, { 
                     httpsAgent: agent, timeout: 10000 
                 });
                 const bids = bookResp.data?.bids || [];
@@ -1905,10 +1959,10 @@ async function autoSellManager() {
 
                     if (spread <= maxSlip && bestPrice > 0.001) {
                         const half = parseFloat(pos.exactSize || pos.size || 0) / 2;
-                        const result = await executeSellOnChain(pos.conditionId || null, pos.tokenId, half, bestPrice, "0.01");
+                        const result = await executeSellOnChain(pos.conditionId || null, tokenId, half, bestPrice, "0.01");
                         
                         if (result?.success) {
-                            botStatus.partialSells.push(pos.tokenId);
+                            botStatus.partialSells.push(tokenId);
                             console.log(`✅ TP PARCIAL EJECUTADO en ${marketNameShort}`);
                             saveConfigToDisk("TP Parcial");
                             await updateRealBalances();
@@ -1921,8 +1975,6 @@ async function autoSellManager() {
                                 `💰 Cartera Total: *$${botStatus.carteraTotal} USDC*`
                             );
                         }
-                    } else {
-                        console.log(`⚠️ [PARCIAL] Abortando ${marketNameShort} (spread ${spread.toFixed(1)}%)`);
                     }
                 }
             } catch (e) {
@@ -1932,7 +1984,6 @@ async function autoSellManager() {
 
         // ====================== TP TOTAL ======================
         let effectiveTpThreshold = riskConfig.takeProfitThreshold || 15;
-
         const customRule = getCustomMarketRules(pos.marketName || "");
         if (customRule && customRule.takeProfitThreshold !== undefined) {
             effectiveTpThreshold = customRule.takeProfitThreshold;
@@ -1948,7 +1999,7 @@ async function autoSellManager() {
             console.log(`[TP TOTAL TRIGGER] ${marketNameShort} → Profit ${profit.toFixed(1)}% (Threshold: ${effectiveTpThreshold}%) | Engine: ${originTag}`);
 
             try {
-                const bookResp = await axios.get(`https://clob.polymarket.com/book?token_id=${pos.tokenId}`, { 
+                const bookResp = await axios.get(`https://clob.polymarket.com/book?token_id=${tokenId}`, { 
                     httpsAgent: agent, timeout: 10000 
                 });
                 const bids = bookResp.data?.bids || [];
@@ -1961,20 +2012,18 @@ async function autoSellManager() {
                 let maxAllowedSlippage = botStatus.riskSettings.tpLiquiditySlippage || 65;
                 if (currentSharePrice >= 0.85 || profit >= 20) maxAllowedSlippage = 99.9;
 
-                console.log(`[DEBUG TOTAL] Spread: ${spreadDropPct.toFixed(1)}% | Máx permitido: ${maxAllowedSlippage}% | Best Bid: $${bestPrice.toFixed(3)}`);
-
                 if (spreadDropPct > maxAllowedSlippage && currentSharePrice < 0.98) {
                     console.log(`⚠️ [ALERTA LIQUIDEZ TP] Abortando ${marketNameShort} (spread ${spreadDropPct.toFixed(1)}%)`);
                     continue;
                 }
 
-                const result = await executeSellOnChain(pos.conditionId || null, pos.tokenId, sharesToSell, bestPrice || 0.01, "0.01");
+                const result = await executeSellOnChain(pos.conditionId || null, tokenId, sharesToSell, bestPrice || 0.01, "0.01");
 
                 if (result?.success) {
                     console.log(`✅ TP TOTAL EJECUTADO [${originTag}] → ${marketNameShort} (+${profit.toFixed(1)}%)`);
 
-                    closedPositionsCache.add(pos.tokenId);
-                    delete botStatus.positionEngines[pos.tokenId];
+                    closedPositionsCache.add(tokenId);
+                    delete botStatus.positionEngines[tokenId];
 
                     if (originTag !== "EQUALIZER" && originTag !== "CHRONOS" && originTag !== "KINETIC" && !isWhaleTrade) {
                         const targetStats = botStatus.aiStats;
@@ -1996,12 +2045,11 @@ async function autoSellManager() {
             } catch (e) {
                 console.error(`❌ Take Profit error:`, e.message);
             }
-            continue;
+            continue;   // ← Importante: Saltamos al siguiente después de intentar TP
         }
 
         // ====================== STOP LOSS ======================
         if (profit <= riskConfig.stopLossThreshold) {
-            // ... (tu código de Stop Loss actual sin cambios) ...
             const isLotteryTicket = currentSharePrice <= 0.03;
             const isWorthRescuing = parseFloat(pos.currentValue || 0) >= 0.50;
 
@@ -2409,13 +2457,12 @@ async function runBot() {
 }
 
 // ==========================================
-// 8.5 EJECUCIÓN DE VENTA (VERSIÓN ULTRA DEBUG)
-// ==========================================
+// 8.5 EJECUCIÓN DE VENTA - VERSIÓN V2 (Manteniendo tu lógica)
 const recentlySoldTokens = new Set();
 
 async function executeSellOnChain(conditionId, tokenId, exactShares, limitPrice, marketTickSize = "0.01") {
     try {
-        console.log(`\n🔴 [EXECUTE SELL DEBUG] Iniciando venta para token: ${tokenId.substring(0,12)}...`);
+        console.log(`\n🔴 [EXECUTE SELL V2] Iniciando venta para token: ${tokenId.substring(0,12)}...`);
         console.log(`   Shares solicitados: ${exactShares} | Precio límite: $${limitPrice}`);
 
         if (recentlySoldTokens.has(tokenId)) {
@@ -2429,7 +2476,7 @@ async function executeSellOnChain(conditionId, tokenId, exactShares, limitPrice,
             return { success: false, reason: "NO_SHARES" };
         }
 
-        // === VERIFICACIÓN DE SALDO REAL ===
+        // === VERIFICACIÓN DE SALDO REAL (mantenida) ===
         let realBalance = 0;
         let balanceChecked = false;
         try {
@@ -2441,7 +2488,7 @@ async function executeSellOnChain(conditionId, tokenId, exactShares, limitPrice,
                 const targetPos = positions.find(p => p.asset === tokenId || p.token_id === tokenId);
                 realBalance = targetPos ? parseFloat(targetPos.size || 0) : 0;
                 balanceChecked = true;
-                console.log(`📊 [SELL] Saldo real API: ${realBalance} shares`);
+                console.log(`📊 [SELL V2] Saldo real API: ${realBalance} shares`);
             }
         } catch (e) {
             console.log("⚠️ No se pudo verificar saldo real en API.");
@@ -2449,13 +2496,13 @@ async function executeSellOnChain(conditionId, tokenId, exactShares, limitPrice,
 
         if (balanceChecked) {
             if (realBalance === 0) {
-                console.log(`👻 [SELL] POSICIÓN FANTASMA (Saldo Real = 0). Abortando venta.`);
+                console.log(`👻 [SELL] POSICIÓN FANTASMA. Abortando.`);
                 recentlySoldTokens.add(tokenId);
                 setTimeout(() => recentlySoldTokens.delete(tokenId), 60000);
                 return { success: false, reason: "ZERO_REAL_BALANCE" };
             }
             if (sharesToSell > realBalance) {
-                console.log(`⚠️ [SELL] Ajustando shares: ${sharesToSell} → ${realBalance} (saldo real)`);
+                console.log(`⚠️ [SELL] Ajustando shares: ${sharesToSell} → ${realBalance}`);
                 sharesToSell = realBalance;
             }
         }
@@ -2463,12 +2510,12 @@ async function executeSellOnChain(conditionId, tokenId, exactShares, limitPrice,
         sharesToSell = Math.max(0, Math.floor((sharesToSell - 0.01) * 100) / 100);
 
         if (sharesToSell <= 0) {
-            console.log(`❌ [SELL] Cantidad final después de ajustes = 0`);
+            console.log(`❌ [SELL] Cantidad final = 0`);
             recentlySoldTokens.add(tokenId);
             return { success: false, reason: "LOW_BALANCE" };
         }
 
-        // === CONFIGURACIÓN DE PRECIO Y TICK ===
+        // === CONFIGURACIÓN DE PRECIO Y TICK (mantenida) ===
         let trueTickSize = marketTickSize;
         let isNegRisk = false;
 
@@ -2485,34 +2532,43 @@ async function executeSellOnChain(conditionId, tokenId, exactShares, limitPrice,
         let safeLimitPrice = Number(parseFloat(limitPrice).toFixed(decimales));
         if (safeLimitPrice <= 0) safeLimitPrice = parseFloat(trueTickSize);
 
-        console.log(`📡 [SELL] Orden FINAL: ${sharesToSell} shares | Precio: $${safeLimitPrice} | Tick: ${trueTickSize}`);
+        console.log(`📡 [SELL V2] Orden FINAL: ${sharesToSell} shares | Precio: $${safeLimitPrice}`);
 
-        // === EJECUCIÓN REAL ===
+        // ====================== EJECUCIÓN V2 ======================
+        const order = {
+            tokenID: tokenId,
+            price: safeLimitPrice,
+            size: sharesToSell,
+            side: Side.SELL
+        };
+
+        const options = {
+            tickSize: String(trueTickSize),
+            negRisk: isNegRisk
+        };
+
         const response = await clobClient.createAndPostOrder(
-            {
-                tokenID: tokenId,
-                price: safeLimitPrice,
-                side: Side.SELL,
-                size: sharesToSell,
-            },
-            { tickSize: String(trueTickSize), negRisk: isNegRisk },
+            order,
+            options,
             OrderType.GTC
         );
 
         if (response && response.success) {
-            console.log(`🎉 [SELL ÉXITO] Orden aceptada! Order ID: ${response.orderID}`);
+            console.log(`🎉 [SELL V2 ÉXITO] Order ID: ${response.orderID}`);
             recentlySoldTokens.add(tokenId);
             setTimeout(() => recentlySoldTokens.delete(tokenId), 3 * 60 * 1000);
             return { success: true, hash: response.orderID };
         } else {
-            console.log(`❌ [SELL RECHAZADA] Respuesta:`, JSON.stringify(response));
+            console.log(`❌ [SELL V2 RECHAZADA]`, JSON.stringify(response));
             throw new Error(`Orden rechazada: ${JSON.stringify(response)}`);
         }
 
     } catch (error) {
-        console.error(`❌ [EXECUTE SELL ERROR] ${error.message}`);
-        if (error.response) {
-            console.error(`   Status: ${error.response.status} | Data:`, error.response.data);
+        console.error(`❌ [EXECUTE SELL V2 ERROR] ${error.message}`);
+        if (error.message?.includes("order_version_mismatch")) {
+            console.log(`🔄 order_version_mismatch detectado → reintentando en 800ms...`);
+            await new Promise(r => setTimeout(r, 800));
+            return executeSellOnChain(conditionId, tokenId, exactShares * 0.98, limitPrice, marketTickSize);
         }
         throw error;
     }
