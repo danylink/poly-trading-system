@@ -2151,10 +2151,9 @@ async function runBot() {
     botStatus.lastCheck = new Date().toLocaleTimeString();
 
     try {
-        await fetchRealTrades();
+        //await fetchRealTrades();
         await updateRealBalances();
-        await cleanupCopiedState();
-        return;
+        //await cleanupCopiedState();
 
         // 2. Copy-Trading (Auto + Custom)
         if (botStatus.copyTradingCustomEnabled || 
