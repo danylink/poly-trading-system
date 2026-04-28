@@ -475,7 +475,7 @@ async function conectarClob() {
 }
 
 // ==========================================
-// 2. ACTUALIZACIÓN DE SALDOS (V2 + pUSD) - VERSIÓN CORREGIDA
+// 2. ACTUALIZACIÓN DE SALDOS (V2 + pUSD) - VERSIÓN CORREGIDA Y BLINDADA
 async function updateRealBalances() {
     try {
         // 1. Gas (POL)
@@ -488,13 +488,15 @@ async function updateRealBalances() {
         const walletBalRaw = await pusdContract.balanceOf(wallet.address);
         botStatus.walletOnlyUSDC = (parseFloat(ethers.utils.formatUnits(walletBalRaw, 6))).toFixed(2);
 
-        // 3. Balance en Polymarket (CLOB V2) - FIX PRINCIPAL
+        // 3. Balance en Polymarket (CLOB V2) - FIX CRÍTICO
         if (clobClient) {
             try {
-                // 🔥 Forzamos la API Key explícitamente (esto resuelve el error más común)
+                // 🔥 FORZAMOS la API Key explícitamente (esto resuelve el error más común en V2)
                 if (process.env.POLY_API_KEY) {
                     clobClient.apiKey = process.env.POLY_API_KEY;
                 }
+
+                console.log("🔑 Forzando API Key antes de consultar balance...");
 
                 await clobClient.updateBalanceAllowance({ asset_type: "COLLATERAL" });
                 const balanceData = await clobClient.getBalanceAllowance({ asset_type: "COLLATERAL" });
@@ -507,6 +509,10 @@ async function updateRealBalances() {
 
             } catch (balanceError) {
                 console.warn("⚠️ Error obteniendo balance CLOB V2:", balanceError.message);
+                if (balanceError.message.includes("API Credentials")) {
+                    console.warn("💡 Intentando forzar credenciales de nuevo...");
+                    if (process.env.POLY_API_KEY) clobClient.apiKey = process.env.POLY_API_KEY;
+                }
                 botStatus.clobOnlyUSDC = "0.00";
             }
         }
