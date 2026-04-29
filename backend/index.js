@@ -540,6 +540,14 @@ async function updateRealBalances() {
                 // botStatus.clobOnlyUSDC = clobMonto.toFixed(2);
                 // botStatus.balanceUSDC = botStatus.clobOnlyUSDC;
 
+                // En V2 el balance es pUSD (Poly-USDC)
+                // Usamos el método oficial del SDK autenticado (L2)
+                const balanceData = await clobClient.getCollateralBalance();
+                // El balance viene en unidades básicas (6 decimales)
+                const clobMonto = parseFloat(balanceData.amount || 0);
+                botStatus.clobOnlyUSDC = clobMonto.toFixed(2);
+                botStatus.balanceUSDC = botStatus.clobOnlyUSDC;
+
                 console.log(`💰 Balance CLOB V2 (pUSD): $${botStatus.clobOnlyUSDC}`);
 
             } catch (balanceError) {
