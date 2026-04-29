@@ -527,9 +527,9 @@ async function updateRealBalances() {
         if (clobClient) {
             try {
                 // Forzamos la API Key (necesario en V2 con proxy)
-                if (process.env.POLY_API_KEY) {
-                    clobClient.apiKey = process.env.POLY_API_KEY;
-                }
+                // if (process.env.POLY_API_KEY) {
+                //     clobClient.apiKey = process.env.POLY_API_KEY;
+                // }
 
                 console.log("🔑 Actualizando balance allowance...");
 
