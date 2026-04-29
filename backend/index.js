@@ -533,12 +533,12 @@ async function updateRealBalances() {
 
                 console.log("🔑 Actualizando balance allowance...");
 
-                await clobClient.updateBalanceAllowance({ asset_type: "COLLATERAL" });
-                const balanceData = await clobClient.getBalanceAllowance({ asset_type: "COLLATERAL" });
+                // await clobClient.updateBalanceAllowance({ asset_type: "COLLATERAL" });
+                // const balanceData = await clobClient.getBalanceAllowance({ asset_type: "COLLATERAL" });
                 
-                const clobMonto = parseFloat(balanceData.balance || 0) / 1000000;
-                botStatus.clobOnlyUSDC = clobMonto.toFixed(2);
-                botStatus.balanceUSDC = botStatus.clobOnlyUSDC;
+                // const clobMonto = parseFloat(balanceData.balance || 0) / 1000000;
+                // botStatus.clobOnlyUSDC = clobMonto.toFixed(2);
+                // botStatus.balanceUSDC = botStatus.clobOnlyUSDC;
 
                 console.log(`💰 Balance CLOB V2 (pUSD): $${botStatus.clobOnlyUSDC}`);
 
