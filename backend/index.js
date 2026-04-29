@@ -453,22 +453,22 @@ async function conectarClob() {
         const PROXY_WALLET = process.env.POLY_PROXY_ADDRESS || "0x876E00CBF5c4fe22F4FA263F4cb713650cB758d2";
 
         // 1. Inicializamos la variable GLOBAL clobClient (dejando de ser null)
-        clobClient = new ClobClient({
-            host: "https://clob.polymarket.com",
-            chain: 137,
-            signer: wallet,                    
-            funder: PROXY_WALLET,
-            signatureType: 2,
-            creds: {                                      // ← ESTO ES LO QUE FALTABA
-                apiKey: process.env.POLY_API_KEY,
-                secret: process.env.POLY_SECRET,
-                passphrase: process.env.POLY_PASSPHRASE
-            },
-            builderCode: process.env.POLY_BUILDER_CODE || undefined
-        });
+        // clobClient = new ClobClient({
+        //     host: "https://clob.polymarket.com",
+        //     chain: 137,
+        //     signer: wallet,                    
+        //     funder: PROXY_WALLET,
+        //     signatureType: 2,
+        //     creds: {                                      // ← ESTO ES LO QUE FALTABA
+        //         apiKey: process.env.POLY_API_KEY,
+        //         secret: process.env.POLY_SECRET,
+        //         passphrase: process.env.POLY_PASSPHRASE
+        //     },
+        //     builderCode: process.env.POLY_BUILDER_CODE || undefined
+        // });
 
         console.log("Derivando API Key...");
-        /*
+        
         try {
             // 2. Ahora sí usamos clobClient, porque ya fue creado arriba
             const creds = await clobClient.createOrDeriveApiKey();
@@ -489,7 +489,7 @@ async function conectarClob() {
             console.log("⚠️ Error al derivar la API Key:", e.message);
             throw e;
         }
-        */
+        
 
         console.log("✅ API Credentials V2 obtenidas y configuradas");
 
